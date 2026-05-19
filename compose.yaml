@@ -1,0 +1,12 @@
+services:
+  construction-app:
+    image: your-username/construction-app:latest   # ← Docker Hub 아이디로 변경
+    container_name: construction-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - DB_PATH=/app/data/construction.db
