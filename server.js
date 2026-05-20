@@ -4,6 +4,8 @@ const XLSX = require('xlsx');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -140,7 +142,13 @@ app.get('/api/constructions', (req, res) => {
   const { search, gubun, status, corp } = req.query;
   let sql = 'SELECT * FROM constructions WHERE 1=1';
   const params = [];
-  if (search) { sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ?)'; params.push(`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`); }
+  if (search) {
+    const keywords = search.trim().split(/\s+/).filter(Boolean);
+    for (const kw of keywords) {
+      sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ?)';
+      params.push(`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`);
+    }
+  }
   if (gubun && gubun !== '전체') { sql += ' AND gubun = ?'; params.push(gubun); }
   if (status && status !== '전체') { sql += ' AND status = ?'; params.push(status); }
   if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
@@ -232,6 +240,100 @@ app.delete('/api/locations/:id', (req, res) => {
   db.run('DELETE FROM locations WHERE id = ?', [req.params.id]);
   saveDB();
   res.json({ success: true });
+});
+
+
+// ── 엑셀 양식 다운로드 ──────────────────────────────────────────
+app.get('/api/template', (req, res) => {
+  const headers = ['구분','요청일','법인','부서','요청자','공사명',
+    '작업지역','작업동','작업층','작업상세위치',
+    '철거지역','철거동','철거층','철거상세위치',
+    '상태','기한일','작업완료일',
+    '구매품의서','지출품의서','연관품의서',
+    'IT관리팀 담당자','작업자','메모'];
+
+  const example = ['자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설',
+    '대곶','HO동','3F','서버실',
+    '','','','',
+    '완료','26.03.10','26.03.09',
+    '경영-구품-26-0001','경영-지품-26-0001','',
+    '이준성','김준기, 이준성','특이사항 없음'];
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+
+  // 컬럼 너비
+  ws['!cols'] = headers.map((h, i) => ({ wch: i === 5 ? 40 : i < 6 ? 12 : 18 }));
+
+  // 헤더 행 스타일
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: 0, c: C })];
+    if (cell) {
+      cell.s = {
+        font: { bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: 'C0392B' } },
+        alignment: { horizontal: 'center' }
+      };
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, '공사이력 입력양식');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('공사이력_입력양식.xlsx')}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── 엑셀 업로드 (밀어넣기) ──────────────────────────────────────────
+app.post('/api/import', upload.single('file'), (req, res) => {
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    if (rows.length < 2) return res.json({ success: true, count: 0 });
+
+    const headers = rows[0];
+    const dataRows = rows.slice(1).filter(r => r.some(c => c !== undefined && c !== ''));
+
+    const colIdx = (name) => headers.indexOf(name);
+
+    let count = 0;
+    let lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
+
+    for (const row of dataRows) {
+      const get = (name) => {
+        const i = colIdx(name);
+        return i >= 0 ? (row[i] !== undefined ? String(row[i]).trim() : '') : '';
+      };
+
+      lastNo++;
+      db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,
+        loc_region,loc_dong,loc_floor,loc_detail,
+        move_region,move_dong,move_floor,move_detail,
+        demolish_region,demolish_dong,demolish_floor,demolish_detail,
+        status,deadline,complete_date,
+        purchase_doc,payment_doc,related_doc,it_manager,worker,memo)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [lastNo,
+         get('구분'), get('요청일'), get('법인'), get('부서'), get('요청자'), get('공사명'),
+         get('작업지역'), get('작업동'), get('작업층'), get('작업상세위치'),
+         '','','','',
+         get('철거지역'), get('철거동'), get('철거층'), get('철거상세위치'),
+         get('상태'), get('기한일'), get('작업완료일'),
+         get('구매품의서'), get('지출품의서'), get('연관품의서'),
+         get('IT관리팀 담당자'), get('작업자'), get('메모')
+        ]);
+      count++;
+    }
+
+    saveDB();
+    res.json({ success: true, count });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '파일 처리 중 오류가 발생했습니다: ' + e.message });
+  }
 });
 
 app.get('/api/export', (req, res) => {
