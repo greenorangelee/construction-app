@@ -1976,7 +1976,15 @@ function openNewModal() {
   editingId = null;
   document.getElementById('modalTitle').textContent = '새 공사 등록';
   document.getElementById('formSubmitBtn').textContent = '등록';
-  FIELDS.forEach(f => { const el = document.getElementById('f-' + f); if (el) el.value = ''; });
+  FIELDS.forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (!el) return;
+    if (el.tagName === 'SELECT') {
+      el.selectedIndex = 0;
+    } else {
+      el.value = '';
+    }
+  });
   populateLocDropdowns();
   openModal('formModal');
 }
@@ -1986,10 +1994,30 @@ async function openEditModal(id) {
   document.getElementById('modalTitle').textContent = '공사 정보 수정';
   document.getElementById('formSubmitBtn').textContent = '저장';
   const r = await api('GET', `/api/constructions/${id}`);
+  // 위치 데이터 최신화 후 드롭다운 구성
+  await loadLocations();
   populateLocDropdowns();
-  FIELDS.forEach(f => { const el = document.getElementById('f-' + f); if (el) el.value = r[f] || ''; });
-  // 드롭다운 연쇄 업데이트
-  ['loc','demolish'].forEach(p => { onLocRegionChange(p, true); });
+  // 일반 필드 값 세팅
+  FIELDS.forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (!el) return;
+    el.value = r[f] || '';
+  });
+  // 위치 드롭다운 연쇄 업데이트 (지역 선택 → 동 목록 → 층 목록 → 값 선택)
+  ['loc','demolish'].forEach(p => {
+    const regionEl = document.getElementById(`f-${p}_region`);
+    if (regionEl && r[`${p}_region`]) {
+      regionEl.value = r[`${p}_region`];
+      onLocRegionChange(p, true);
+      const dongEl = document.getElementById(`f-${p}_dong`);
+      if (dongEl && r[`${p}_dong`]) {
+        dongEl.value = r[`${p}_dong`];
+        onLocDongChange(p, true);
+        const floorEl = document.getElementById(`f-${p}_floor`);
+        if (floorEl && r[`${p}_floor`]) floorEl.value = r[`${p}_floor`];
+      }
+    }
+  });
   openModal('formModal');
 }
 
@@ -1997,7 +2025,7 @@ async function submitForm() {
   const data = {};
   FIELDS.forEach(f => { const el = document.getElementById('f-' + f); if (el) data[f] = el.value; });
 
-  if (!data.gubun || !data.work_name) {
+  if (!data.gubun || data.gubun === '' || !data.work_name) {
     alert('구분과 공사명은 필수 입력입니다.');
     return;
   }
