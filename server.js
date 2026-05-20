@@ -185,14 +185,25 @@ app.post('/api/constructions', (req, res) => {
 });
 
 app.put('/api/constructions/:id', (req, res) => {
-  const d = req.body;
-  const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
-  db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=? WHERE id=?`,
-    [d.gubun,d.req_date,d.corp,d.dept,d.requester,d.work_name,d.loc_region,d.loc_dong,d.loc_floor,d.loc_detail,d.move_region,d.move_dong,d.move_floor,d.move_detail,d.demolish_region,d.demolish_dong,d.demolish_floor,d.demolish_detail,d.status,d.deadline,d.complete_date,d.purchase_doc,d.payment_doc,d.related_doc,d.it_manager,d.worker,d.memo,req.params.id]);
-  const diff = diffRecords(before, d);
-  if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
-  saveDB();
-  res.json({ success: true });
+  try {
+    const d = req.body;
+    const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
+    db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=? WHERE id=?`,
+      [d.gubun||'',d.req_date||'',d.corp||'',d.dept||'',d.requester||'',d.work_name||'',
+       d.loc_region||'',d.loc_dong||'',d.loc_floor||'',d.loc_detail||'',
+       d.move_region||'',d.move_dong||'',d.move_floor||'',d.move_detail||'',
+       d.demolish_region||'',d.demolish_dong||'',d.demolish_floor||'',d.demolish_detail||'',
+       d.status||'',d.deadline||'',d.complete_date||'',
+       d.purchase_doc||'',d.payment_doc||'',d.related_doc||'',
+       d.it_manager||'',d.worker||'',d.memo||'',req.params.id]);
+    const diff = diffRecords(before, d);
+    if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
+    saveDB();
+    res.json({ success: true });
+  } catch(e) {
+    console.error('PUT error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete('/api/constructions/:id', (req, res) => {
