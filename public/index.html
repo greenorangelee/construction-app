@@ -2031,17 +2031,22 @@ async function submitForm() {
   }
 
   data.changed_by = '관리자';
-  if (editingId) {
-    await api('PUT', `/api/constructions/${editingId}`, data);
-    showToast('수정되었습니다 ✓');
-  } else {
-    await api('POST', '/api/constructions', data);
-    showToast('등록되었습니다 ✓');
+  try {
+    if (editingId) {
+      const result = await api('PUT', `/api/constructions/${editingId}`, data);
+      if (result.error) { alert('저장 오류: ' + result.error); return; }
+      showToast('수정되었습니다 ✓');
+    } else {
+      const result = await api('POST', '/api/constructions', data);
+      if (result.error) { alert('등록 오류: ' + result.error); return; }
+      showToast('등록되었습니다 ✓');
+    }
+    closeModal('formModal');
+    loadData();
+    loadStats();
+  } catch(e) {
+    alert('오류가 발생했습니다: ' + e.message);
   }
-
-  closeModal('formModal');
-  loadData();
-  loadStats();
 }
 
 // ── EXCEL ──────────────────────────────────────────
