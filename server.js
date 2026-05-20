@@ -140,7 +140,7 @@ app.get('/api/constructions', (req, res) => {
   const { search, gubun, status, corp } = req.query;
   let sql = 'SELECT * FROM constructions WHERE 1=1';
   const params = [];
-  if (search) { sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ?)'; params.push(`%${search}%`,`%${search}%`,`%${search}%`); }
+  if (search) { sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ?)'; params.push(`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`,`%${search}%`); }
   if (gubun && gubun !== '전체') { sql += ' AND gubun = ?'; params.push(gubun); }
   if (status && status !== '전체') { sql += ' AND status = ?'; params.push(status); }
   if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
