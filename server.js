@@ -341,12 +341,14 @@ app.post('/api/import', upload.single('file'), (req, res) => {
 
 app.get('/api/export', (req, res) => {
   const rows = queryAll('SELECT * FROM constructions ORDER BY no ASC');
-  const headers = ['No','구분','요청일','법인','부서','요청자','공사명','작업지역','작업동','작업층','상세위치(작업전)','공사위치지역','공사위치동','공사위치층','상세위치(공사)','철거위치지역','철거위치동','철거위치층','상세위치(철거)','상태','기한일','작업완료일','구매품의서','지출품의서','연관품의서','IT관리팀 담당자','작업자','메모'];
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
+  const headers = ['No','구분','요청일','법인','부서','요청자','공사명','작업지역','작업동','작업층','작업상세위치','철거지역','철거동','철거층','철거상세위치','상태','기한일','작업완료일','구매품의서','지출품의서','연관품의서','IT관리팀담당자','작업자','메모'];
   const data = [headers, ...rows.map(r => [r.no,r.gubun,r.req_date,r.corp,r.dept,r.requester,r.work_name,r.loc_region,r.loc_dong,r.loc_floor,r.loc_detail,r.demolish_region,r.demolish_dong,r.demolish_floor,r.demolish_detail,r.status,r.deadline,r.complete_date,r.purchase_doc,r.payment_doc,r.related_doc,r.it_manager,r.worker,r.memo])];
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = headers.map((h,i) => ({ wch: i===6?48:i<2?6:i<7?12:18 }));
-  XLSX.utils.book_append_sheet(wb, ws, '2026 네트워크 공사 이력');
+  XLSX.utils.book_append_sheet(wb, ws, '네트워크 공사 이력');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${dateStr}_네트워크공사이력.xlsx`)}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
