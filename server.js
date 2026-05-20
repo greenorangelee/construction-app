@@ -250,7 +250,7 @@ app.get('/api/template', (req, res) => {
     '철거지역','철거동','철거층','철거상세위치',
     '상태','기한일','작업완료일',
     '구매품의서','지출품의서','연관품의서',
-    'IT관리팀 담당자','작업자','메모'];
+    'IT관리팀담당자','작업자','메모'];
 
   const example = ['자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설',
     '대곶','HO동','3F','서버실',
@@ -326,7 +326,7 @@ app.post('/api/import', upload.single('file'), (req, res) => {
          get('철거지역'), get('철거동'), get('철거층'), get('철거상세위치'),
          get('상태'), get('기한일'), get('작업완료일'),
          get('구매품의서'), get('지출품의서'), get('연관품의서'),
-         get('IT관리팀 담당자'), get('작업자'), get('메모')
+         get('IT관리팀담당자'), get('작업자'), get('메모')
         ]);
       count++;
     }
@@ -348,7 +348,7 @@ app.get('/api/export', (req, res) => {
   ws['!cols'] = headers.map((h,i) => ({ wch: i===6?48:i<2?6:i<7?12:18 }));
   XLSX.utils.book_append_sheet(wb, ws, '2026 네트워크 공사 이력');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('2026_네트워크공사이력.xlsx')}`);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${dateStr}_네트워크공사이력.xlsx`)}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
 });
