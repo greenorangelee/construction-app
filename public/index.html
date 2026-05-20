@@ -1205,6 +1205,55 @@
     .file-dropdown-item:last-child { border-bottom: none; }
     .file-dropdown-item:hover { background: #fef2f2; color: #c0392b; }
     .file-dropdown-item .item-icon { font-size: 15px; }
+
+    /* ── BULK SELECT ── */
+    .cb-cell {
+      width: 36px;
+      text-align: center;
+      padding: 9px 6px !important;
+    }
+
+    .row-checkbox {
+      width: 15px;
+      height: 15px;
+      accent-color: #c0392b;
+      cursor: pointer;
+    }
+
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: #fff5f5;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #c0392b;
+      font-weight: 500;
+    }
+    .bulk-bar.visible { display: flex; }
+
+    .bulk-bar button {
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      transition: background 0.15s;
+    }
+    .bulk-bar button:hover { background: #a93226; }
+
+    .bulk-bar .cancel-btn {
+      background: none;
+      color: #9ca3af;
+      border: 1px solid #e5e7eb;
+    }
+    .bulk-bar .cancel-btn:hover { background: #f9fafb; color: #374151; }
   </style>
 </head>
 <body>
@@ -1358,7 +1407,14 @@
   <!-- TABLE -->
   <div class="table-wrapper">
     <div class="table-header">
-      <h2>공사 이력 목록</h2>
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2>공사 이력 목록</h2>
+        <div class="bulk-bar" id="bulkBar">
+          <span id="bulkCount">0개 선택됨</span>
+          <button onclick="deleteSelected()">🗑 선택 삭제</button>
+          <button class="cancel-btn" onclick="clearSelection()">취소</button>
+        </div>
+      </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span class="record-count" id="recordCount"></span>
         <div style="position:relative">
@@ -1822,6 +1878,7 @@ async function loadData() {
 
   // thead 동적 업데이트
   document.querySelector('thead tr').innerHTML = `
+    <th class="cb-cell"><input type="checkbox" class="row-checkbox" id="checkAll" onclick="toggleCheckAll(this)" title="전체 선택" /></th>
     ${v('no') ? `<th class="sortable" data-key="no" onclick="sortBy('no')">No</th>` : ''}
     ${v('gubun') ? `<th class="sortable" data-key="gubun" onclick="sortBy('gubun')">구분</th>` : ''}
     ${v('req_date') ? `<th class="sortable" data-key="req_date" onclick="sortBy('req_date')">요청일</th>` : ''}
@@ -1844,12 +1901,13 @@ async function loadData() {
 
   const tbody = document.getElementById('tableBody');
   if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="${totalCols}"><div class="empty-state"><div class="icon">📭</div><p>검색 결과가 없습니다</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${totalCols + 1}"><div class="empty-state"><div class="icon">📭</div><p>검색 결과가 없습니다</p></div></td></tr>`;
     return;
   }
 
   tbody.innerHTML = data.map(r => `
     <tr>
+      <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
       ${v('no') ? `<td><code style="color:#9ca3af;font-size:11px">${r.no}</code></td>` : ''}
       ${v('gubun') ? `<td>${gubunBadge(r.gubun)}</td>` : ''}
       ${v('req_date') ? `<td style="font-size:12px;color:#6b7280">${r.req_date || '-'}</td>` : ''}
@@ -2326,6 +2384,47 @@ function closeFileDropdown() {
   document.getElementById('fileDropdown').classList.remove('open');
 }
 document.addEventListener('click', () => closeFileDropdown());
+
+
+// ── BULK SELECT ──────────────────────────────────────────
+
+function getCheckedIds() {
+  return [...document.querySelectorAll('.row-checkbox[value]:checked')].map(cb => cb.value);
+}
+
+function onRowCheck() {
+  const ids = getCheckedIds();
+  const bulkBar = document.getElementById('bulkBar');
+  document.getElementById('bulkCount').textContent = `${ids.length}개 선택됨`;
+  bulkBar.classList.toggle('visible', ids.length > 0);
+  // 전체 체크박스 상태 업데이트
+  const all = document.querySelectorAll('.row-checkbox[value]');
+  const checkAll = document.getElementById('checkAll');
+  if (checkAll) checkAll.checked = ids.length === all.length && all.length > 0;
+}
+
+function toggleCheckAll(el) {
+  document.querySelectorAll('.row-checkbox[value]').forEach(cb => { cb.checked = el.checked; });
+  onRowCheck();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.row-checkbox').forEach(cb => { cb.checked = false; });
+  document.getElementById('bulkBar').classList.remove('visible');
+}
+
+async function deleteSelected() {
+  const ids = getCheckedIds();
+  if (!ids.length) return;
+  if (!confirm(`선택한 ${ids.length}건을 삭제할까요?`)) return;
+  for (const id of ids) {
+    await api('DELETE', `/api/constructions/${id}`);
+  }
+  clearSelection();
+  showToast(`${ids.length}건 삭제됐습니다`);
+  loadData();
+  loadStats();
+}
 
 // ── IMPORT / TEMPLATE ──────────────────────────────────────────
 
