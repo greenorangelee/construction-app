@@ -2277,10 +2277,11 @@ function renderDongList() {
   document.getElementById('dongList').innerHTML = locs.map(loc => {
     const floors = JSON.parse(loc.floors || '[]');
     return `<div class="dong-card">
-      <div class="dong-card-head">
-        <span class="dong-card-name">🏢 ${loc.dong}</span>
+      <div class="dong-card-head" id="dong-head-${loc.id}">
+        <span class="dong-card-name" id="dong-name-${loc.id}">🏢 ${loc.dong}</span>
         <div style="display:flex;gap:6px;align-items:center">
           <span style="font-size:11px;color:#9ca3af">${floors.length}개 층</span>
+          <button onclick="startEditDong(${loc.id}, '${loc.dong.replace(/'/g, "\'")}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:2px 6px;border-radius:4px;transition:all 0.15s" onmouseover="this.style.color='#c0392b'" onmouseout="this.style.color='#9ca3af'" title="동 이름 수정">✏️</button>
           <button onclick="deleteDong(${loc.id})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px" title="동 삭제">✕</button>
         </div>
       </div>
@@ -2333,6 +2334,34 @@ async function addDong() {
   document.getElementById('newDongInput').value = '';
   await loadLocations();
   selectRegion(selectedRegion);
+}
+
+
+function startEditDong(id, currentName) {
+  const head = document.getElementById('dong-head-' + id);
+  if (!head) return;
+  head.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex:1">
+      <input id="dong-edit-input-${id}" type="text" value="${currentName}"
+        style="flex:1;background:#f9fafb;border:1px solid #c0392b;border-radius:6px;padding:5px 10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;color:#1a1a1a"
+        onkeydown="if(event.key==='Enter') saveEditDong(${id}); if(event.key==='Escape') renderDongList();"
+      />
+      <button onclick="saveEditDong(${id})" style="background:#c0392b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:600">저장</button>
+      <button onclick="renderDongList()" style="background:none;border:1px solid #e5e7eb;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;color:#6b7280">취소</button>
+    </div>
+  `;
+  document.getElementById('dong-edit-input-' + id)?.focus();
+}
+
+async function saveEditDong(id) {
+  const input = document.getElementById('dong-edit-input-' + id);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) return;
+  const loc = allLocations.find(l => l.id === id);
+  await api('PUT', `/api/locations/${id}`, { region: loc.region, dong: newName, floors: JSON.parse(loc.floors || '[]') });
+  await loadLocations();
+  renderDongList();
 }
 
 async function deleteDong(id) {
