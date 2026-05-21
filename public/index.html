@@ -3415,9 +3415,7 @@ function openCableModal(existing = null, px = null, py = null) {
   document.getElementById('ci-construction_no').value = existing?.construction_no || '';
   document.getElementById('ci-memo').value = existing?.memo || '';
 
-  // 색상 자동 설정
-  // 색상은 망 설정에서 자동 지정됨
-  document.getElementById('cableColorPicker').value = color;
+  // 색상은 망 설정에서 자동 지정됨 (colorPicker는 숨겨져 있음)
 
   // 삭제 버튼 표시 여부
   const delBtn = document.getElementById('cableDeleteBtn');
