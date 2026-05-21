@@ -3270,8 +3270,8 @@ function drawCanvas() {
     const cx = l.x * canvas.width;
     const cy = l.y * canvas.height;
     const selected = l.id === cableSelectedId;
-    const color = selected ? '#f59e0b' : (l.color || '#e74c3c');
-    const r = selected ? PIN_R + 2 : PIN_R;
+    const color = l.color || '#e74c3c';
+    const r = selected ? PIN_R + 3 : PIN_R;
     const shape = l.shape || 'circle';
 
     ctx.fillStyle = color;
