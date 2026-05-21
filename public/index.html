@@ -1600,6 +1600,74 @@
       padding: 2px;
       cursor: pointer;
     }
+
+    /* ── 기준점 재매핑 ── */
+    .remap-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      z-index: 400; display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+    }
+    .remap-overlay.open { display: flex; }
+
+    .remap-header {
+      color: #fff; font-size: 15px; font-weight: 700;
+      text-align: center; line-height: 1.6;
+    }
+
+    .remap-step-badge {
+      background: #c0392b; color: #fff;
+      padding: 6px 18px; border-radius: 20px;
+      font-size: 13px; font-weight: 700;
+    }
+
+    .remap-canvases {
+      display: flex; gap: 20px; align-items: flex-start;
+    }
+
+    .remap-panel {
+      display: flex; flex-direction: column; gap: 8px; align-items: center;
+    }
+
+    .remap-panel-title {
+      color: #fff; font-size: 12px; font-weight: 600;
+      background: rgba(255,255,255,0.1); padding: 4px 16px;
+      border-radius: 20px;
+    }
+
+    .remap-canvas-wrap {
+      position: relative; overflow: auto;
+      max-width: 45vw; max-height: 55vh;
+      border: 2px solid rgba(255,255,255,0.2); border-radius: 8px;
+      background: #1a1a1a; cursor: crosshair;
+    }
+
+    .remap-canvas-wrap.active-side { border-color: #c0392b; }
+
+    .remap-points-list {
+      color: #fff; font-size: 12px; text-align: center; min-height: 60px;
+    }
+
+    .remap-point-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 6px; margin: 2px 0;
+    }
+    .remap-point-item.done { background: rgba(16,185,129,0.2); }
+    .remap-point-item.waiting { background: rgba(255,255,255,0.05); color: #6b7280; }
+
+    .remap-footer {
+      display: flex; gap: 10px;
+    }
+
+    .remap-btn {
+      padding: 10px 24px; border-radius: 8px; font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .remap-btn-primary { background: #c0392b; color: #fff; }
+    .remap-btn-primary:hover { background: #a93226; }
+    .remap-btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+    .remap-btn-secondary:hover { background: rgba(255,255,255,0.2); }
+    .remap-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -1855,11 +1923,14 @@
             <option value="">층 선택</option>
           </select>
         </div>
-        <div class="cable-upload-area">
+        <div class="cable-upload-area" style="display:flex;flex-direction:column;gap:8px">
           <label class="cable-upload-btn" id="cableUploadLabel">
             📁 도면 업로드 (JPG·PNG·PDF·DXF)
             <input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />
           </label>
+          <button id="remapTriggerBtn" class="cable-upload-btn" style="display:none;border-style:solid;border-color:#c0392b;color:#c0392b;background:#fff5f5" onclick="startRemapMode()">
+            📐 신 도면으로 핀 재배치
+          </button>
         </div>
         <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">
           <span style="font-size:12px;font-weight:700;color:#374151">선번 목록</span>
@@ -2966,6 +3037,317 @@ async function importExcel(input) {
 
 
 
+
+// ── 기준점 재매핑 ──────────────────────────────────────────
+
+let remapOldImg = null;
+let remapNewImg = null;
+let remapOldPoints = []; // [{x,y}] 구 도면 기준점 (비율)
+let remapNewPoints = []; // [{x,y}] 신 도면 기준점 (비율)
+let remapPhase = 'old'; // 'old' | 'new'
+let remapNewFilename = null;
+let remapNewFloorplanId = null;
+const REMAP_COUNT = 4;
+
+function startRemapMode() {
+  if (!cableImg) { alert('현재 도면이 없습니다'); return; }
+  if (!cableLines.length) { alert('재배치할 핀이 없습니다'); return; }
+
+  // 신 도면 파일 선택
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,.pdf,.dxf,.dwg';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const region = document.getElementById('cable-region').value;
+    const dong = document.getElementById('cable-dong').value;
+    const floor = document.getElementById('cable-floor').value;
+
+    // 신 도면 임시 업로드
+    showToast('신 도면 업로드 중...');
+    const fd = new FormData();
+    fd.append('image', file);
+    fd.append('region', region + '_remap_tmp');
+    fd.append('dong', dong);
+    fd.append('floor', floor);
+    const res = await fetch('/api/floorplan/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { alert('업로드 실패: ' + data.error); return; }
+    remapNewFilename = data.filename;
+    remapNewFloorplanId = data.id;
+
+    // 구/신 도면 로드
+    remapOldPoints = []; remapNewPoints = []; remapPhase = 'old';
+
+    const loadImg = (src) => new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = src;
+    });
+
+    remapOldImg = cableImg; // 현재 도면
+    remapNewImg = await loadImg(`/api/floorplan/image/${remapNewFilename}?t=${Date.now()}`);
+
+    openRemapOverlay();
+  };
+  input.click();
+}
+
+function openRemapOverlay() {
+  document.getElementById('remapOverlay').classList.add('open');
+  drawRemapCanvas('old');
+  drawRemapCanvas('new');
+  updateRemapUI();
+
+  // 클릭 이벤트
+  document.getElementById('remapOldWrap').onclick = (e) => onRemapClick(e, 'old');
+  document.getElementById('remapNewWrap').onclick = (e) => onRemapClick(e, 'new');
+}
+
+function drawRemapCanvas(side) {
+  const canvas = document.getElementById(side === 'old' ? 'remapOldCanvas' : 'remapNewCanvas');
+  const img = side === 'old' ? remapOldImg : remapNewImg;
+  if (!img) return;
+
+  // 캔버스 크기 설정
+  const maxW = window.innerWidth * 0.42;
+  const maxH = window.innerHeight * 0.5;
+  const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  canvas.style.width = (img.naturalWidth * scale) + 'px';
+  canvas.style.height = (img.naturalHeight * scale) + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
+
+  // 기준점 표시
+  const pts = side === 'old' ? remapOldPoints : remapNewPoints;
+  pts.forEach((p, i) => {
+    const cx = p.x * canvas.width;
+    const cy = p.y * canvas.height;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+    ctx.fillStyle = ['#e74c3c','#f59e0b','#10b981','#3b82f6'][i];
+    ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, cx, cy);
+  });
+
+  // 구 도면이면 기존 핀도 표시
+  if (side === 'old') {
+    cableLines.forEach(l => {
+      const cx = l.x * canvas.width;
+      const cy = l.y * canvas.height;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = l.color || '#e74c3c';
+      ctx.globalAlpha = 0.6;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    });
+  }
+}
+
+function onRemapClick(e, side) {
+  // 현재 활성 사이드가 아니면 무시
+  if (remapPhase !== side) return;
+  const pts = side === 'old' ? remapOldPoints : remapNewPoints;
+  if (pts.length >= REMAP_COUNT) return;
+
+  const canvas = document.getElementById(side === 'old' ? 'remapOldCanvas' : 'remapNewCanvas');
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  pts.push({ x, y });
+
+  drawRemapCanvas(side);
+  updateRemapUI();
+
+  // 구 도면 3점 완료 → 신 도면으로 전환
+  if (side === 'old' && pts.length === REMAP_COUNT) {
+    remapPhase = 'new';
+    updateRemapUI();
+  }
+  // 신 도면 3점 완료 → 실행 버튼 활성화
+  if (side === 'new' && pts.length === REMAP_COUNT) {
+    document.getElementById('remapApplyBtn').disabled = false;
+  }
+}
+
+function updateRemapUI() {
+  const colors = ['🔴','🟡','🟢','🔵'];
+  const labels = ['첫 번째','두 번째','세 번째','네 번째'];
+
+  // 구 도면 포인트 목록
+  const oldEl = document.getElementById('remapOldPoints');
+  oldEl.innerHTML = Array.from({length: REMAP_COUNT}, (_, i) => {
+    const done = remapOldPoints[i];
+    return `<div class="remap-point-item ${done ? 'done' : 'waiting'}">
+      ${colors[i]} ${labels[i]} 기준점 ${done ? '✓' : '(클릭)'}
+    </div>`;
+  }).join('');
+
+  // 신 도면 포인트 목록
+  const newEl = document.getElementById('remapNewPoints');
+  if (remapPhase === 'old') {
+    newEl.innerHTML = '<div style="color:#6b7280;padding:10px">구 도면 기준점 완료 후 활성화</div>';
+  } else {
+    newEl.innerHTML = Array.from({length: REMAP_COUNT}, (_, i) => {
+      const done = remapNewPoints[i];
+      return `<div class="remap-point-item ${done ? 'done' : 'waiting'}">
+        ${colors[i]} ${labels[i]} 기준점 ${done ? '✓' : '(클릭)'}
+      </div>`;
+    }).join('');
+  }
+
+  // 활성 사이드 강조
+  document.getElementById('remapOldWrap').classList.toggle('active-side', remapPhase === 'old');
+  document.getElementById('remapNewWrap').classList.toggle('active-side', remapPhase === 'new');
+
+  // 단계 배지
+  const badge = document.getElementById('remapStepBadge');
+  const stepNum = remapPhase === 'old' ? remapOldPoints.length + 1 : remapNewPoints.length + 1;
+  if (remapPhase === 'old') badge.textContent = `${stepNum}/${REMAP_COUNT} - 구 도면에서 기준점 클릭 (4점 최소제곱)`;
+  else badge.textContent = `${stepNum}/${REMAP_COUNT} - 신 도면에서 같은 위치 클릭`;
+}
+
+function undoRemapPoint() {
+  if (remapPhase === 'new' && remapNewPoints.length > 0) {
+    remapNewPoints.pop();
+    document.getElementById('remapApplyBtn').disabled = true;
+  } else if (remapPhase === 'new' && remapNewPoints.length === 0) {
+    remapPhase = 'old';
+    remapOldPoints.pop();
+  } else if (remapPhase === 'old' && remapOldPoints.length > 0) {
+    remapOldPoints.pop();
+  }
+  drawRemapCanvas('old');
+  drawRemapCanvas('new');
+  updateRemapUI();
+}
+
+// 4점 최소제곱법 아핀 변환
+// n개 대응점으로 과결정 시스템을 최소제곱으로 풀어 오차 평균화
+function calcAffineTransform(srcPts, dstPts) {
+  const n = srcPts.length; // 4점
+
+  // A 행렬 (2n x 6), b 벡터 (2n)
+  // 각 점마다 2개 방정식:
+  //   x' = a*x + b*y + tx  →  [x, y, 1, 0, 0, 0] * [a,b,tx,c,d,ty]' = x'
+  //   y' = c*x + d*y + ty  →  [0, 0, 0, x, y, 1] * [a,b,tx,c,d,ty]' = y'
+  const A = [];
+  const bVec = [];
+  for (let i = 0; i < n; i++) {
+    const { x, y } = srcPts[i];
+    A.push([x, y, 1, 0, 0, 0]);
+    bVec.push(dstPts[i].x);
+    A.push([0, 0, 0, x, y, 1]);
+    bVec.push(dstPts[i].y);
+  }
+
+  // 최소제곱: (A^T A) params = A^T b  → 정규방정식
+  const cols = 6;
+  const rows = A.length; // 2n = 8
+
+  // A^T * A (6x6)
+  const ATA = Array.from({length:cols}, () => new Array(cols).fill(0));
+  for (let i = 0; i < cols; i++)
+    for (let j = 0; j < cols; j++)
+      for (let r = 0; r < rows; r++)
+        ATA[i][j] += A[r][i] * A[r][j];
+
+  // A^T * b (6x1)
+  const ATb = new Array(cols).fill(0);
+  for (let i = 0; i < cols; i++)
+    for (let r = 0; r < rows; r++)
+      ATb[i] += A[r][i] * bVec[r];
+
+  // 가우시안 소거로 ATA * x = ATb 풀기
+  const M = ATA.map((row, i) => [...row, ATb[i]]);
+  for (let col = 0; col < cols; col++) {
+    let maxRow = col;
+    for (let row = col+1; row < cols; row++)
+      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
+    [M[col], M[maxRow]] = [M[maxRow], M[col]];
+    for (let row = col+1; row < cols; row++) {
+      const factor = M[row][col] / M[col][col];
+      for (let j = col; j <= cols; j++) M[row][j] -= factor * M[col][j];
+    }
+  }
+  const params = new Array(cols).fill(0);
+  for (let i = cols-1; i >= 0; i--) {
+    params[i] = M[i][cols] / M[i][i];
+    for (let j = i-1; j >= 0; j--) M[j][cols] -= M[j][i] * params[i];
+  }
+
+  // 잔차(residual) 계산 - 정확도 확인용
+  let totalError = 0;
+  for (let i = 0; i < n; i++) {
+    const {x, y} = srcPts[i];
+    const predX = params[0]*x + params[1]*y + params[2];
+    const predY = params[3]*x + params[4]*y + params[5];
+    totalError += Math.sqrt((predX-dstPts[i].x)**2 + (predY-dstPts[i].y)**2);
+  }
+  console.log(`아핀 변환 평균 오차: ${(totalError/n*100).toFixed(2)}% (0에 가까울수록 좋음)`);
+
+  return { a: params[0], b: params[1], tx: params[2], c: params[3], d: params[4], ty: params[5] };
+}
+
+async function applyRemap() {
+  if (remapOldPoints.length < REMAP_COUNT || remapNewPoints.length < REMAP_COUNT) return;
+
+  // 아핀 변환 계산
+  const transform = calcAffineTransform(remapOldPoints, remapNewPoints);
+
+  // 모든 핀 위치 변환
+  const updatedLines = cableLines.map(l => {
+    const newX = transform.a * l.x + transform.b * l.y + transform.tx;
+    const newY = transform.c * l.x + transform.d * l.y + transform.ty;
+    return { ...l, x: Math.max(0, Math.min(1, newX)), y: Math.max(0, Math.min(1, newY)) };
+  });
+
+  // 서버에 업데이트
+  let count = 0;
+  for (const l of updatedLines) {
+    await api('PUT', `/api/cables/${l.id}`, {
+      cable_no: l.cable_no, construction_no: l.construction_no,
+      color: l.color, shape: l.shape, memo: l.memo,
+      x: l.x, y: l.y
+    });
+    count++;
+  }
+
+  // 신 도면으로 교체 (실제 위치에 저장)
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const floor = document.getElementById('cable-floor').value;
+
+  // 신 도면을 실제 위치에 저장 (임시 region 제거)
+  await fetch('/api/floorplan/remap-finalize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tmpId: remapNewFloorplanId, region, dong, floor })
+  });
+
+  cancelRemap();
+  showToast(`✓ ${count}개 핀이 신 도면에 맞게 재배치됐습니다`);
+  await onCableFloorChange();
+}
+
+function cancelRemap() {
+  document.getElementById('remapOverlay').classList.remove('open');
+  remapOldPoints = []; remapNewPoints = [];
+  remapPhase = 'old'; remapNewFilename = null;
+  document.getElementById('remapApplyBtn').disabled = true;
+}
+
 // ── 망 설정 ──────────────────────────────────────────
 
 let allNetworks = [];
@@ -3201,8 +3583,17 @@ async function uploadFloorplan(input) {
     if (data.error) { alert('업로드 실패: ' + data.error); return; }
     cableFloorplanId = data.id;
     loadFloorplanImage(data.filename);
-    loadCableLines();
-    showToast('도면 업로드 완료');
+    await loadCableLines();
+
+    if (data.dxfCoords) {
+      const labelCount = data.dxfCoords.labels?.length || 0;
+      showToast(`도면 업로드 완료 ✓ (DXF 좌표 ${labelCount}개 레이블 추출)`);
+      if (cableLines.length > 0) {
+        showToast('📍 기존 핀이 새 도면 좌표에 맞게 자동 재매핑됐습니다');
+      }
+    } else {
+      showToast('도면 업로드 완료');
+    }
     label.innerHTML = '📁 도면 업로드 (JPG·PNG·PDF·DXF)<input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />';
   } catch(e) {
     alert('업로드 오류: ' + e.message);
@@ -3240,6 +3631,9 @@ async function loadCableLines() {
   cableLines = await api('GET', `/api/cables?floorplan_id=${cableFloorplanId}`);
   renderCableList(cableLines);
   drawCanvas();
+  // 핀이 있으면 재배치 버튼 표시
+  const btn = document.getElementById('remapTriggerBtn');
+  if (btn) btn.style.display = cableLines.length > 0 ? 'block' : 'none';
 }
 
 function renderCableList(lines) {
