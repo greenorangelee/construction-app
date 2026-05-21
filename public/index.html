@@ -3162,12 +3162,28 @@ const remapView = {
   new: { zoom: 1, panX: 0, panY: 0 }
 };
 
+function clampRemapPan(side) {
+  const v = remapView[side];
+  const img = side === 'old' ? remapOldImg : remapNewImg;
+  const wrap = document.getElementById(side === 'old' ? 'remapOldWrap' : 'remapNewWrap');
+  if (!img || !wrap) return;
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const scaledW = img.naturalWidth * v.zoom;
+  const scaledH = img.naturalHeight * v.zoom;
+  const minX = scaledW > ww ? -(scaledW - ww) : 0;
+  const maxX = scaledW > ww ? 0 : ww - scaledW;
+  const minY = scaledH > wh ? -(scaledH - wh) : 0;
+  const maxY = scaledH > wh ? 0 : wh - scaledH;
+  v.panX = Math.max(minX, Math.min(maxX, v.panX));
+  v.panY = Math.max(minY, Math.min(maxY, v.panY));
+}
+
 function applyRemapTransform(side) {
   const canvas = document.getElementById(side === 'old' ? 'remapOldCanvas' : 'remapNewCanvas');
   const v = remapView[side];
   const img = side === 'old' ? remapOldImg : remapNewImg;
   if (!img || !canvas) return;
-  // 크기는 자연 크기 고정, transform으로만 줌/패닝 (wrap 크기에 영향 없음)
+  clampRemapPan(side);
   canvas.style.width = img.naturalWidth + 'px';
   canvas.style.height = img.naturalHeight + 'px';
   canvas.style.transform = `translate(${v.panX}px, ${v.panY}px) scale(${v.zoom})`;
@@ -3653,10 +3669,27 @@ function setZoom(val, centerX, centerY) {
   // 줌 변경 시 레이아웃 영향 없음 (transform만 사용)
 }
 
+function clampPan() {
+  // 도면이 wrap 밖으로 나가지 않도록 패닝 범위 제한
+  const wrap = document.getElementById('canvasWrap');
+  if (!wrap || !cableImg) return;
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const scaledW = cableImg.naturalWidth * cableZoom;
+  const scaledH = cableImg.naturalHeight * cableZoom;
+  // 도면이 wrap보다 크면: 끝이 잘리지 않도록
+  // 도면이 wrap보다 작으면: wrap 안에만 있도록
+  const minX = scaledW > ww ? -(scaledW - ww) : 0;
+  const maxX = scaledW > ww ? 0 : ww - scaledW;
+  const minY = scaledH > wh ? -(scaledH - wh) : 0;
+  const maxY = scaledH > wh ? 0 : wh - scaledH;
+  panX = Math.max(minX, Math.min(maxX, panX));
+  panY = Math.max(minY, Math.min(maxY, panY));
+}
+
 function applyCanvasTransform() {
   const canvas = document.getElementById('floorCanvas');
   if (!cableImg) return;
-  // width/height는 자연 크기로 고정, transform으로만 줌/패닝 처리
+  clampPan();
   canvas.style.width = cableImg.naturalWidth + 'px';
   canvas.style.height = cableImg.naturalHeight + 'px';
   canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${cableZoom})`;
