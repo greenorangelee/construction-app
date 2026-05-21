@@ -1,514 +1,3469 @@
-const express = require('express');
-const initSqlJs = require('sql.js');
-const XLSX = require('xlsx');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
-const { execSync } = require('child_process');
-
-// 도면 이미지 저장 경로
-const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'construction.db');
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-let db;
-
-async function initDB() {
-  const SQL = await initSqlJs();
-  if (fs.existsSync(DB_PATH)) {
-    db = new SQL.Database(fs.readFileSync(DB_PATH));
-  } else {
-    db = new SQL.Database();
-  }
-
-  db.run(`CREATE TABLE IF NOT EXISTS history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    construction_id INTEGER,
-    action TEXT,        -- 'create' | 'update' | 'delete'
-    changed_by TEXT,
-    changed_at TEXT DEFAULT (datetime('now','localtime')),
-    diff TEXT           -- JSON string of changed fields
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS floorplans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    location_id INTEGER,   -- locations 테이블 FK
-    region TEXT, dong TEXT, floor TEXT,
-    filename TEXT,         -- 저장된 이미지 파일명
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS cables (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    floorplan_id INTEGER,
-    cable_no TEXT,         -- 선번
-    construction_no TEXT,  -- 공사번호
-    x REAL, y REAL,        -- 핀 위치 (비율 0~1)
-    color TEXT DEFAULT '#e74c3c',
-    memo TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-
-  // 기존 DB 컬럼 대응
-  try { db.run('ALTER TABLE cables ADD COLUMN x REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
-
-  db.run(`CREATE TABLE IF NOT EXISTS locations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    region TEXT NOT NULL,
-    dong TEXT NOT NULL,
-    floors TEXT NOT NULL,   -- JSON array e.g. ["1F","2F","3F"]
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-
-  // 기본 위치 샘플 데이터
-  const locCount = queryOne('SELECT COUNT(*) as cnt FROM locations');
-  if (locCount.cnt === 0) {
-    const defaultLocs = [
-      ['대곶', 'HO동', JSON.stringify(['1F','2F','3F','4F'])],
-      ['대곶', 'B1동', JSON.stringify(['1F','2F'])],
-      ['대곶', 'S1동', JSON.stringify(['1F','2F','3F'])],
-      ['대곶', 'R&D1동', JSON.stringify(['1F','2F','3F','4F'])],
-      ['하성', 'A1동', JSON.stringify(['1F','2F','3F'])],
-      ['대포', '본관', JSON.stringify(['1F','2F','3F'])],
-    ];
-    for (const [region, dong, floors] of defaultLocs) {
-      db.run('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)', [region, dong, floors]);
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>네트워크 공사 이력 관리</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --surface2: #fef2f2;
+      --border: #e5e7eb;
+      --accent: #c0392b;
+      --accent2: #e74c3c;
+      --accent-glow: rgba(192,57,43,0.1);
+      --text: #1a1a1a;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --green: #16a34a;
+      --yellow: #d97706;
+      --red: #c0392b;
+      --purple: #7c3aed;
+      --cyan: #0891b2;
+      --radius: 12px;
+      --radius-sm: 8px;
     }
-    saveDB();
-  }
 
-  db.run(`CREATE TABLE IF NOT EXISTS constructions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, no INTEGER, gubun TEXT, req_date TEXT,
-    corp TEXT, dept TEXT, requester TEXT, work_name TEXT,
-    loc_region TEXT, loc_dong TEXT, loc_floor TEXT, loc_detail TEXT,
-    move_region TEXT, move_dong TEXT, move_floor TEXT, move_detail TEXT,
-    demolish_region TEXT, demolish_dong TEXT, demolish_floor TEXT, demolish_detail TEXT,
-    status TEXT, deadline TEXT, complete_date TEXT,
-    purchase_doc TEXT, payment_doc TEXT, related_doc TEXT,
-    it_manager TEXT, worker TEXT, memo TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-  saveDB();
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    ::selection { background: transparent; }
 
-}
-
-function saveDB() {
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
-}
-
-
-const FIELD_LABELS = {'gubun': '구분', 'req_date': '요청일', 'corp': '법인', 'dept': '부서', 'requester': '요청자', 'work_name': '공사명', 'loc_region': '작업지역', 'loc_dong': '작업동', 'loc_floor': '작업층', 'loc_detail': '작업 상세위치', 'move_region': '공사위치지역', 'move_dong': '공사위치동', 'move_floor': '공사위치층', 'move_detail': '공사위치 상세', 'demolish_region': '철거지역', 'demolish_dong': '철거동', 'demolish_floor': '철거층', 'demolish_detail': '철거 상세', 'status': '상태', 'deadline': '기한일', 'complete_date': '완료일', 'purchase_doc': '구매품의서', 'payment_doc': '지출품의서', 'related_doc': '연관품의서', 'it_manager': 'IT담당자', 'worker': '작업자', 'memo': '메모'};
-
-function recordHistory(constructionId, action, changedBy, diff) {
-  db.run(
-    `INSERT INTO history (construction_id, action, changed_by, diff) VALUES (?, ?, ?, ?)`,
-    [constructionId, action, changedBy || '시스템', JSON.stringify(diff)]
-  );
-}
-
-function diffRecords(before, after) {
-  const changes = [];
-  const keys = Object.keys(FIELD_LABELS);
-  for (const k of keys) {
-    const bv = (before[k] ?? '').toString().trim();
-    const av = (after[k] ?? '').toString().trim();
-    if (bv !== av) {
-      changes.push({ field: k, label: FIELD_LABELS[k], before: bv, after: av });
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
     }
-  }
-  return changes;
-}
 
-
-function s(v) { return (v === undefined || v === null) ? '' : String(v).trim(); }
-
-function queryAll(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const rows = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  return rows;
-}
-
-function queryOne(sql, params = []) {
-  return queryAll(sql, params)[0] || null;
-}
-
-app.get('/api/constructions', (req, res) => {
-  const { search, gubun, status, corp } = req.query;
-  let sql = 'SELECT * FROM constructions WHERE 1=1';
-  const params = [];
-  if (search) {
-    const keywords = search.trim().split(/\s+/).filter(Boolean);
-    for (const kw of keywords) {
-      sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ?)';
-      params.push(`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`);
+    /* 입력 필드는 선택 허용 */
+    input, textarea, select, .work-name {
+      user-select: text;
+      -webkit-user-select: text;
     }
-  }
-  if (gubun && gubun !== '전체') { sql += ' AND gubun = ?'; params.push(gubun); }
-  if (status && status !== '전체') { sql += ' AND status = ?'; params.push(status); }
-  if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
-  sql += ' ORDER BY id DESC';
-  res.json(queryAll(sql, params));
-});
 
-app.get('/api/stats', (req, res) => {
-  const g = s => queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${s}`).cnt;
-  res.json({
-    total: g('1=1'), done: g("status='완료'"), inprogress: g("status='진행중'"), holding: g("status='Holding'"),
-    self: g("gubun='자체공사'"), outsource: g("gubun='외주공사'"), payment: g("gubun='지급'"), purchase: g("gubun='구매'"),
-    corp_ksm: g("corp='KSM'"), corp_fksm: g("corp='FKSM'"), corp_ksmc: g("corp='KSMC'"),
-    corp_yhe: g("corp='YHE'"), corp_ksmf: g("corp='KSMF'")
+    /* ── HEADER ── */
+    .header {
+      background: #c0392b;
+      border-bottom: none;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(192,57,43,0.3);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 0.04em;
+      padding: 4px 0;
+    }
+
+    .header-title {
+      font-size: 14px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ── BUTTONS ── */
+    .btn {
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      font-family: 'Noto Sans KR', sans-serif;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: #c0392b;
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(192,57,43,0.3);
+    }
+    .btn-primary:hover { background: #a93226; }
+
+    .btn-outline {
+      background: #fff;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-green {
+      background: #fff;
+      color: var(--green);
+      border: 1px solid #d1fae5;
+    }
+    .btn-green:hover { background: #f0fdf4; }
+
+    .btn-danger {
+      background: #fff;
+      color: var(--red);
+      border: 1px solid #fecaca;
+    }
+    .btn-danger:hover { background: #fef2f2; }
+
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 1600px; margin: 0 auto; padding: 24px 32px; }
+
+    /* ── STATS ── */
+    .stats-area {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      grid-template-rows: repeat(3, auto);
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .stats-row { display: contents; }
+
+    .stats-group {
+      display: flex;
+      gap: 0;
+      grid-column: 2;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .stats-group-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      writing-mode: horizontal-tb;
+      padding: 0 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--group-color, var(--text-muted));
+      background: #fafafa;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      min-width: 60px;
+      gap: 6px;
+    }
+
+    .stats-group-label .group-icon {
+      font-size: 13px;
+    }
+
+    .stats-cards {
+      display: flex;
+      flex: 1;
+    }
+
+    .stat-card {
+      flex: 1;
+      padding: 12px 18px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-right: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .stat-card:last-child { border-right: none; }
+
+    .stat-card:hover { background: #fef2f2; }
+
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--card-color, var(--accent));
+      transform: scaleX(0);
+      transition: transform 0.2s;
+    }
+
+    .stat-card:hover::after { transform: scaleX(1); }
+
+    .stat-card.active {
+      background: #fef2f2;
+      box-shadow: inset 0 0 0 1.5px var(--card-color, var(--accent2));
+    }
+    .stat-card.active::after { transform: scaleX(1); }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+
+    .stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--card-color, var(--accent2));
+      line-height: 1;
+    }
+
+    /* 전체 요약 카드 */
+    .stat-total {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      grid-column: 1;
+      grid-row: 1 / 4;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .stat-total .stat-value { font-size: 36px; }
+    .stat-total .stat-label { margin-bottom: 2px; }
+    .stat-total:hover { background: #fef2f2; border-color: var(--accent); transition: all 0.15s; }
+
+    /* ── FILTER BAR ── */
+    .filter-bar {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .filter-bar input, .filter-bar select {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      color: #1a1a1a;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .filter-bar input:focus, .filter-bar select:focus {
+      border-color: #c0392b;
+      box-shadow: 0 0 0 3px rgba(192,57,43,0.1);
+    }
+
+    .filter-bar input { flex: 1; min-width: 200px; }
+
+    .filter-bar select option { background: #ffffff; color: #1a1a1a; }
+
+    /* ── TABLE ── */
+    .table-wrapper {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: visible;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 50;
+      background: #fff;
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+
+    .table-header h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+
+    .record-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .scroll-table { overflow-x: auto; overflow-y: visible; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      white-space: nowrap;
+    }
+
+    thead tr {
+      background: #f9fafb;
+    }
+
+    th {
+      padding: 8px 10px;
+      text-align: left;
+      color: #6b7280;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid #e5e7eb;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    th.group-header {
+      text-align: center;
+      background: #fef2f2;
+      color: #c0392b;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #f3f4f6;
+      transition: background 0.1s;
+    }
+
+    tbody tr:hover { background: #fef2f2; }
+
+    td {
+      padding: 8px 10px;
+      color: var(--text-dim);
+      vertical-align: middle;
+    }
+
+    td.work-name {
+      color: #1a1a1a;
+      min-width: 240px;
+      max-width: 380px;
+      white-space: normal;
+      line-height: 1.4;
+      font-weight: 500;
+    }
+
+    /* 컴팩트 열 */
+    td.col-sm { max-width: 80px; font-size: 11.5px; }
+    td.col-md { max-width: 110px; font-size: 11.5px; }
+    td.col-doc { max-width: 130px; font-size: 11px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* STATUS BADGES */
+    .badge {
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+      display: inline-block;
+    }
+    .badge-done { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
+    .badge-progress { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
+    .badge-holding { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
+    .badge-self { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+    .badge-outsource { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+    .badge-payment { background: #ecfeff; color: #0891b2; border: 1px solid #a5f3fc; }
+    .badge-purchase { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 920px;
+      max-height: 90vh;
+      overflow-y: auto;
+      transform: translateY(16px);
+      transition: transform 0.2s;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    }
+
+    .modal-overlay.open .modal { transform: translateY(0); }
+
+    .modal-head {
+      padding: 24px 28px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: #ffffff;
+      z-index: 1;
+      border-radius: 16px 16px 0 0;
+    }
+
+    .modal-head h2 { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 20px;
+      padding: 4px;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .modal-close:hover { color: var(--text); }
+
+    .modal-body { padding: 24px 28px; }
+    .modal-footer {
+      padding: 16px 28px;
+      border-top: 1px solid #f3f4f6;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      background: #fafafa;
+      border-radius: 0 0 16px 16px;
+    }
+
+    /* FORM */
+    .form-section {
+      margin-bottom: 24px;
+    }
+
+    .form-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #c0392b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #fecaca;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .form-grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .form-grid-4 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .form-full { grid-column: 1 / -1; }
+
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+
+    .form-group label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      color: #1a1a1a;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: #c0392b;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(192,57,43,0.1);
+    }
+
+    .form-group select option { background: #ffffff; color: #1a1a1a; }
+    .form-group textarea { resize: vertical; min-height: 70px; }
+
+    /* ── DETAIL VIEW ── */
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .detail-section {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: var(--radius-sm);
+      padding: 16px;
+    }
+
+    .detail-section-title {
+      font-size: 11px;
+      color: #c0392b;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 6px 0;
+      border-bottom: 1px solid #f3f4f6;
+      gap: 12px;
+    }
+
+    .detail-row:last-child { border-bottom: none; }
+
+    .detail-key {
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 80px;
+      flex-shrink: 0;
+    }
+
+    .detail-val {
+      font-size: 12.5px;
+      color: #1a1a1a;
+      text-align: right;
+      word-break: break-all;
+    }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: #fff;
+      border: 1px solid #86efac;
+      color: #16a34a;
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      z-index: 999;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      animation: slideUp 0.2s ease;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(12px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px;
+      color: #9ca3af;
+    }
+
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .container { padding: 16px; }
+      .header { padding: 0 16px; }
+      .form-grid, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── DATEPICKER ── */
+    .datepicker-input {
+      cursor: pointer;
+      caret-color: transparent;
+    }
+    .datepicker-input:hover {
+      border-color: var(--accent2) !important;
+    }
+
+    .dp-popup {
+      position: fixed;
+      z-index: 9999;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: var(--radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      padding: 12px;
+      width: 256px;
+      user-select: none;
+    }
+
+    .dp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .dp-nav {
+      background: none;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      line-height: 1;
+      transition: background 0.15s, color 0.15s;
+    }
+    .dp-nav:hover { background: #fef2f2; color: #c0392b; }
+
+    .dp-month-year {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1a1a;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .dp-month-year:hover { background: #fef2f2; }
+
+    .dp-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      margin-bottom: 4px;
+    }
+
+    .dp-weekday {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 4px 0;
+      letter-spacing: 0.04em;
+    }
+    .dp-weekday:first-child { color: #ef4444; }
+    .dp-weekday:last-child { color: #3b82f6; }
+
+    .dp-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+
+    .dp-day {
+      text-align: center;
+      font-size: 12px;
+      padding: 6px 2px;
+      border-radius: 5px;
+      cursor: pointer;
+      color: var(--text-dim);
+      transition: background 0.1s, color 0.1s;
+      line-height: 1;
+    }
+    .dp-day:hover { background: #fef2f2; color: #c0392b; }
+    .dp-day.today { color: #c0392b; font-weight: 700; }
+    .dp-day.selected { background: #c0392b; color: #fff; font-weight: 600; }
+    .dp-day.selected:hover { background: #a93226; }
+    .dp-day.other-month { color: rgba(100,116,139,0.35); }
+    .dp-day.other-month:hover { background: none; cursor: default; }
+    .dp-day.sunday { color: rgba(239,68,68,0.6); }
+    .dp-day.sunday.selected, .dp-day.saturday.selected { color: #fff; }
+    .dp-day.saturday { color: rgba(59,130,246,0.7); }
+
+    .dp-footer {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #f3f4f6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dp-today-btn {
+      font-size: 11px;
+      color: #c0392b;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .dp-today-btn:hover { background: #fef2f2; }
+
+    .dp-clear-btn {
+      font-size: 11px;
+      color: #9ca3af;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .dp-clear-btn:hover { background: #fef2f2; color: #c0392b; }
+
+    /* ── SORT ── */
+    th.sortable {
+      cursor: pointer;
+      position: relative;
+      padding-right: 20px;
+      white-space: nowrap;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    th.sortable:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    th.sortable::after {
+      content: '⇅';
+      position: absolute;
+      right: 5px;
+      opacity: 0.25;
+      font-size: 10px;
+    }
+    th.sortable.asc::after  { content: '↑'; opacity: 0.9; color: #c0392b; }
+    th.sortable.desc::after { content: '↓'; opacity: 0.9; color: #c0392b; }
+    th.sortable.asc, th.sortable.desc { color: #c0392b; }
+
+    /* ── HISTORY ── */
+    .history-list { display: flex; flex-direction: column; gap: 0; }
+
+    .history-item {
+      display: flex;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid #f3f4f6;
+      position: relative;
+    }
+    .history-item:last-child { border-bottom: none; }
+
+    .history-timeline {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+      width: 32px;
+    }
+
+    .history-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid #c0392b;
+      background: #fff;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+    .history-dot.create { background: #c0392b; border-color: #c0392b; }
+    .history-dot.delete { background: #6b7280; border-color: #6b7280; }
+
+    .history-line {
+      width: 2px;
+      flex: 1;
+      background: #f3f4f6;
+      margin-top: 4px;
+      min-height: 16px;
+    }
+
+    .history-content { flex: 1; }
+
+    .history-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .history-action {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+    .history-action.create { background: #dcfce7; color: #16a34a; }
+    .history-action.update { background: #eff6ff; color: #2563eb; }
+    .history-action.delete { background: #f3f4f6; color: #6b7280; }
+
+    .history-by {
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .history-at {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-left: auto;
+    }
+
+    .history-diff { display: flex; flex-direction: column; gap: 4px; }
+
+    .history-diff-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      font-size: 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 5px 8px;
+    }
+
+    .diff-label {
+      color: #6b7280;
+      font-weight: 600;
+      min-width: 80px;
+      flex-shrink: 0;
+      font-size: 11px;
+    }
+
+    .diff-before {
+      color: #dc2626;
+      text-decoration: line-through;
+      opacity: 0.7;
+      word-break: break-all;
+    }
+
+    .diff-arrow { color: #9ca3af; flex-shrink: 0; }
+
+    .diff-after {
+      color: #16a34a;
+      font-weight: 500;
+      word-break: break-all;
+    }
+
+    .history-empty {
+      text-align: center;
+      padding: 40px;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+
+    /* ── NAV TABS ── */
+    .header-nav {
+      display: flex;
+      gap: 4px;
+      margin-left: 16px;
+    }
+
+    .nav-tab {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.8);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      transition: all 0.15s;
+    }
+    .nav-tab:hover { background: rgba(255,255,255,0.25); color: #fff; }
+    .nav-tab.active { background: #fff; color: #c0392b; font-weight: 700; border-color: #fff; }
+
+    /* ── SETTINGS PAGE ── */
+    #settingsPage { display: none; }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .settings-header h2 { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .settings-panel {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .settings-panel-head {
+      padding: 14px 18px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      font-weight: 700;
+      color: #374151;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .region-list { max-height: 500px; overflow-y: auto; }
+
+    .region-item {
+      padding: 10px 18px;
+      cursor: pointer;
+      border-bottom: 1px solid #f3f4f6;
+      transition: background 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .region-item:hover { background: #fef2f2; }
+    .region-item.selected { background: #fef2f2; border-left: 3px solid #c0392b; }
+    .region-item-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .region-item-count { font-size: 11px; color: #9ca3af; }
+
+    .dong-list { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+    .dong-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .dong-card-head {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .dong-card-name { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+
+    .floor-tags {
+      padding: 10px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .floor-tag {
+      background: #eff6ff;
+      color: #2563eb;
+      border: 1px solid #bfdbfe;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .floor-tag-add {
+      background: transparent;
+      color: #9ca3af;
+      border: 1px dashed #d1d5db;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      transition: all 0.15s;
+    }
+    .floor-tag-add:hover { border-color: #c0392b; color: #c0392b; }
+
+    .floor-tag-del {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #eff6ff;
+      color: #2563eb;
+      border: 1px solid #bfdbfe;
+      padding: 3px 6px 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .floor-tag-del button {
+      background: none;
+      border: none;
+      color: #93c5fd;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 0;
+      line-height: 1;
+    }
+    .floor-tag-del button:hover { color: #c0392b; }
+
+    .settings-add-form {
+      padding: 14px 18px;
+      border-top: 1px solid #f3f4f6;
+      display: flex;
+      gap: 8px;
+    }
+
+    .settings-add-form input {
+      flex: 1;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      outline: none;
+      color: #1a1a1a;
+    }
+    .settings-add-form input:focus { border-color: #c0392b; background: #fff; }
+
+    .btn-red-sm {
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-red-sm:hover { background: #a93226; }
+
+    /* ── COLUMN TOGGLE ── */
+    .col-toggle-btn {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #6b7280;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .col-toggle-btn:hover { border-color: #c0392b; color: #c0392b; }
+
+    .col-toggle-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 10px;
+      z-index: 500;
+      min-width: 200px;
+      display: none;
+    }
+    .col-toggle-dropdown.open { display: flex; flex-direction: column; max-height: 420px; }
+    #colCheckboxList { overflow-y: auto; flex: 1; }
+
+    .col-toggle-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 6px 8px;
+      border-bottom: 1px solid #f3f4f6;
+      margin-bottom: 6px;
+    }
+
+    .col-toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .col-toggle-item:hover { background: #fef2f2; }
+
+    .col-toggle-item input[type=checkbox] {
+      accent-color: #c0392b;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .col-toggle-item label {
+      font-size: 13px;
+      color: #374151;
+      cursor: pointer;
+      flex: 1;
+    }
+
+    .col-toggle-footer {
+      padding-top: 8px;
+      margin-top: 6px;
+      border-top: 1px solid #f3f4f6;
+      display: flex;
+      gap: 6px;
+    }
+
+    .col-toggle-footer button {
+      flex: 1;
+      background: none;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 5px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #6b7280;
+      transition: all 0.15s;
+    }
+    .col-toggle-footer button:hover { border-color: #c0392b; color: #c0392b; }
+
+    /* ── FILE DROPDOWN ── */
+    .file-dropdown-wrap {
+      position: relative;
+    }
+    .file-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      min-width: 180px;
+      overflow: hidden;
+      display: none;
+      z-index: 200;
+    }
+    .file-dropdown-menu.open { display: block; }
+    .file-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #374151;
+      cursor: pointer;
+      border-bottom: 1px solid #f3f4f6;
+      transition: background 0.1s;
+      text-decoration: none;
+      background: none;
+      border-left: none;
+      border-right: none;
+      border-top: none;
+      width: 100%;
+      text-align: left;
+    }
+    .file-dropdown-item:last-child { border-bottom: none; }
+    .file-dropdown-item:hover { background: #fef2f2; color: #c0392b; }
+    .file-dropdown-item .item-icon { font-size: 15px; }
+
+    /* ── BULK SELECT ── */
+    .cb-cell {
+      width: 36px;
+      text-align: center;
+      padding: 9px 6px !important;
+    }
+
+    .row-checkbox {
+      width: 15px;
+      height: 15px;
+      accent-color: #c0392b;
+      cursor: pointer;
+    }
+
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: #fff5f5;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #c0392b;
+      font-weight: 500;
+    }
+    .bulk-bar.visible { display: flex; }
+
+    .bulk-bar button {
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      transition: background 0.15s;
+    }
+    .bulk-bar button:hover { background: #a93226; }
+
+    .bulk-bar .cancel-btn {
+      background: none;
+      color: #9ca3af;
+      border: 1px solid #e5e7eb;
+    }
+    .bulk-bar .cancel-btn:hover { background: #f9fafb; color: #374151; }
+
+    /* ── COLUMN RESIZE ── */
+    th {
+      position: relative;
+    }
+    .col-resizer {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 5px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+      z-index: 10;
+    }
+    .col-resizer:hover,
+    .col-resizer.resizing {
+      background: #c0392b;
+      opacity: 0.5;
+    }
+    th.resizable {
+      overflow: hidden;
+    }
+
+    /* ── CABLE / FLOORPLAN ── */
+    #cablePage { display: none; }
+
+    .cable-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .cable-sidebar {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .cable-sidebar-head {
+      padding: 14px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      font-weight: 700;
+      color: #374151;
+    }
+
+    .cable-loc-selects {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .cable-loc-selects select {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #1a1a1a;
+      outline: none;
+    }
+    .cable-loc-selects select:focus { border-color: #c0392b; }
+
+    .cable-upload-area {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .cable-upload-btn {
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #f9fafb;
+      border: 1.5px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .cable-upload-btn:hover { border-color: #c0392b; color: #c0392b; background: #fef2f2; }
+
+    .cable-list-area {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .cable-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-bottom: 1px solid #f9fafb;
+      cursor: pointer;
+      transition: background 0.1s;
+      font-size: 12px;
+    }
+    .cable-item:hover { background: #fef2f2; }
+    .cable-item.selected { background: #fef2f2; border-left: 3px solid #c0392b; }
+
+    .cable-color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .cable-item-info { flex: 1; min-width: 0; }
+    .cable-item-no { font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cable-item-sub { font-size: 11px; color: #9ca3af; }
+
+    .cable-item-del {
+      background: none;
+      border: none;
+      color: #d1d5db;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+    }
+    .cable-item-del:hover { color: #c0392b; }
+
+    /* 캔버스 영역 */
+    .canvas-panel {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .canvas-toolbar {
+      padding: 10px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .canvas-toolbar span { font-size: 12px; color: #6b7280; }
+
+    .tool-btn {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      color: #374151;
+      font-family: 'Noto Sans KR', sans-serif;
+      transition: all 0.15s;
+    }
+    .tool-btn:hover { border-color: #c0392b; color: #c0392b; }
+    .tool-btn.active { background: #c0392b; color: #fff; border-color: #c0392b; }
+
+    .canvas-wrap {
+      position: relative;
+      overflow: auto;
+      max-height: 70vh;
+      background: #f3f4f6;
+    }
+
+    #floorCanvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    .canvas-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 400px;
+      color: #9ca3af;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    /* 선번 입력 모달 */
+    .cable-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      display: none;
+    }
+    .cable-modal.open { display: flex; }
+    .cable-modal-box {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px;
+      width: 360px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    }
+    .cable-modal-box h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: #1a1a1a; }
+    .cable-form-group { margin-bottom: 12px; }
+    .cable-form-group label { display: block; font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
+    .cable-form-group input, .cable-form-group textarea, .cable-form-group select {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #1a1a1a;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .cable-form-group input:focus, .cable-form-group textarea:focus { border-color: #c0392b; }
+    .cable-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+
+<div id="mainPage">
+<header class="header">
+  <div class="header-left">
+    <div class="logo">KSM</div>
+    <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+    <nav class="header-nav">
+      <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">공사 이력</button>
+      <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
+      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
+    </nav>
+  </div>
+  <div class="header-actions">
+    <div class="file-dropdown-wrap">
+      <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="toggleFileDropdown(event)">
+        파일 다운 / 업로드 ▾
+      </button>
+      <div class="file-dropdown-menu" id="fileDropdown">
+        <button class="file-dropdown-item" onclick="downloadTemplate(); closeFileDropdown()">
+          <span class="item-icon">📋</span> 입력 양식 다운로드
+        </button>
+        <label class="file-dropdown-item">
+          <span class="item-icon">📤</span> 엑셀 가져오기
+          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importExcel(this); closeFileDropdown()" />
+        </label>
+        <button class="file-dropdown-item" onclick="exportExcel(); closeFileDropdown()">
+          <span class="item-icon">📥</span> 엑셀 내보내기
+        </button>
+      </div>
+    </div>
+    <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#ffffff'">
+      <span>+</span> 새 공사 등록
+    </button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- STATS -->
+  <div class="stats-area">
+    <!-- 전체 공사 -->
+    <div class="stat-total" onclick="resetFilters()" title="전체 보기" style="cursor:pointer">
+      <div class="stat-label">전체 공사</div>
+      <div class="stat-value" style="color:#3b82f6" id="s-total">-</div>
+    </div>
+
+    <!-- 행 1: 공사 상태 -->
+    <div class="stats-group" style="--group-color:#10b981">
+      <div class="stats-group-label">
+        <span class="group-icon">📊</span> 공사 상태
+      </div>
+      <div class="stats-cards">
+        <div class="stat-card" style="--card-color:#10b981" onclick="filterByStatus('완료')" title="완료만 보기">
+          <div class="stat-label">완료</div>
+          <div class="stat-value" id="s-done">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#f59e0b" onclick="filterByStatus('진행중')" title="진행중만 보기">
+          <div class="stat-label">진행중</div>
+          <div class="stat-value" id="s-progress">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#64748b" onclick="filterByStatus('Holding')" title="Holding만 보기">
+          <div class="stat-label">Holding</div>
+          <div class="stat-value" id="s-holding">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 행 2: 공사 구분 -->
+    <div class="stats-group" style="--group-color:#8b5cf6">
+      <div class="stats-group-label">
+        <span class="group-icon">🔧</span> 공사 구분
+      </div>
+      <div class="stats-cards">
+        <div class="stat-card" style="--card-color:#3b82f6" onclick="filterByGubun('자체공사')" title="자체공사만 보기">
+          <div class="stat-label">자체공사</div>
+          <div class="stat-value" id="s-self">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#8b5cf6" onclick="filterByGubun('외주공사')" title="외주공사만 보기">
+          <div class="stat-label">외주공사</div>
+          <div class="stat-value" id="s-outsource">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#06b6d4" onclick="filterByGubun('지급')" title="지급만 보기">
+          <div class="stat-label">지급</div>
+          <div class="stat-value" id="s-payment">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#f97316" onclick="filterByGubun('구매')" title="구매만 보기">
+          <div class="stat-label">구매</div>
+          <div class="stat-value" id="s-purchase">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 행 3: 법인별 -->
+    <div class="stats-group" style="--group-color:#06b6d4">
+      <div class="stats-group-label">
+        <span class="group-icon">🏢</span> 법인 구분
+      </div>
+      <div class="stats-cards">
+        <div class="stat-card" style="--card-color:#3b82f6" onclick="filterByCorp('KSM')" title="KSM만 보기">
+          <div class="stat-label">KSM</div>
+          <div class="stat-value" id="s-corp-ksm">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#10b981" onclick="filterByCorp('FKSM')" title="FKSM만 보기">
+          <div class="stat-label">FKSM</div>
+          <div class="stat-value" id="s-corp-fksm">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#8b5cf6" onclick="filterByCorp('KSMC')" title="KSMC만 보기">
+          <div class="stat-label">KSMC</div>
+          <div class="stat-value" id="s-corp-ksmc">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#f59e0b" onclick="filterByCorp('YHE')" title="YHE만 보기">
+          <div class="stat-label">YHE</div>
+          <div class="stat-value" id="s-corp-yhe">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#f97316" onclick="filterByCorp('KSMF')" title="KSMF만 보기">
+          <div class="stat-label">KSMF</div>
+          <div class="stat-value" id="s-corp-ksmf">-</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="🔍  스페이스로 AND 검색  예) B1 1F" oninput="loadData()" />
+    <select id="filterGubun" onchange="loadData()">
+      <option value="전체">전체 구분</option>
+      <option>자체공사</option>
+      <option>외주공사</option>
+      <option>지급</option>
+      <option>구매</option>
+    </select>
+    <select id="filterStatus" onchange="loadData()">
+      <option value="전체">전체 상태</option>
+      <option>완료</option>
+      <option>진행중</option>
+      <option>Holding</option>
+    </select>
+    <select id="filterCorp" onchange="loadData()">
+      <option value="전체">전체 법인</option>
+      <option>KSM</option>
+      <option>FKSM</option>
+      <option>KSMC</option>
+      <option>YHE</option>
+      <option>KSMF</option>
+    </select>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrapper">
+    <div class="table-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2>공사 이력 목록</h2>
+        <div class="bulk-bar" id="bulkBar">
+          <span id="bulkCount">0개 선택됨</span>
+          <button onclick="deleteSelected()">🗑 선택 삭제</button>
+          <button class="cancel-btn" onclick="clearSelection()">취소</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="record-count" id="recordCount"></span>
+        <div style="position:relative">
+          <button class="col-toggle-btn" onclick="toggleColDropdown()">
+            ⊞ 컬럼 설정
+          </button>
+          <div class="col-toggle-dropdown" id="colDropdown">
+            <div class="col-toggle-title">표시할 컬럼 선택</div>
+            <div class="col-toggle-footer" style="margin-bottom:6px;padding-bottom:8px;border-bottom:1px solid #f3f4f6;padding-top:0;margin-top:0;border-top:none">
+              <button onclick="setAllCols(true)">전체 선택</button>
+              <button onclick="setAllCols(false)">전체 해제</button>
+              <button onclick="resetColWidths();closeFileDropdown()" style="flex:none;padding:5px 8px;font-size:11px" title="컬럼 너비 초기화">↺ 너비 초기화</button>
+            </div>
+            <div id="colCheckboxList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="scroll-table">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" data-key="no" onclick="sortBy('no')">No</th>
+            <th class="sortable" data-key="gubun" onclick="sortBy('gubun')">구분</th>
+            <th class="sortable" data-key="req_date" onclick="sortBy('req_date')">요청일</th>
+            <th class="sortable" data-key="corp" onclick="sortBy('corp')">법인</th>
+            <th class="sortable" data-key="dept" onclick="sortBy('dept')">부서</th>
+            <th class="sortable" data-key="requester" onclick="sortBy('requester')">요청자</th>
+            <th class="sortable" data-key="work_name" onclick="sortBy('work_name')">공사명</th>
+            <th class="group-header" colspan="4">작업 위치</th>
+            <th class="sortable" data-key="status" onclick="sortBy('status')">상태</th>
+            <th class="sortable" data-key="deadline" onclick="sortBy('deadline')">기한일</th>
+            <th class="sortable" data-key="complete_date" onclick="sortBy('complete_date')">완료일</th>
+            <th>구매품의서</th>
+            <th>지출품의서</th>
+            <th class="sortable" data-key="it_manager" onclick="sortBy('it_manager')">IT담당자</th>
+            <th class="sortable" data-key="worker" onclick="sortBy('worker')">작업자</th>
+            <th style="width:100px">관리</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="19" class="empty-state"><div class="icon">⏳</div><p>불러오는 중...</p></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+</div> <!-- /mainPage -->
+
+<!-- ─── 선번 관리 페이지 ─── -->
+<div id="cablePage">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-c">공사 이력</button>
+        <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="exportExcel()">
+        <span>↓</span> 엑셀 내보내기
+      </button>
+      <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()">
+        <span>+</span> 새 공사 등록
+      </button>
+    </div>
+  </header>
+  <div class="container">
+    <div class="settings-header">
+      <h2>🗺️ 선번 관리</h2>
+      <span style="font-size:12px;color:#9ca3af">도면 이미지 위에 선 포설 위치와 선번을 기록합니다</span>
+    </div>
+    <div class="cable-layout">
+
+      <!-- 사이드바 -->
+      <div class="cable-sidebar">
+        <div class="cable-sidebar-head">위치 선택</div>
+        <div class="cable-loc-selects">
+          <select id="cable-region" onchange="onCableRegionChange()">
+            <option value="">지역 선택</option>
+          </select>
+          <select id="cable-dong" onchange="onCableDongChange()">
+            <option value="">동 선택</option>
+          </select>
+          <select id="cable-floor" onchange="onCableFloorChange()">
+            <option value="">층 선택</option>
+          </select>
+        </div>
+        <div class="cable-upload-area">
+          <label class="cable-upload-btn" id="cableUploadLabel">
+            📁 도면 업로드 (JPG·PNG·PDF·DXF)
+            <input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />
+          </label>
+        </div>
+        <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:700;color:#374151">선번 목록</span>
+          <span id="cableTotalCount" style="font-size:11px;color:#9ca3af"></span>
+        </div>
+        <div class="cable-list-area" id="cableList">
+          <div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">위치를 선택하세요</div>
+        </div>
+      </div>
+
+      <!-- 캔버스 패널 -->
+      <div class="canvas-panel">
+        <div class="canvas-toolbar">
+          <button class="tool-btn active" id="toolPin" onclick="setTool('pin')">📍 핀 찍기</button>
+          <button class="tool-btn" id="toolSelect" onclick="setTool('select')">↖ 선택/수정</button>
+          <button class="tool-btn" id="toolDelete" onclick="setTool('delete')">🗑 삭제</button>
+          <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
+          <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
+            핀 색상
+            <input type="color" id="cableColorPicker" value="#e74c3c" style="width:32px;height:24px;border:none;cursor:pointer;border-radius:4px;padding:0" />
+          </label>
+          <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
+          <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
+            확대
+            <input type="range" id="zoomRange" min="50" max="300" value="100" step="10" style="width:80px" onchange="setZoom(this.value)" />
+            <span id="zoomLabel">100%</span>
+          </label>
+          <span id="canvasHint" style="margin-left:auto">위치와 도면을 선택하면 핀을 찍을 수 있습니다</span>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <div class="canvas-empty" id="canvasEmpty">
+            <div style="font-size:40px">🗺️</div>
+            <div>왼쪽에서 위치를 선택하고 도면을 업로드하세요</div>
+          </div>
+          <canvas id="floorCanvas" style="display:none"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 선번 입력 모달 -->
+<div class="cable-modal" id="cableInputModal">
+  <div class="cable-modal-box">
+    <h3 id="cableModalTitle">선번 정보 입력</h3>
+    <div class="cable-form-group">
+      <label>선번 *</label>
+      <input type="text" id="ci-cable_no" placeholder="예) DA-001, VP-023" />
+    </div>
+    <div class="cable-form-group">
+      <label>공사번호</label>
+      <input type="text" id="ci-construction_no" placeholder="예) 26" />
+    </div>
+    <div class="cable-form-group">
+      <label>메모</label>
+      <textarea id="ci-memo" placeholder="특이사항 등" rows="2" style="resize:none"></textarea>
+    </div>
+    <div class="cable-modal-footer">
+      <button class="btn btn-outline" onclick="closeCableModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveCableLine()">저장</button>
+    </div>
+  </div>
+</div>
+<!-- ─── 설정 페이지 ─── -->
+<div id="settingsPage">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-s">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
+        <button class="nav-tab active" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="exportExcel()" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+        <span>↓</span> 엑셀 내보내기
+      </button>
+      <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#ffffff'">
+        <span>+</span> 새 공사 등록
+      </button>
+    </div>
+  </header>
+  <div class="container">
+    <div class="settings-header">
+      <h2>⚙️ 위치 설정</h2>
+      <span style="font-size:12px;color:#9ca3af">지역·동·층을 미리 설정하면 공사 등록 시 드롭다운으로 선택할 수 있습니다</span>
+    </div>
+    <div class="settings-grid">
+      <!-- 왼쪽: 지역 목록 -->
+      <div>
+        <div class="settings-panel">
+          <div class="settings-panel-head">
+            <span>지역</span>
+            <span id="regionCount" style="font-size:11px;color:#9ca3af"></span>
+          </div>
+          <div class="region-list" id="regionList"></div>
+          <div class="settings-add-form">
+            <input type="text" id="newRegionInput" placeholder="새 지역 이름 (예: 대곶)" />
+            <button class="btn-red-sm" onclick="addRegion()">+ 추가</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 오른쪽: 선택된 지역의 동·층 -->
+      <div class="settings-panel" id="dongPanel">
+        <div class="settings-panel-head">
+          <span id="dongPanelTitle">지역을 선택하세요</span>
+          <button class="btn-red-sm" id="deleteRegionBtn" style="display:none;background:#ef4444;font-size:11px;padding:4px 10px" onclick="deleteRegion()">지역 삭제</button>
+        </div>
+        <div class="dong-list" id="dongList">
+          <div style="text-align:center;padding:40px;color:#9ca3af;font-size:13px">← 왼쪽에서 지역을 선택하세요</div>
+        </div>
+        <div class="settings-add-form" id="dongAddForm" style="display:none">
+          <input type="text" id="newDongInput" placeholder="새 동 이름 (예: HO동)" />
+          <button class="btn-red-sm" onclick="addDong()">+ 동 추가</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 새 공사 / 수정 모달 ─── -->
+<div class="modal-overlay" id="formModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">새 공사 등록</h2>
+      <button class="modal-close" onclick="closeModal('formModal')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="form-section">
+        <div class="form-section-title">📋 기본 정보</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>구분 *</label>
+            <select id="f-gubun">
+              <option>자체공사</option>
+              <option>외주공사</option>
+              <option>지급</option>
+              <option>구매</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>요청일 *</label>
+            <input type="text" id="f-req_date" class="datepicker-input" placeholder="날짜 선택" readonly />
+          </div>
+          <div class="form-group">
+            <label>법인 *</label>
+            <select id="f-corp">
+              <option>KSM</option>
+              <option>FKSM</option>
+              <option>KSMC</option>
+              <option>YHE</option>
+              <option>KSMF</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>부서</label>
+            <input type="text" id="f-dept" placeholder="예) IT관리팀" />
+          </div>
+          <div class="form-group">
+            <label>요청자</label>
+            <input type="text" id="f-requester" placeholder="이름" />
+          </div>
+          <div class="form-group">
+            <label>상태 *</label>
+            <select id="f-status">
+              <option>진행중</option>
+              <option>완료</option>
+              <option>Holding</option>
+            </select>
+          </div>
+          <div class="form-group form-full">
+            <label>공사명 *</label>
+            <input type="text" id="f-work_name" placeholder="공사 내용을 상세히 입력하세요" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">📍 작업 위치</div>
+        <div class="form-grid-4">
+          <div class="form-group">
+            <label>지역</label>
+            <select id="f-loc_region" onchange="onLocRegionChange('loc')">
+              <option value="">지역 선택</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>동</label>
+            <select id="f-loc_dong" onchange="onLocDongChange('loc')">
+              <option value="">동 선택</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>층</label>
+            <select id="f-loc_floor">
+              <option value="">층 선택</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>상세위치</label>
+            <input type="text" id="f-loc_detail" placeholder="예) 포장실" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">🏚️ 이동 전 위치 (철거)</div>
+        <div class="form-grid-4">
+          <div class="form-group">
+            <label>지역</label>
+            <select id="f-demolish_region" onchange="onLocRegionChange('demolish')">
+              <option value="">지역 선택</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>동</label>
+            <select id="f-demolish_dong" onchange="onLocDongChange('demolish')">
+              <option value="">동 선택</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>층</label>
+            <select id="f-demolish_floor">
+              <option value="">층 선택</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>상세위치</label>
+            <input type="text" id="f-demolish_detail" placeholder="예) 가공사무실" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">📅 일정</div>
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label>기한일</label>
+            <input type="text" id="f-deadline" class="datepicker-input" placeholder="날짜 선택" readonly />
+          </div>
+          <div class="form-group">
+            <label>작업 완료일</label>
+            <input type="text" id="f-complete_date" class="datepicker-input" placeholder="날짜 선택" readonly />
+          </div>
+          <div class="form-group">
+            <label>IT관리팀 담당자</label>
+            <input type="text" id="f-it_manager" placeholder="담당자명" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">📄 품의 서류</div>
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label>구매품의서</label>
+            <input type="text" id="f-purchase_doc" placeholder="예) 경영-구품-26-0001" />
+          </div>
+          <div class="form-group">
+            <label>지출품의서</label>
+            <input type="text" id="f-payment_doc" placeholder="예) 경영-지품-26-0001" />
+          </div>
+          <div class="form-group">
+            <label>연관품의서</label>
+            <input type="text" id="f-related_doc" placeholder="예) 경영-품의-25-1152" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">👷 작업자</div>
+        <div class="form-grid">
+          <div class="form-group form-full">
+            <label>작업자</label>
+            <input type="text" id="f-worker" placeholder="예) 김준기, 이준성" />
+          </div>
+          <div class="form-group form-full">
+            <label>메모</label>
+            <textarea id="f-memo" placeholder="추가 메모를 여러 줄로 입력하세요" style="min-height:100px"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('formModal')">취소</button>
+      <button class="btn btn-primary" id="formSubmitBtn" onclick="submitForm()">등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 상세 보기 모달 ─── -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-head">
+      <div>
+        <h2 id="detailTitle">공사 상세</h2>
+        <div id="detailSubtitle" style="font-size:12px;color:var(--text-muted);margin-top:2px"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('detailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="detailDeleteBtn">삭제</button>
+      <button class="btn btn-outline btn-sm" id="detailHistoryBtn">📋 변경 이력</button>
+      <button class="btn btn-outline" onclick="closeModal('detailModal')">닫기</button>
+      <button class="btn btn-primary btn-sm" id="detailEditBtn">수정</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 히스토리 모달 ─── -->
+<div class="modal-overlay" id="historyModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <div>
+        <h2>변경 이력</h2>
+        <div id="historySubtitle" style="font-size:12px;color:#9ca3af;margin-top:2px"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('historyModal')">✕</button>
+    </div>
+    <div class="modal-body" id="historyBody" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('historyModal')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let editingId = null;
+let currentDetailId = null;
+
+// ── API ──────────────────────────────────────────
+
+async function api(method, path, body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined
   });
-});
+  return res.json();
+}
 
-app.get('/api/constructions/:id', (req, res) => {
-  const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
-  if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(row);
-});
+// ── LOAD & RENDER ──────────────────────────────────────────
 
-app.post('/api/constructions', (req, res) => {
-  try {
-    const d = req.body;
-    const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
-    db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [lastNo+1,
-       s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
-       s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
-       s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
-       s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
-       s(d.status),s(d.deadline),s(d.complete_date),
-       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),
-       s(d.it_manager),s(d.worker),s(d.memo)]);
-    saveDB();
-    const newId = queryOne('SELECT last_insert_rowid() as id').id;
-    recordHistory(newId, 'create', d.changed_by, [{ field: 'work_name', label: '공사명', before: '', after: d.work_name }]);
-    saveDB();
-    res.json({ id: newId, no: lastNo+1 });
-  } catch(e) {
-    console.error('POST error:', e);
-    res.status(500).json({ error: e.message });
+async function loadStats() {
+  const s = await api('GET', '/api/stats');
+  document.getElementById('s-total').textContent = s.total;
+  document.getElementById('s-done').textContent = s.done;
+  document.getElementById('s-progress').textContent = s.inprogress;
+  document.getElementById('s-holding').textContent = s.holding;
+  document.getElementById('s-self').textContent = s.self;
+  document.getElementById('s-outsource').textContent = s.outsource;
+  document.getElementById('s-payment').textContent = s.payment;
+  document.getElementById('s-purchase').textContent = s.purchase;
+  document.getElementById('s-corp-ksm').textContent = s.corp_ksm;
+  document.getElementById('s-corp-fksm').textContent = s.corp_fksm;
+  document.getElementById('s-corp-ksmc').textContent = s.corp_ksmc;
+  document.getElementById('s-corp-yhe').textContent = s.corp_yhe;
+  document.getElementById('s-corp-ksmf').textContent = s.corp_ksmf;
+}
+
+function updateActiveCards() {
+  const status = document.getElementById('filterStatus').value;
+  const gubun  = document.getElementById('filterGubun').value;
+  const corp   = document.getElementById('filterCorp').value;
+
+  // 상태 카드
+  const statusMap = { '완료': 's-done', '진행중': 's-progress', 'Holding': 's-holding' };
+  Object.entries(statusMap).forEach(([val, id]) => {
+    const card = document.getElementById(id)?.closest('.stat-card');
+    if (card) card.classList.toggle('active', status === val);
+  });
+
+  // 구분 카드
+  const gubunMap = { '자체공사': 's-self', '외주공사': 's-outsource', '지급': 's-payment', '구매': 's-purchase' };
+  Object.entries(gubunMap).forEach(([val, id]) => {
+    const card = document.getElementById(id)?.closest('.stat-card');
+    if (card) card.classList.toggle('active', gubun === val);
+  });
+
+  // 법인 카드
+  const corpMap = { 'KSM': 's-corp-ksm', 'FKSM': 's-corp-fksm', 'KSMC': 's-corp-ksmc', 'YHE': 's-corp-yhe', 'KSMF': 's-corp-ksmf' };
+  Object.entries(corpMap).forEach(([val, id]) => {
+    const card = document.getElementById(id)?.closest('.stat-card');
+    if (card) card.classList.toggle('active', corp === val);
+  });
+}
+
+function resetFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('filterGubun').value = '전체';
+  document.getElementById('filterStatus').value = '전체';
+  document.getElementById('filterCorp').value = '전체';
+  document.querySelectorAll('th.sortable').forEach(th => th.classList.remove('asc','desc'));
+  sortKey = 'id'; sortDir = 'desc';
+  updateActiveCards();
+  loadData();
+}
+
+function filterByStatus(val) {
+  const sel = document.getElementById('filterStatus');
+  sel.value = sel.value === val ? '전체' : val;
+  updateActiveCards();
+  loadData();
+}
+
+function filterByGubun(val) {
+  const sel = document.getElementById('filterGubun');
+  sel.value = sel.value === val ? '전체' : val;
+  updateActiveCards();
+  loadData();
+}
+
+function filterByCorp(val) {
+  const sel = document.getElementById('filterCorp');
+  sel.value = sel.value === val ? '전체' : val;
+  updateActiveCards();
+  loadData();
+}
+
+let sortKey = 'id';
+let sortDir = 'desc';
+
+function sortBy(key) {
+  if (sortKey === key) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortKey = key;
+    sortDir = 'asc';
   }
-});
+  // 헤더 클래스 업데이트
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('asc', 'desc');
+    if (th.dataset.key === key) th.classList.add(sortDir);
+  });
+  loadData();
+}
 
-app.put('/api/constructions/:id', (req, res) => {
-  try {
-    const d = req.body;
-    const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
-    db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=? WHERE id=?`,
-      [s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
-       s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
-       s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
-       s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
-       s(d.status),s(d.deadline),s(d.complete_date),
-       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),
-       s(d.it_manager),s(d.worker),s(d.memo),req.params.id]);
-    const diff = diffRecords(before, d);
-    if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
-    saveDB();
-    res.json({ success: true });
-  } catch(e) {
-    console.error('PUT error:', e);
-    res.status(500).json({ error: e.message });
+async function loadData() {
+  const search = document.getElementById('searchInput').value;
+  const gubun = document.getElementById('filterGubun').value;
+  const status = document.getElementById('filterStatus').value;
+  const corp = document.getElementById('filterCorp').value;
+
+  const params = new URLSearchParams({ search, gubun, status, corp });
+  let data = await api('GET', `/api/constructions?${params}`);
+
+  // 클라이언트 정렬
+  data.sort((a, b) => {
+    let va = a[sortKey] ?? '';
+    let vb = b[sortKey] ?? '';
+    // 숫자형 키
+    if (sortKey === 'no' || sortKey === 'id') {
+      va = Number(va); vb = Number(vb);
+      return sortDir === 'asc' ? va - vb : vb - va;
+    }
+    va = String(va).toLowerCase();
+    vb = String(vb).toLowerCase();
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  document.getElementById('recordCount').textContent = `총 ${data.length}건`;
+
+  const v = isColVisible;
+  // 작업위치 colspan 계산
+  const locCols = ['loc_region','loc_dong','loc_floor','loc_detail'];
+  const locSpan = v('loc') ? 4 : 0;
+
+  // thead 동적 업데이트
+  document.querySelector('thead tr').innerHTML = `
+    <th class="cb-cell"><input type="checkbox" class="row-checkbox" id="checkAll" onclick="toggleCheckAll(this)" title="전체 선택" /></th>
+    ${v('no') ? `<th class="sortable" data-key="no" onclick="sortBy('no')">No</th>` : ''}
+    ${v('gubun') ? `<th class="sortable" data-key="gubun" onclick="sortBy('gubun')">구분</th>` : ''}
+    ${v('req_date') ? `<th class="sortable" data-key="req_date" onclick="sortBy('req_date')">요청일</th>` : ''}
+    ${v('corp') ? `<th class="sortable" data-key="corp" onclick="sortBy('corp')">법인</th>` : ''}
+    ${v('dept') ? `<th class="sortable" data-key="dept" onclick="sortBy('dept')">부서</th>` : ''}
+    ${v('requester') ? `<th class="sortable" data-key="requester" onclick="sortBy('requester')">요청자</th>` : ''}
+    ${v('work_name') ? `<th class="sortable" data-key="work_name" onclick="sortBy('work_name')">공사명</th>` : ''}
+    ${v('loc') ? `<th class="group-header" colspan="4">작업 위치</th>` : ''}
+    ${v('status') ? `<th class="sortable" data-key="status" onclick="sortBy('status')">상태</th>` : ''}
+    ${v('deadline') ? `<th class="sortable" data-key="deadline" onclick="sortBy('deadline')">기한일</th>` : ''}
+    ${v('complete_date') ? `<th class="sortable" data-key="complete_date" onclick="sortBy('complete_date')">완료일</th>` : ''}
+    ${v('purchase_doc') ? `<th>구매품의서</th>` : ''}
+    ${v('payment_doc') ? `<th>지출품의서</th>` : ''}
+    ${v('it_manager') ? `<th class="sortable" data-key="it_manager" onclick="sortBy('it_manager')">IT담당자</th>` : ''}
+    ${v('worker') ? `<th class="sortable" data-key="worker" onclick="sortBy('worker')">작업자</th>` : ''}
+    ${v('actions') ? `<th style="width:100px">관리</th>` : ''}
+  `;
+
+  const totalCols = COL_DEFS.filter(c => c.key !== 'loc' ? v(c.key) : false).length + (v('loc') ? 4 : 0);
+
+  const tbody = document.getElementById('tableBody');
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="${totalCols + 1}"><div class="empty-state"><div class="icon">📭</div><p>검색 결과가 없습니다</p></div></td></tr>`;
+    return;
   }
-});
 
-app.delete('/api/constructions/:id', (req, res) => {
-  const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
-  if (row) recordHistory(req.params.id, 'delete', null, [{ field: 'work_name', label: '공사명', before: row.work_name, after: '' }]);
-  db.run('DELETE FROM constructions WHERE id = ?', [req.params.id]);
-  saveDB();
-  res.json({ success: true });
-});
+  // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
+  setTimeout(initColResize, 0);
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
+      ${v('no') ? `<td><code style="color:#9ca3af;font-size:11px">${r.no}</code></td>` : ''}
+      ${v('gubun') ? `<td>${gubunBadge(r.gubun)}</td>` : ''}
+      ${v('req_date') ? `<td class="col-sm">${r.req_date || '-'}</td>` : ''}
+      ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
+      ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
+      ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
+      ${v('work_name') ? `<td class="work-name">${r.work_name || '-'}</td>` : ''}
+      ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
+      ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
+      ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
+      ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
+      ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
+      ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+      ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
+      ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
+      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="showDetail(${r.id})">보기</button><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button></div></td>` : ''}
+    </tr>
+  `).join('');
+}
 
-app.get('/api/history/:id', (req, res) => {
-  const rows = queryAll(
-    'SELECT * FROM history WHERE construction_id = ? ORDER BY id DESC',
-    [req.params.id]
-  );
-  res.json(rows.map(r => ({ ...r, diff: JSON.parse(r.diff || '[]') })));
-});
+function gubunBadge(v) {
+  const map = { '자체공사': 'self', '외주공사': 'outsource', '지급': 'payment', '구매': 'purchase' };
+  return `<span class="badge badge-${map[v] || 'self'}">${v || '-'}</span>`;
+}
 
+function statusBadge(v) {
+  if (!v) return '<span class="badge badge-holding">-</span>';
+  if (v === '완료') return `<span class="badge badge-done">${v}</span>`;
+  if (v === '진행중') return `<span class="badge badge-progress">${v}</span>`;
+  return `<span class="badge badge-holding">${v}</span>`;
+}
 
+// ── DETAIL ──────────────────────────────────────────
 
-// ── 선번 관리 API ──────────────────────────────────────────
+async function showDetail(id) {
+  currentDetailId = id;
+  const r = await api('GET', `/api/constructions/${id}`);
 
-// 도면 파일 업로드 (JPG/PNG/PDF/DXF → PNG 변환)
-app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
-  try {
-    const { region, dong, floor } = req.body;
-    if (!req.file) return res.status(400).json({ error: '파일 없음' });
+  document.getElementById('detailTitle').textContent = r.work_name || '공사 상세';
+  document.getElementById('detailSubtitle').textContent = `No.${r.no} · ${r.req_date} · ${r.corp}`;
 
-    const origName = req.file.originalname.toLowerCase();
-    const base = `${region}_${dong}_${floor}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-    let finalFilename;
+  document.getElementById('detailBody').innerHTML = `
+    <div class="detail-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="detail-section">
+        <div class="detail-section-title">📋 기본 정보</div>
+        ${row('구분', gubunBadge(r.gubun))}
+        ${row('요청일', r.req_date)}
+        ${row('법인', r.corp)}
+        ${row('부서', r.dept)}
+        ${row('요청자', r.requester)}
+        ${row('상태', statusBadge(r.status))}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">📅 일정 / 담당자</div>
+        ${row('기한일', r.deadline)}
+        ${row('작업 완료일', r.complete_date)}
+        ${row('IT담당자', r.it_manager)}
+        ${row('작업자', r.worker)}
+        ${row('메모', r.memo)}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">📍 작업 위치</div>
+        ${row('지역', r.loc_region)}
+        ${row('동', r.loc_dong)}
+        ${row('층', r.loc_floor)}
+        ${row('상세위치', r.loc_detail)}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">🏚️ 이동 전 위치 (철거)</div>
+        ${row('지역', r.demolish_region)}
+        ${row('동', r.demolish_dong)}
+        ${row('층', r.demolish_floor)}
+        ${row('상세위치', r.demolish_detail)}
+      </div>
+      <div class="detail-section" style="grid-column:1/-1">
+        <div class="detail-section-title">📄 품의 서류</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">구매품의서</div>
+            <div style="font-size:13px">${r.purchase_doc || '-'}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">지출품의서</div>
+            <div style="font-size:13px">${r.payment_doc || '-'}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">연관품의서</div>
+            <div style="font-size:13px">${r.related_doc || '-'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 
-    if (origName.endsWith('.pdf')) {
-      // PDF → PNG 변환 (첫 페이지)
-      const tmpPdf = path.join(FLOOR_IMG_DIR, base + '.pdf');
-      fs.writeFileSync(tmpPdf, req.file.buffer);
-      execSync(`pdftoppm -r 150 -f 1 -l 1 -png "${tmpPdf}" "${path.join(FLOOR_IMG_DIR, base)}"`);
-      fs.unlinkSync(tmpPdf);
-      // pdftoppm은 base-1.png 형태로 생성
-      const candidates = fs.readdirSync(FLOOR_IMG_DIR).filter(f => f.startsWith(base) && f.endsWith('.png'));
-      if (!candidates.length) throw new Error('PDF 변환 실패');
-      finalFilename = base + '.png';
-      fs.renameSync(path.join(FLOOR_IMG_DIR, candidates[0]), path.join(FLOOR_IMG_DIR, finalFilename));
+  document.getElementById('detailEditBtn').onclick = () => { closeModal('detailModal'); openEditModal(id); };
+  document.getElementById('detailDeleteBtn').onclick = () => deleteRecord(id);
+  document.getElementById('detailHistoryBtn').onclick = () => showHistory(id, r.work_name);
 
-    } else if (origName.endsWith('.dxf') || origName.endsWith('.dwg')) {
-      // DXF → PNG 변환 (Python ezdxf)
-      const tmpDxf = path.join(FLOOR_IMG_DIR, base + '.dxf');
-      const outPng = path.join(FLOOR_IMG_DIR, base + '.png');
-      fs.writeFileSync(tmpDxf, req.file.buffer);
-      const pyScript = `
-import ezdxf
-from ezdxf.addons.drawing import RenderContext, Frontend
-from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-doc = ezdxf.readfile('${tmpDxf}')
-msp = doc.modelspace()
-fig = plt.figure(figsize=(16,12), dpi=100)
-ax = fig.add_axes([0,0,1,1])
-ctx = RenderContext(doc)
-out = MatplotlibBackend(ax)
-Frontend(ctx, out).draw_layout(msp)
-fig.savefig('${outPng}', dpi=150, bbox_inches='tight', facecolor='white')
-plt.close()
-`;
-      execSync(`python3 -c "${pyScript.replace(/
-/g,' ').replace(/'/g,"\'")}"`);
-      fs.unlinkSync(tmpDxf);
-      finalFilename = base + '.png';
+  openModal('detailModal');
+}
 
+function row(k, v) {
+  return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v || '-'}</span></div>`;
+}
+
+async function deleteRecord(id) {
+  if (!confirm('이 공사 기록을 삭제할까요?')) return;
+  await api('DELETE', `/api/constructions/${id}`);
+  closeModal('detailModal');
+  showToast('삭제되었습니다');
+  loadData(); loadStats();
+}
+
+// ── FORM ──────────────────────────────────────────
+
+const FIELDS = ['gubun','req_date','corp','dept','requester','work_name',
+  'loc_region','loc_dong','loc_floor','loc_detail',
+  'move_region','move_dong','move_floor','move_detail',
+  'demolish_region','demolish_dong','demolish_floor','demolish_detail',
+  'status','deadline','complete_date',
+  'purchase_doc','payment_doc','related_doc','it_manager','worker','memo'];
+
+function openNewModal() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = '새 공사 등록';
+  document.getElementById('formSubmitBtn').textContent = '등록';
+  FIELDS.forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (!el) return;
+    if (el.tagName === 'SELECT') {
+      el.selectedIndex = 0;
     } else {
-      // JPG/PNG 그대로 저장
-      const ext = origName.endsWith('.jpg') || origName.endsWith('.jpeg') ? 'jpg' : 'png';
-      finalFilename = base + '.' + ext;
-      fs.writeFileSync(path.join(FLOOR_IMG_DIR, finalFilename), req.file.buffer);
+      el.value = '';
+    }
+  });
+  populateLocDropdowns();
+  openModal('formModal');
+}
+
+async function openEditModal(id) {
+  editingId = id;
+  document.getElementById('modalTitle').textContent = '공사 정보 수정';
+  document.getElementById('formSubmitBtn').textContent = '저장';
+  const r = await api('GET', `/api/constructions/${id}`);
+  // 위치 데이터 최신화 후 드롭다운 구성
+  await loadLocations();
+  populateLocDropdowns();
+  // 일반 필드 값 세팅
+  FIELDS.forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (!el) return;
+    el.value = r[f] || '';
+  });
+  // 위치 드롭다운 연쇄 업데이트 (지역 선택 → 동 목록 → 층 목록 → 값 선택)
+  ['loc','demolish'].forEach(p => {
+    const regionEl = document.getElementById(`f-${p}_region`);
+    if (regionEl && r[`${p}_region`]) {
+      regionEl.value = r[`${p}_region`];
+      onLocRegionChange(p, true);
+      const dongEl = document.getElementById(`f-${p}_dong`);
+      if (dongEl && r[`${p}_dong`]) {
+        dongEl.value = r[`${p}_dong`];
+        onLocDongChange(p, true);
+        const floorEl = document.getElementById(`f-${p}_floor`);
+        if (floorEl && r[`${p}_floor`]) floorEl.value = r[`${p}_floor`];
+      }
+    }
+  });
+  openModal('formModal');
+}
+
+async function submitForm() {
+  const data = {};
+  FIELDS.forEach(f => { const el = document.getElementById('f-' + f); if (el) data[f] = el.value; });
+
+  if (!data.gubun || data.gubun === '' || !data.work_name) {
+    alert('구분과 공사명은 필수 입력입니다.');
+    return;
+  }
+
+  data.changed_by = '관리자';
+  try {
+    if (editingId) {
+      const result = await api('PUT', `/api/constructions/${editingId}`, data);
+      if (result.error) { alert('저장 오류: ' + result.error); return; }
+      showToast('수정되었습니다 ✓');
+    } else {
+      const result = await api('POST', '/api/constructions', data);
+      if (result.error) { alert('등록 오류: ' + result.error); return; }
+      showToast('등록되었습니다 ✓');
+    }
+    closeModal('formModal');
+    loadData();
+    loadStats();
+  } catch(e) {
+    alert('오류가 발생했습니다: ' + e.message);
+  }
+}
+
+// ── EXCEL ──────────────────────────────────────────
+
+function exportExcel() {
+  window.location.href = '/api/export';
+  showToast('엑셀 파일 다운로드 중...');
+}
+
+// ── MODAL HELPERS ──────────────────────────────────────────
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(el => closeModal(el.id));
+});
+
+// ── TOAST ──────────────────────────────────────────
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+
+// ── DATEPICKER ──────────────────────────────────────────
+
+(function() {
+  let activeInput = null;
+  let popup = null;
+  let curYear, curMonth;
+
+  const WEEKDAYS = ['일','월','화','수','목','금','토'];
+  const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+  function parseVal(val) {
+    if (!val) return null;
+    // YY.MM.DD 또는 YYYY-MM-DD 모두 처리
+    const m = val.match(/^(\d{2,4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/);
+    if (!m) return null;
+    let y = parseInt(m[1]);
+    if (y < 100) y += 2000;
+    return { y, m: parseInt(m[2]) - 1, d: parseInt(m[3]) };
+  }
+
+  function fmt(y, m, d) {
+    const yy = String(y).slice(-2);
+    return yy + '.' + String(m+1).padStart(2,'0') + '.' + String(d).padStart(2,'0');
+  }
+
+  function buildPopup() {
+    if (popup) popup.remove();
+    popup = document.createElement('div');
+    popup.className = 'dp-popup';
+    popup.innerHTML = `
+      <div class="dp-header">
+        <button class="dp-nav" id="dp-prev">&#8249;</button>
+        <span class="dp-month-year" id="dp-my"></span>
+        <button class="dp-nav" id="dp-next">&#8250;</button>
+      </div>
+      <div class="dp-weekdays">${WEEKDAYS.map(w=>`<div class="dp-weekday">${w}</div>`).join('')}</div>
+      <div class="dp-days" id="dp-days"></div>
+      <div class="dp-footer">
+        <button class="dp-today-btn" id="dp-today">오늘</button>
+        <button class="dp-clear-btn" id="dp-clear">지우기</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+
+    popup.querySelector('#dp-prev').onclick = e => { e.stopPropagation(); curMonth--; if(curMonth<0){curMonth=11;curYear--;} renderDays(); };
+    popup.querySelector('#dp-next').onclick = e => { e.stopPropagation(); curMonth++; if(curMonth>11){curMonth=0;curYear++;} renderDays(); };
+    popup.querySelector('#dp-today').onclick = e => { e.stopPropagation(); const t=new Date(); selectDate(t.getFullYear(), t.getMonth(), t.getDate()); };
+    popup.querySelector('#dp-clear').onclick = e => { e.stopPropagation(); if(activeInput) activeInput.value=''; closePopup(); };
+  }
+
+  function renderDays() {
+    const my = popup.querySelector('#dp-my');
+    my.textContent = curYear + '년 ' + MONTHS[curMonth];
+
+    const selected = parseVal(activeInput ? activeInput.value : '');
+    const today = new Date();
+
+    const firstDay = new Date(curYear, curMonth, 1).getDay();
+    const daysInMonth = new Date(curYear, curMonth+1, 0).getDate();
+    const daysInPrev = new Date(curYear, curMonth, 0).getDate();
+
+    let html = '';
+    let total = firstDay + daysInMonth;
+    total = Math.ceil(total / 7) * 7;
+
+    for (let i = 0; i < total; i++) {
+      let d, m, y, cls = 'dp-day';
+      if (i < firstDay) {
+        d = daysInPrev - firstDay + i + 1; m = curMonth - 1; y = curYear;
+        if (m < 0) { m = 11; y--; }
+        cls += ' other-month';
+      } else if (i >= firstDay + daysInMonth) {
+        d = i - firstDay - daysInMonth + 1; m = curMonth + 1; y = curYear;
+        if (m > 11) { m = 0; y++; }
+        cls += ' other-month';
+      } else {
+        d = i - firstDay + 1; m = curMonth; y = curYear;
+      }
+
+      const dow = new Date(y, m, d).getDay();
+      if (!cls.includes('other-month')) {
+        if (dow === 0) cls += ' sunday';
+        if (dow === 6) cls += ' saturday';
+        if (y===today.getFullYear() && m===today.getMonth() && d===today.getDate()) cls += ' today';
+        if (selected && y===selected.y && m===selected.m && d===selected.d) cls += ' selected';
+      }
+
+      html += `<div class="${cls}" data-y="${y}" data-m="${m}" data-d="${d}">${d}</div>`;
     }
 
-    // DB 저장
-    const existing = queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
-    if (existing) {
-      db.run('UPDATE floorplans SET filename=? WHERE id=?', [finalFilename, existing.id]);
-      res.json({ id: existing.id, filename: finalFilename });
-    } else {
-      db.run('INSERT INTO floorplans (region,dong,floor,filename) VALUES (?,?,?,?)', [region, dong, floor, finalFilename]);
-      const newId = queryOne('SELECT last_insert_rowid() as id').id;
-      res.json({ id: newId, filename: finalFilename });
-    }
-    saveDB();
-  } catch(e) {
-    console.error('Upload error:', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// 도면 이미지 조회
-app.get('/api/floorplan', (req, res) => {
-  const { region, dong, floor } = req.query;
-  const row = queryOne('SELECT * FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
-  res.json(row || null);
-});
-
-// 도면 이미지 파일 서빙
-app.get('/api/floorplan/image/:filename', (req, res) => {
-  const filepath = path.join(FLOOR_IMG_DIR, req.params.filename);
-  if (!fs.existsSync(filepath)) return res.status(404).json({ error: '없음' });
-  res.sendFile(filepath);
-});
-
-// 선번 목록 조회
-app.get('/api/cables', (req, res) => {
-  const { floorplan_id } = req.query;
-  res.json(queryAll('SELECT * FROM cables WHERE floorplan_id=? ORDER BY id DESC', [floorplan_id]));
-});
-
-// 선번(핀) 추가
-app.post('/api/cables', (req, res) => {
-  const { floorplan_id, cable_no, construction_no, x, y, color, memo } = req.body;
-  db.run('INSERT INTO cables (floorplan_id,cable_no,construction_no,x,y,color,memo) VALUES (?,?,?,?,?,?,?)',
-    [floorplan_id, s(cable_no), s(construction_no), x, y, color||'#e74c3c', s(memo)]);
-  saveDB();
-  const newId = queryOne('SELECT last_insert_rowid() as id').id;
-  res.json({ id: newId });
-});
-
-// 선번 수정
-app.put('/api/cables/:id', (req, res) => {
-  const { cable_no, construction_no, color, memo } = req.body;
-  db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,memo=? WHERE id=?',
-    [s(cable_no), s(construction_no), color||'#e74c3c', s(memo), req.params.id]);
-  saveDB();
-  res.json({ success: true });
-});
-
-// 선번 삭제
-app.delete('/api/cables/:id', (req, res) => {
-  db.run('DELETE FROM cables WHERE id=?', [req.params.id]);
-  saveDB();
-  res.json({ success: true });
-});
-
-// ── 위치 관리 API ──────────────────────────────────────────
-
-app.get('/api/locations', (req, res) => {
-  res.json(queryAll('SELECT * FROM locations ORDER BY region, dong'));
-});
-
-app.post('/api/locations', (req, res) => {
-  const { region, dong, floors } = req.body;
-  if (!region || !dong || !floors) return res.status(400).json({ error: '필수값 누락' });
-  db.run('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)',
-    [region.trim(), dong.trim(), JSON.stringify(floors)]);
-  saveDB();
-  const newId = queryOne('SELECT last_insert_rowid() as id').id;
-  res.json({ id: newId });
-});
-
-app.put('/api/locations/:id', (req, res) => {
-  const { region, dong, floors } = req.body;
-  db.run('UPDATE locations SET region=?, dong=?, floors=? WHERE id=?',
-    [region.trim(), dong.trim(), JSON.stringify(floors), req.params.id]);
-  saveDB();
-  res.json({ success: true });
-});
-
-app.delete('/api/locations/:id', (req, res) => {
-  db.run('DELETE FROM locations WHERE id = ?', [req.params.id]);
-  saveDB();
-  res.json({ success: true });
-});
-
-
-// ── 엑셀 양식 다운로드 ──────────────────────────────────────────
-app.get('/api/template', (req, res) => {
-  // 실제 엑셀 양식과 동일한 헤더 (2행 구조)
-  const header1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
-  const header2 = ['','','','','부서','이름','','지역','동','층','상세위치','지역','동','층','상세위치','상태','기한일','작업 완료일','구매품의서','지출품의서','연관품의서','','',''];
-  const example = ['','자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설','대곶','HO','3F','서버실','','','','','완료','26.03.10','26.03.09','경영-구품-26-0001','경영-지품-26-0001','','이준성','김준기, 이준성','특이사항 없음'];
-
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([header1, header2, example]);
-
-  // 컬럼 너비
-  ws['!cols'] = header1.map((h, i) => ({ wch: i === 6 ? 45 : i === 23 ? 40 : i < 7 ? 12 : 16 }));
-
-  // 헤더 행 스타일
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  for (let C = range.s.c; C <= range.e.c; C++) {
-    const cell = ws[XLSX.utils.encode_cell({ r: 0, c: C })];
-    if (cell) {
-      cell.s = {
-        font: { bold: true, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: 'C0392B' } },
-        alignment: { horizontal: 'center' }
+    popup.querySelector('#dp-days').innerHTML = html;
+    popup.querySelectorAll('.dp-day:not(.other-month)').forEach(el => {
+      el.onclick = e => {
+        e.stopPropagation();
+        selectDate(+el.dataset.y, +el.dataset.m, +el.dataset.d);
       };
+    });
+  }
+
+  function selectDate(y, m, d) {
+    if (activeInput) activeInput.value = fmt(y, m, d);
+    closePopup();
+  }
+
+  function openPopup(input) {
+    activeInput = input;
+    const parsed = parseVal(input.value);
+    const now = new Date();
+    curYear  = parsed ? parsed.y : now.getFullYear();
+    curMonth = parsed ? parsed.m : now.getMonth();
+    buildPopup();
+    renderDays();
+    positionPopup(input);
+  }
+
+  function positionPopup(input) {
+    const rect = input.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    popup.style.left = rect.left + 'px';
+    if (spaceBelow >= 320) {
+      popup.style.top = (rect.bottom + 4) + 'px';
+      popup.style.bottom = 'auto';
+    } else {
+      popup.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+      popup.style.top = 'auto';
     }
   }
 
-  XLSX.utils.book_append_sheet(wb, ws, '공사이력 입력양식');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('공사이력_입력양식.xlsx')}`);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(buf);
+  function closePopup() {
+    if (popup) { popup.remove(); popup = null; }
+    activeInput = null;
+  }
+
+  // 날짜 인풋 클릭 이벤트 (동적 요소 포함)
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('datepicker-input')) {
+      e.stopPropagation();
+      if (popup && activeInput === e.target) { closePopup(); return; }
+      openPopup(e.target);
+      return;
+    }
+    if (popup && !popup.contains(e.target)) closePopup();
+  });
+
+  // 모달 스크롤 시 팝업 위치 재조정
+  document.addEventListener('scroll', () => {
+    if (popup && activeInput) positionPopup(activeInput);
+  }, true);
+})();
+
+
+
+
+// ── COLUMN TOGGLE ──────────────────────────────────────────
+
+const COL_DEFS = [
+  { key: 'no',            label: 'No',       default: true  },
+  { key: 'gubun',         label: '구분',      default: true  },
+  { key: 'req_date',      label: '요청일',    default: true  },
+  { key: 'corp',          label: '법인',      default: true  },
+  { key: 'dept',          label: '부서',      default: true  },
+  { key: 'requester',     label: '요청자',    default: true  },
+  { key: 'work_name',     label: '공사명',    default: true  },
+  { key: 'loc',           label: '작업 위치', default: true  },
+  { key: 'status',        label: '상태',      default: true  },
+  { key: 'deadline',      label: '기한일',    default: true  },
+  { key: 'complete_date', label: '완료일',    default: true  },
+  { key: 'purchase_doc',  label: '구매품의서', default: true },
+  { key: 'payment_doc',   label: '지출품의서', default: true },
+  { key: 'it_manager',    label: 'IT담당자',  default: true  },
+  { key: 'worker',        label: '작업자',    default: true  },
+  { key: 'actions',       label: '관리',      default: true  },
+];
+
+let visibleCols = {};
+
+function initColVisibility() {
+  const saved = localStorage.getItem('visibleCols_v2');
+  if (saved) {
+    visibleCols = JSON.parse(saved);
+    // 새로 추가된 컬럼은 default 값으로
+    COL_DEFS.forEach(c => { if (visibleCols[c.key] === undefined) visibleCols[c.key] = c.default; });
+  } else {
+    COL_DEFS.forEach(c => { visibleCols[c.key] = c.default; });
+  }
+  renderColCheckboxes();
+}
+
+function saveColVisibility() {
+  localStorage.setItem('visibleCols_v2', JSON.stringify(visibleCols));
+}
+
+function renderColCheckboxes() {
+  document.getElementById('colCheckboxList').innerHTML = COL_DEFS.map(c => `
+    <div class="col-toggle-item" onclick="toggleCol('${c.key}')">
+      <input type="checkbox" id="chk-${c.key}" ${visibleCols[c.key] ? 'checked' : ''} onclick="event.stopPropagation();toggleCol('${c.key}')" />
+      <label for="chk-${c.key}">${c.label}</label>
+    </div>
+  `).join('');
+}
+
+function toggleCol(key) {
+  visibleCols[key] = !visibleCols[key];
+  document.getElementById('chk-' + key).checked = visibleCols[key];
+  saveColVisibility();
+  loadData();
+}
+
+function setAllCols(val) {
+  COL_DEFS.forEach(c => { visibleCols[c.key] = val; });
+  saveColVisibility();
+  renderColCheckboxes();
+  loadData();
+}
+
+function toggleColDropdown() {
+  document.getElementById('colDropdown').classList.toggle('open');
+}
+
+// 외부 클릭시 드롭다운 닫기
+document.addEventListener('click', e => {
+  const dd = document.getElementById('colDropdown');
+  if (dd && !dd.closest('.col-toggle-btn') && !e.target.closest('#colDropdown') && !e.target.closest('.col-toggle-btn')) {
+    dd.classList.remove('open');
+  }
 });
 
-// ── 엑셀 업로드 (밀어넣기) ──────────────────────────────────────────
-app.post('/api/import', upload.single('file'), (req, res) => {
+function isColVisible(key) { return visibleCols[key] !== false; }
+
+
+
+function toggleFileDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('fileDropdown').classList.toggle('open');
+}
+function closeFileDropdown() {
+  document.getElementById('fileDropdown').classList.remove('open');
+}
+document.addEventListener('click', () => closeFileDropdown());
+
+
+// ── BULK SELECT ──────────────────────────────────────────
+
+function getCheckedIds() {
+  return [...document.querySelectorAll('.row-checkbox[value]:checked')].map(cb => cb.value);
+}
+
+function onRowCheck() {
+  const ids = getCheckedIds();
+  const bulkBar = document.getElementById('bulkBar');
+  document.getElementById('bulkCount').textContent = `${ids.length}개 선택됨`;
+  bulkBar.classList.toggle('visible', ids.length > 0);
+  // 전체 체크박스 상태 업데이트
+  const all = document.querySelectorAll('.row-checkbox[value]');
+  const checkAll = document.getElementById('checkAll');
+  if (checkAll) checkAll.checked = ids.length === all.length && all.length > 0;
+}
+
+function toggleCheckAll(el) {
+  document.querySelectorAll('.row-checkbox[value]').forEach(cb => { cb.checked = el.checked; });
+  onRowCheck();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.row-checkbox').forEach(cb => { cb.checked = false; });
+  document.getElementById('bulkBar').classList.remove('visible');
+}
+
+async function deleteSelected() {
+  const ids = getCheckedIds();
+  if (!ids.length) return;
+  if (!confirm(`선택한 ${ids.length}건을 삭제할까요?`)) return;
+  for (const id of ids) {
+    await api('DELETE', `/api/constructions/${id}`);
+  }
+  clearSelection();
+  showToast(`${ids.length}건 삭제됐습니다`);
+  loadData();
+  loadStats();
+}
+
+// ── IMPORT / TEMPLATE ──────────────────────────────────────────
+
+function downloadTemplate() {
+  window.location.href = '/api/template';
+  showToast('양식 파일 다운로드 중...');
+}
+
+async function importExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  // 입력 초기화 (같은 파일 재업로드 가능하도록)
+  input.value = '';
+
   try {
-    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-    if (rows.length < 2) return res.json({ success: true, count: 0 });
-
-    // 실제 엑셀 양식: 1행=대분류헤더, 2행=소분류헤더, 3행부터=데이터
-    // 컬럼 인덱스 (0-based):
-    // 0:No, 1:구분, 2:요청일, 3:법인, 4:부서, 5:요청자이름, 6:공사명,
-    // 7:작업지역, 8:작업동, 9:작업층, 10:작업상세,
-    // 11:이동전지역, 12:이동전동, 13:이동전층, 14:이동전상세,
-    // 15:상태, 16:기한일, 17:완료일, 18:구매품의, 19:지출품의, 20:연관품의,
-    // 21:IT담당자, 22:작업자, 23:비고(메모)
-
-    // 헤더 행 건너뛰기 (1행, 2행이 헤더)
-    const dataRows = rows.slice(2).filter(r => r.some(c => c !== undefined && c !== '') && r[1]); // 구분 있는 행만
-
-    const g = (row, i) => (row[i] !== undefined && row[i] !== null) ? String(row[i]).trim() : '';
-
-    let count = 0;
-    let lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
-
-    for (const row of dataRows) {
-      if (!g(row, 1)) continue; // 구분 없으면 스킵
-      lastNo++;
-      db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,
-        loc_region,loc_dong,loc_floor,loc_detail,
-        move_region,move_dong,move_floor,move_detail,
-        demolish_region,demolish_dong,demolish_floor,demolish_detail,
-        status,deadline,complete_date,
-        purchase_doc,payment_doc,related_doc,it_manager,worker,memo)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [lastNo,
-         g(row,1), g(row,2), g(row,3), g(row,4), g(row,5), g(row,6),
-         g(row,7), g(row,8), g(row,9), g(row,10),
-         g(row,11), g(row,12), g(row,13), g(row,14),
-         '','','','',
-         g(row,15), g(row,16), g(row,17),
-         g(row,18), g(row,19), g(row,20),
-         g(row,21), g(row,22), g(row,23)
-        ]);
-      count++;
+    const res = await fetch('/api/import', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✓ ${data.count}건 가져오기 완료`);
+      loadData();
+      loadStats();
+    } else {
+      alert('오류: ' + (data.error || '알 수 없는 오류'));
     }
-
-    saveDB();
-    res.json({ success: true, count });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: '파일 처리 중 오류가 발생했습니다: ' + e.message });
+    alert('업로드 중 오류가 발생했습니다');
+  }
+}
+
+
+// ── 선번 관리 (핀 방식) ──────────────────────────────────────────
+
+let cableTool = 'pin';
+let cableFloorplanId = null;
+let cableLines = [];
+let cableSelectedId = null;
+let cableImg = null;
+let cableZoom = 1.0;
+
+function setTool(t) {
+  cableTool = t;
+  ['pin','select','delete'].forEach(n => {
+    const btn = document.getElementById('tool' + n.charAt(0).toUpperCase() + n.slice(1));
+    if (btn) btn.classList.toggle('active', n === t);
+  });
+  const canvas = document.getElementById('floorCanvas');
+  if (!canvas) return;
+  canvas.style.cursor = t === 'pin' ? 'crosshair' : t === 'delete' ? 'not-allowed' : 'pointer';
+  const hints = { pin: '도면을 클릭해 핀을 찍으세요', select: '핀을 클릭하면 정보를 수정할 수 있습니다', delete: '삭제할 핀을 클릭하세요' };
+  const hint = document.getElementById('canvasHint');
+  if (hint) hint.textContent = hints[t] || '';
+}
+
+function setZoom(val) {
+  cableZoom = val / 100;
+  document.getElementById('zoomLabel').textContent = val + '%';
+  const canvas = document.getElementById('floorCanvas');
+  if (cableImg && canvas.style.display !== 'none') {
+    canvas.style.width = (cableImg.naturalWidth * cableZoom) + 'px';
+    canvas.style.height = (cableImg.naturalHeight * cableZoom) + 'px';
+    drawCanvas();
+  }
+}
+
+function initCablePage() {
+  if (!allLocations.length) loadLocations();
+  const regions = [...new Set(allLocations.map(l => l.region))];
+  const regionSel = document.getElementById('cable-region');
+  regionSel.innerHTML = '<option value="">지역 선택</option>' + regions.map(r => `<option value="${r}">${r}</option>`).join('');
+  document.getElementById('cable-dong').innerHTML = '<option value="">동 선택</option>';
+  document.getElementById('cable-floor').innerHTML = '<option value="">층 선택</option>';
+  renderCableList([]);
+  resetCanvas();
+}
+
+function onCableRegionChange() {
+  const region = document.getElementById('cable-region').value;
+  const locs = allLocations.filter(l => l.region === region);
+  document.getElementById('cable-dong').innerHTML = '<option value="">동 선택</option>' +
+    locs.map(l => `<option value="${l.dong}">${l.dong}</option>`).join('');
+  document.getElementById('cable-floor').innerHTML = '<option value="">층 선택</option>';
+  resetCanvas();
+}
+
+function onCableDongChange() {
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const loc = allLocations.find(l => l.region === region && l.dong === dong);
+  const floors = loc ? JSON.parse(loc.floors || '[]') : [];
+  document.getElementById('cable-floor').innerHTML = '<option value="">층 선택</option>' +
+    floors.map(f => `<option value="${f}">${f}</option>`).join('');
+  resetCanvas();
+}
+
+async function onCableFloorChange() {
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const floor = document.getElementById('cable-floor').value;
+  if (!region || !dong || !floor) return;
+
+  document.getElementById('canvasHint').textContent = '도면 불러오는 중...';
+  const fp = await api('GET', `/api/floorplan?region=${encodeURIComponent(region)}&dong=${encodeURIComponent(dong)}&floor=${encodeURIComponent(floor)}`);
+  if (fp) {
+    cableFloorplanId = fp.id;
+    loadFloorplanImage(fp.filename);
+    loadCableLines();
+  } else {
+    cableFloorplanId = null;
+    resetCanvas();
+    document.getElementById('canvasHint').textContent = '도면을 업로드하세요';
+    renderCableList([]);
+  }
+}
+
+async function uploadFloorplan(input) {
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const floor = document.getElementById('cable-floor').value;
+  if (!region || !dong || !floor) { alert('먼저 위치를 선택하세요'); input.value=''; return; }
+  if (!input.files[0]) return;
+
+  const label = document.getElementById('cableUploadLabel');
+  label.textContent = '⏳ 변환 중... (PDF/DXF는 시간이 걸릴 수 있습니다)';
+
+  const fd = new FormData();
+  fd.append('image', input.files[0]);
+  fd.append('region', region);
+  fd.append('dong', dong);
+  fd.append('floor', floor);
+  input.value = '';
+
+  try {
+    const res = await fetch('/api/floorplan/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { alert('업로드 실패: ' + data.error); return; }
+    cableFloorplanId = data.id;
+    loadFloorplanImage(data.filename);
+    loadCableLines();
+    showToast('도면 업로드 완료');
+    label.innerHTML = '📁 도면 업로드 (JPG·PNG·PDF·DXF)<input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />';
+  } catch(e) {
+    alert('업로드 오류: ' + e.message);
+    label.innerHTML = '📁 도면 업로드 (JPG·PNG·PDF·DXF)<input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />';
+  }
+}
+
+function loadFloorplanImage(filename) {
+  const canvas = document.getElementById('floorCanvas');
+  const empty = document.getElementById('canvasEmpty');
+  const img = new Image();
+  img.onload = () => {
+    cableImg = img;
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.style.width = (img.naturalWidth * cableZoom) + 'px';
+    canvas.style.height = (img.naturalHeight * cableZoom) + 'px';
+    canvas.style.display = 'block';
+    empty.style.display = 'none';
+    document.getElementById('canvasHint').textContent = '클릭으로 핀을 찍으세요';
+    drawCanvas();
+  };
+  img.onerror = () => {
+    document.getElementById('canvasHint').textContent = '이미지 로드 실패';
+  };
+  img.src = `/api/floorplan/image/${filename}?t=${Date.now()}`;
+}
+
+async function loadCableLines() {
+  if (!cableFloorplanId) return;
+  cableLines = await api('GET', `/api/cables?floorplan_id=${cableFloorplanId}`);
+  renderCableList(cableLines);
+  drawCanvas();
+}
+
+function renderCableList(lines) {
+  document.getElementById('cableTotalCount').textContent = lines.length ? `${lines.length}개` : '';
+  document.getElementById('cableList').innerHTML = lines.length
+    ? lines.map(l => `
+      <div class="cable-item ${l.id === cableSelectedId ? 'selected' : ''}" onclick="selectCablePin(${l.id})">
+        <div class="cable-color-dot" style="background:${l.color}"></div>
+        <div class="cable-item-info">
+          <div class="cable-item-no">${l.cable_no || '(선번 없음)'}</div>
+          <div class="cable-item-sub">${l.construction_no ? '공사 ' + l.construction_no : ''} ${l.memo ? '· ' + l.memo : ''}</div>
+        </div>
+        <button class="cable-item-del" onclick="event.stopPropagation();deleteCablePin(${l.id})">✕</button>
+      </div>`).join('')
+    : '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">등록된 선번이 없습니다</div>';
+}
+
+const PIN_R = 12; // 핀 반지름 (px, 캔버스 기준)
+
+function drawCanvas() {
+  const canvas = document.getElementById('floorCanvas');
+  if (!canvas || canvas.style.display === 'none') return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (cableImg) ctx.drawImage(cableImg, 0, 0, canvas.width, canvas.height);
+
+  cableLines.forEach(l => {
+    const cx = l.x * canvas.width;
+    const cy = l.y * canvas.height;
+    const selected = l.id === cableSelectedId;
+    const color = l.color || '#e74c3c';
+
+    // 핀 원
+    ctx.beginPath();
+    ctx.arc(cx, cy, selected ? PIN_R + 3 : PIN_R, 0, Math.PI * 2);
+    ctx.fillStyle = selected ? '#f59e0b' : color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 핀 아이콘 (간단한 포인터 아래 삼각형)
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + PIN_R);
+    ctx.lineTo(cx - 5, cy + PIN_R + 8);
+    ctx.lineTo(cx + 5, cy + PIN_R + 8);
+    ctx.closePath();
+    ctx.fillStyle = selected ? '#f59e0b' : color;
+    ctx.fill();
+
+    // 선번 라벨
+    if (l.cable_no) {
+      const fontSize = 11;
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      const tw = ctx.measureText(l.cable_no).width;
+      const lx = cx - tw/2 - 4;
+      const ly = cy - PIN_R - 18;
+      // 배경
+      ctx.fillStyle = selected ? '#f59e0b' : color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lx, ly, tw + 8, 16, 4) : ctx.rect(lx, ly, tw + 8, 16);
+      ctx.fill();
+      // 텍스트
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l.cable_no, cx - tw/2, ly + 12);
+    }
+  });
+}
+
+function resetCanvas() {
+  const canvas = document.getElementById('floorCanvas');
+  if (canvas) canvas.style.display = 'none';
+  const empty = document.getElementById('canvasEmpty');
+  if (empty) empty.style.display = 'flex';
+  cableImg = null;
+  cableLines = [];
+  cableFloorplanId = null;
+}
+
+// 캔버스 클릭
+document.getElementById('floorCanvas').addEventListener('click', function(e) {
+  if (!cableFloorplanId || !cableImg) return;
+  const rect = this.getBoundingClientRect();
+  // 화면좌표 → 캔버스 좌표 비율
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+
+  if (cableTool === 'pin') {
+    openCableModal(null, x, y);
+  } else if (cableTool === 'select' || cableTool === 'delete') {
+    const hit = findPinAt(x, y);
+    if (hit) {
+      if (cableTool === 'delete') {
+        deleteCablePin(hit.id);
+      } else {
+        selectCablePin(hit.id);
+        openCableModal(hit);
+      }
+    }
   }
 });
 
-app.get('/api/export', (req, res) => {
-  const rows = queryAll('SELECT * FROM constructions ORDER BY no ASC');
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
-  // 실제 엑셀 양식과 동일한 2행 헤더 구조
-  const header1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
-  const header2 = ['','','','','부서','이름','','지역','동','층','상세위치','지역','동','층','상세위치','상태','기한일','작업 완료일','구매품의서','지출품의서','연관품의서','','',''];
-  const data = [header1, header2, ...rows.map(r => [
-    r.no, r.gubun, r.req_date, r.corp, r.dept, r.requester, r.work_name,
-    r.loc_region, r.loc_dong, r.loc_floor, r.loc_detail,
-    r.demolish_region, r.demolish_dong, r.demolish_floor, r.demolish_detail,
-    r.status, r.deadline, r.complete_date,
-    r.purchase_doc, r.payment_doc, r.related_doc,
-    r.it_manager, r.worker, r.memo
-  ])];
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = header1.map((h,i) => ({ wch: i===6?45:i===23?40:i<7?12:16 }));
-  XLSX.utils.book_append_sheet(wb, ws, '2026_공사이력_전체');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${dateStr}_네트워크공사이력.xlsx`)}`);
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(buf);
-});
+function findPinAt(nx, ny) {
+  const canvas = document.getElementById('floorCanvas');
+  const THRESH = (PIN_R + 8) / canvas.width;
+  for (const l of cableLines) {
+    const dist = Math.sqrt((nx - l.x)**2 + (ny - l.y)**2);
+    if (dist < THRESH) return l;
+  }
+  return null;
+}
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+function selectCablePin(id) {
+  cableSelectedId = id;
+  renderCableList(cableLines);
+  drawCanvas();
+}
 
-initDB().then(() => app.listen(PORT, () => console.log(`✅ 서버 실행 중: http://localhost:${PORT}`)));
+let editingCableId = null;
+let pendingPinX = null, pendingPinY = null;
+
+function openCableModal(existing = null, px = null, py = null) {
+  editingCableId = existing ? existing.id : null;
+  pendingPinX = px; pendingPinY = py;
+  document.getElementById('cableModalTitle').textContent = existing ? '선번 정보 수정' : '핀 정보 입력';
+  document.getElementById('ci-cable_no').value = existing?.cable_no || '';
+  document.getElementById('ci-construction_no').value = existing?.construction_no || '';
+  document.getElementById('ci-memo').value = existing?.memo || '';
+  if (existing?.color) document.getElementById('cableColorPicker').value = existing.color;
+  document.getElementById('cableInputModal').classList.add('open');
+  setTimeout(() => document.getElementById('ci-cable_no').focus(), 100);
+}
+
+function closeCableModal() {
+  document.getElementById('cableInputModal').classList.remove('open');
+  editingCableId = null;
+  pendingPinX = null; pendingPinY = null;
+}
+
+async function saveCableLine() {
+  const cable_no = document.getElementById('ci-cable_no').value.trim();
+  const construction_no = document.getElementById('ci-construction_no').value.trim();
+  const memo = document.getElementById('ci-memo').value.trim();
+  const color = document.getElementById('cableColorPicker').value;
+
+  if (editingCableId) {
+    await api('PUT', `/api/cables/${editingCableId}`, { cable_no, construction_no, color, memo });
+    showToast('수정됐습니다');
+  } else if (pendingPinX !== null) {
+    await api('POST', '/api/cables', {
+      floorplan_id: cableFloorplanId,
+      cable_no, construction_no, color, memo,
+      x: pendingPinX, y: pendingPinY
+    });
+    showToast('핀 저장됐습니다');
+  }
+
+  closeCableModal();
+  await loadCableLines();
+}
+
+async function deleteCablePin(id) {
+  if (!confirm('이 핀을 삭제할까요?')) return;
+  await api('DELETE', `/api/cables/${id}`);
+  if (cableSelectedId === id) cableSelectedId = null;
+  showToast('삭제됐습니다');
+  await loadCableLines();
+}
+
+// ── SETTINGS & LOCATIONS ──────────────────────────────────────────
+
+let allLocations = [];
+let selectedRegion = null;
+
+async function loadLocations() {
+  allLocations = await api('GET', '/api/locations');
+  renderRegionList();
+  populateLocDropdowns();
+}
+
+function getRegions() {
+  return [...new Set(allLocations.map(l => l.region))];
+}
+
+function getByRegion(region) {
+  return allLocations.filter(l => l.region === region);
+}
+
+function renderRegionList() {
+  const regions = getRegions();
+  document.getElementById('regionCount').textContent = `${regions.length}개`;
+  document.getElementById('regionList').innerHTML = regions.map(r => {
+    const cnt = getByRegion(r).length;
+    return `<div class="region-item ${selectedRegion===r?'selected':''}" onclick="selectRegion('${r}')">
+      <span class="region-item-name">${r}</span>
+      <span class="region-item-count">${cnt}개 동</span>
+    </div>`;
+  }).join('') || '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">지역을 추가하세요</div>';
+}
+
+function selectRegion(region) {
+  selectedRegion = region;
+  renderRegionList();
+  renderDongList();
+  document.getElementById('dongAddForm').style.display = 'flex';
+  document.getElementById('deleteRegionBtn').style.display = 'block';
+  document.getElementById('dongPanelTitle').textContent = `${region} · 동 목록`;
+}
+
+function renderDongList() {
+  const locs = getByRegion(selectedRegion);
+  if (!locs.length) {
+    document.getElementById('dongList').innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px">동을 추가하세요</div>';
+    return;
+  }
+  document.getElementById('dongList').innerHTML = locs.map(loc => {
+    const floors = JSON.parse(loc.floors || '[]');
+    return `<div class="dong-card">
+      <div class="dong-card-head" id="dong-head-${loc.id}">
+        <span class="dong-card-name" id="dong-name-${loc.id}">🏢 ${loc.dong}</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:11px;color:#9ca3af">${floors.length}개 층</span>
+          <button onclick="startEditDong(${loc.id}, '${loc.dong.replace(/'/g, "\'")}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:2px 6px;border-radius:4px;transition:all 0.15s" onmouseover="this.style.color='#c0392b'" onmouseout="this.style.color='#9ca3af'" title="동 이름 수정">✏️</button>
+          <button onclick="deleteDong(${loc.id})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px" title="동 삭제">✕</button>
+        </div>
+      </div>
+      <div class="floor-tags">
+        ${floors.map((f,i) => `
+          <span class="floor-tag-del">
+            ${f}
+            <button onclick="deleteFloor(${loc.id}, ${i})" title="층 삭제">✕</button>
+          </span>
+        `).join('')}
+        <button class="floor-tag-add" onclick="addFloor(${loc.id})">+ 층 추가</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addRegion() {
+  const val = document.getElementById('newRegionInput').value.trim();
+  if (!val) return;
+  // 지역만 추가할 땐 임시 빈 동 하나 추가 후 동 추가 유도
+  selectedRegion = val;
+  document.getElementById('newRegionInput').value = '';
+  // 지역이 이미 있으면 그냥 선택
+  if (getRegions().includes(val)) { renderRegionList(); renderDongList(); return; }
+  // 없으면 첫 동 입력 유도
+  renderRegionList();
+  document.getElementById('dongPanelTitle').textContent = `${val} · 동 목록`;
+  document.getElementById('dongAddForm').style.display = 'flex';
+  document.getElementById('deleteRegionBtn').style.display = 'none';
+  document.getElementById('dongList').innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px">아래에서 동을 추가하세요</div>';
+}
+
+async function deleteRegion() {
+  if (!selectedRegion) return;
+  const locs = getByRegion(selectedRegion);
+  if (!confirm(`'${selectedRegion}' 지역과 ${locs.length}개 동을 모두 삭제할까요?`)) return;
+  for (const loc of locs) await api('DELETE', `/api/locations/${loc.id}`);
+  selectedRegion = null;
+  await loadLocations();
+  document.getElementById('dongPanel').querySelector('.settings-panel-head span').textContent = '지역을 선택하세요';
+  document.getElementById('dongList').innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;font-size:13px">← 왼쪽에서 지역을 선택하세요</div>';
+  document.getElementById('dongAddForm').style.display = 'none';
+  document.getElementById('deleteRegionBtn').style.display = 'none';
+}
+
+async function addDong() {
+  const val = document.getElementById('newDongInput').value.trim();
+  if (!val || !selectedRegion) return;
+  await api('POST', '/api/locations', { region: selectedRegion, dong: val, floors: [] });
+  document.getElementById('newDongInput').value = '';
+  await loadLocations();
+  selectRegion(selectedRegion);
+}
+
+
+function startEditDong(id, currentName) {
+  const head = document.getElementById('dong-head-' + id);
+  if (!head) return;
+  head.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex:1">
+      <input id="dong-edit-input-${id}" type="text" value="${currentName}"
+        style="flex:1;background:#f9fafb;border:1px solid #c0392b;border-radius:6px;padding:5px 10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;color:#1a1a1a"
+        onkeydown="if(event.key==='Enter') saveEditDong(${id}); if(event.key==='Escape') renderDongList();"
+      />
+      <button onclick="saveEditDong(${id})" style="background:#c0392b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:600">저장</button>
+      <button onclick="renderDongList()" style="background:none;border:1px solid #e5e7eb;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;color:#6b7280">취소</button>
+    </div>
+  `;
+  document.getElementById('dong-edit-input-' + id)?.focus();
+}
+
+async function saveEditDong(id) {
+  const input = document.getElementById('dong-edit-input-' + id);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) return;
+  const loc = allLocations.find(l => l.id === id);
+  await api('PUT', `/api/locations/${id}`, { region: loc.region, dong: newName, floors: JSON.parse(loc.floors || '[]') });
+  await loadLocations();
+  renderDongList();
+}
+
+async function deleteDong(id) {
+  const loc = allLocations.find(l => l.id === id);
+  if (!confirm(`'${loc?.dong}' 동을 삭제할까요?`)) return;
+  await api('DELETE', `/api/locations/${id}`);
+  await loadLocations();
+  renderDongList();
+}
+
+async function addFloor(locId) {
+  const val = prompt('추가할 층 이름을 입력하세요 (예: 3F, B1)');
+  if (!val) return;
+  const loc = allLocations.find(l => l.id === locId);
+  const floors = JSON.parse(loc.floors || '[]');
+  if (floors.includes(val.trim())) { alert('이미 존재하는 층입니다'); return; }
+  floors.push(val.trim());
+  await api('PUT', `/api/locations/${locId}`, { region: loc.region, dong: loc.dong, floors });
+  await loadLocations();
+  renderDongList();
+}
+
+async function deleteFloor(locId, floorIdx) {
+  const loc = allLocations.find(l => l.id === locId);
+  const floors = JSON.parse(loc.floors || '[]');
+  floors.splice(floorIdx, 1);
+  await api('PUT', `/api/locations/${locId}`, { region: loc.region, dong: loc.dong, floors });
+  await loadLocations();
+  renderDongList();
+}
+
+// ── 탭 전환 ──────────────────────────────────────────
+
+function switchTab(tab) {
+  document.getElementById('mainPage').style.display = tab === 'main' ? 'block' : 'none';
+  document.getElementById('cablePage').style.display = tab === 'cable' ? 'block' : 'none';
+  document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
+
+  ['main','cable','settings'].forEach(t => {
+    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('active', t === tab);
+    });
+  });
+
+  if (tab === 'settings') loadLocations();
+  if (tab === 'cable') initCablePage();
+}
+
+// ── 위치 드롭다운 연동 ──────────────────────────────────────────
+
+function populateLocDropdowns() {
+  const regions = getRegions();
+  ['loc', 'demolish'].forEach(prefix => {
+    const regionSel = document.getElementById(`f-${prefix}_region`);
+    if (!regionSel) return;
+    const curRegion = regionSel.value;
+    regionSel.innerHTML = '<option value="">지역 선택</option>' +
+      regions.map(r => `<option value="${r}" ${r===curRegion?'selected':''}>${r}</option>`).join('');
+    if (curRegion) onLocRegionChange(prefix, true);
+  });
+}
+
+function onLocRegionChange(prefix, keepValue = false) {
+  const region = document.getElementById(`f-${prefix}_region`).value;
+  const dongSel = document.getElementById(`f-${prefix}_dong`);
+  const floorSel = document.getElementById(`f-${prefix}_floor`);
+  const curDong = keepValue ? dongSel.value : '';
+
+  const locs = allLocations.filter(l => l.region === region);
+  dongSel.innerHTML = '<option value="">동 선택</option>' +
+    locs.map(l => `<option value="${l.dong}" ${l.dong===curDong?'selected':''}>${l.dong}</option>`).join('');
+  floorSel.innerHTML = '<option value="">층 선택</option>';
+
+  if (curDong) onLocDongChange(prefix, keepValue);
+}
+
+function onLocDongChange(prefix, keepValue = false) {
+  const region = document.getElementById(`f-${prefix}_region`).value;
+  const dong = document.getElementById(`f-${prefix}_dong`).value;
+  const floorSel = document.getElementById(`f-${prefix}_floor`);
+  const curFloor = keepValue ? floorSel.value : '';
+
+  const loc = allLocations.find(l => l.region === region && l.dong === dong);
+  const floors = loc ? JSON.parse(loc.floors || '[]') : [];
+  floorSel.innerHTML = '<option value="">층 선택</option>' +
+    floors.map(f => `<option value="${f}" ${f===curFloor?'selected':''}>${f}</option>`).join('');
+}
+
+// ── HISTORY ──────────────────────────────────────────
+
+async function showHistory(id, workName) {
+  document.getElementById('historySubtitle').textContent = workName || '';
+  document.getElementById('historyBody').innerHTML = '<div class="history-empty">불러오는 중...</div>';
+  openModal('historyModal');
+
+  const rows = await api('GET', `/api/history/${id}`);
+
+  if (!rows.length) {
+    document.getElementById('historyBody').innerHTML = '<div class="history-empty">📭 변경 이력이 없습니다</div>';
+    return;
+  }
+
+  const actionLabel = { create: '등록', update: '수정', delete: '삭제' };
+
+  document.getElementById('historyBody').innerHTML = `
+    <div class="history-list">
+      ${rows.map((r, i) => `
+        <div class="history-item">
+          <div class="history-timeline">
+            <div class="history-dot ${r.action}"></div>
+            ${i < rows.length - 1 ? '<div class="history-line"></div>' : ''}
+          </div>
+          <div class="history-content">
+            <div class="history-meta">
+              <span class="history-action ${r.action}">${actionLabel[r.action] || r.action}</span>
+              <span class="history-by">${r.changed_by || '-'}</span>
+              <span class="history-at">${r.changed_at}</span>
+            </div>
+            ${r.diff && r.diff.length ? `
+              <div class="history-diff">
+                ${r.diff.map(d => `
+                  <div class="history-diff-row">
+                    <span class="diff-label">${d.label}</span>
+                    ${r.action === 'create'
+                      ? `<span class="diff-after">${d.after || '-'}</span>`
+                      : r.action === 'delete'
+                      ? `<span class="diff-before">${d.before || '-'}</span>`
+                      : `<span class="diff-before">${d.before || '(없음)'}</span>
+                         <span class="diff-arrow">→</span>
+                         <span class="diff-after">${d.after || '(없음)'}</span>`
+                    }
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+
+// ── COLUMN RESIZE ──────────────────────────────────────────
+
+function initColResize() {
+  const table = document.querySelector('table');
+  if (!table) return;
+
+  // 저장된 너비 복원
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('colWidths') || '{}'); } catch { return {}; } })();
+
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach((th, i) => {
+    th.classList.add('resizable');
+
+    // 저장된 너비 적용
+    if (saved[i]) th.style.width = saved[i] + 'px';
+
+    // 리사이저 핸들 추가
+    const resizer = document.createElement('div');
+    resizer.className = 'col-resizer';
+    th.appendChild(resizer);
+
+    let startX, startW;
+
+    resizer.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      startX = e.clientX;
+      startW = th.offsetWidth;
+      resizer.classList.add('resizing');
+
+      const onMove = e => {
+        const newW = Math.max(50, startW + e.clientX - startX);
+        th.style.width = newW + 'px';
+      };
+
+      const onUp = () => {
+        resizer.classList.remove('resizing');
+        // 너비 저장
+        const widths = {};
+        table.querySelectorAll('thead th').forEach((t, idx) => {
+          if (t.style.width) widths[idx] = parseInt(t.style.width);
+        });
+        localStorage.setItem('colWidths', JSON.stringify(widths));
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+// 너비 초기화 버튼
+function resetColWidths() {
+  localStorage.removeItem('colWidths');
+  document.querySelectorAll('thead th').forEach(th => { th.style.width = ''; });
+  showToast('컬럼 너비가 초기화됐습니다');
+}
+
+// ── INIT ──────────────────────────────────────────
+
+initColVisibility();
+loadStats();
+loadData().then(() => initColResize());
+loadLocations();
+</script>
+</body>
+</html>
