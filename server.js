@@ -374,13 +374,23 @@ app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
           remapCablesToNewDxf(existing.id, oldFp, dxfCoords);
         }
       }
+      const dxVals = [
+        dxfCoords?.minx ?? null, dxfCoords?.miny ?? null,
+        dxfCoords?.maxx ?? null, dxfCoords?.maxy ?? null,
+        labelsJson ?? null
+      ];
       db.run('UPDATE floorplans SET filename=?,dxf_minx=?,dxf_miny=?,dxf_maxx=?,dxf_maxy=?,dxf_labels=? WHERE id=?',
-        [finalFilename, dxfCoords?.minx, dxfCoords?.miny, dxfCoords?.maxx, dxfCoords?.maxy, labelsJson, existing.id]);
-      res.json({ id: existing.id, filename: finalFilename, dxfCoords });
+        [finalFilename, ...dxVals, existing.id]);
+      res.json({ id: existing.id, filename: finalFilename, dxfCoords: dxfCoords || null });
     } else {
+      const dxVals2 = [
+        dxfCoords?.minx ?? null, dxfCoords?.miny ?? null,
+        dxfCoords?.maxx ?? null, dxfCoords?.maxy ?? null,
+        labelsJson ?? null
+      ];
       db.run('INSERT INTO floorplans (region,dong,floor,filename,dxf_minx,dxf_miny,dxf_maxx,dxf_maxy,dxf_labels) VALUES (?,?,?,?,?,?,?,?,?)',
-        [region, dong, floor, finalFilename, dxfCoords?.minx, dxfCoords?.miny, dxfCoords?.maxx, dxfCoords?.maxy, labelsJson]);
-      res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename: finalFilename, dxfCoords });
+        [region, dong, floor, finalFilename, ...dxVals2]);
+      res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename: finalFilename, dxfCoords: dxfCoords || null });
     }
     saveDB();
   } catch(e) { console.error('Upload error:', e); res.status(500).json({ error: e.message }); }
