@@ -1980,6 +1980,50 @@
         </div>
       </div>
     </div>
+
+    <!-- 🌐 망 설정 -->
+    <div style="margin-top:28px">
+      <div class="settings-header">
+        <h2>🌐 망 설정</h2>
+        <span style="font-size:12px;color:#9ca3af">선번 관리에서 사용할 망 종류·색상·모양을 설정합니다</span>
+      </div>
+      <div class="settings-panel" style="max-width:640px">
+        <div class="settings-panel-head">
+          <span>망 목록</span>
+          <span id="networkCount" style="font-size:11px;color:#9ca3af"></span>
+        </div>
+        <div style="padding:16px" id="networkList">
+          <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">불러오는 중...</div>
+        </div>
+        <div class="settings-add-form" style="border-top:1px solid #f3f4f6;display:block;padding:16px">
+          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px">+ 새 망 추가</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div>
+              <div style="font-size:11px;color:#6b7280;margin-bottom:4px">망 이름</div>
+              <input type="text" id="newNetName" placeholder="예) VP" style="width:80px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6b7280;margin-bottom:4px">색상</div>
+              <input type="color" id="newNetColor" value="#3b82f6" style="width:40px;height:36px;border:1px solid #e5e7eb;border-radius:8px;padding:2px;cursor:pointer" />
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6b7280;margin-bottom:4px">모양</div>
+              <div style="display:flex;gap:4px" id="newNetShapeSelector">
+                <div class="shape-opt selected" data-shape="circle" onclick="selectNewShape(this)" title="원" style="width:28px;height:28px;font-size:14px">⬤</div>
+                <div class="shape-opt" data-shape="diamond" onclick="selectNewShape(this)" title="다이아몬드" style="width:28px;height:28px;font-size:14px">◆</div>
+                <div class="shape-opt" data-shape="star" onclick="selectNewShape(this)" title="별" style="width:28px;height:28px;font-size:14px">★</div>
+                <div class="shape-opt" data-shape="square" onclick="selectNewShape(this)" title="사각형" style="width:28px;height:28px;font-size:14px">■</div>
+                <div class="shape-opt" data-shape="triangle" onclick="selectNewShape(this)" title="삼각형" style="width:28px;height:28px;font-size:14px">▲</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="btn-red-sm" onclick="addNetwork()">+ 추가</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -3294,8 +3338,9 @@ function resetCanvas() {
 // 캔버스 클릭
 document.getElementById('floorCanvas').addEventListener('click', function(e) {
   if (!cableFloorplanId || !cableImg) return;
-  if (e._fromPan) return; // 드래그 후 클릭 무시
+  if (e._fromPan) return;
   const rect = this.getBoundingClientRect();
+  // 캔버스가 transform으로 이동/확대됐으므로 실제 캔버스 내 위치로 변환
   const x = (e.clientX - rect.left) / rect.width;
   const y = (e.clientY - rect.top) / rect.height;
 
@@ -3312,10 +3357,15 @@ document.getElementById('floorCanvas').addEventListener('click', function(e) {
 
 function findPinAt(nx, ny) {
   const canvas = document.getElementById('floorCanvas');
-  const THRESH = (PIN_R + 8) / canvas.width;
+  // 화면상 PIN_R 픽셀을 캔버스 비율로 변환
+  const rect = canvas.getBoundingClientRect();
+  const THRESH = (PIN_R + 8) / (canvas.width * (rect.width / canvas.width) / canvas.width);
+  const threshX = (PIN_R + 8) / rect.width;
+  const threshY = (PIN_R + 8) / rect.height;
   for (const l of cableLines) {
-    const dist = Math.sqrt((nx - l.x)**2 + (ny - l.y)**2);
-    if (dist < THRESH) return l;
+    const dx = Math.abs(nx - l.x);
+    const dy = Math.abs(ny - l.y);
+    if (dx < threshX * 3 && dy < threshY * 3) return l;
   }
   return null;
 }
