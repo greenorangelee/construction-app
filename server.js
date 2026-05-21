@@ -103,6 +103,9 @@ function diffRecords(before, after) {
   return changes;
 }
 
+
+function s(v) { return (v === undefined || v === null) ? '' : String(v).trim(); }
+
 function queryAll(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
@@ -151,15 +154,27 @@ app.get('/api/constructions/:id', (req, res) => {
 });
 
 app.post('/api/constructions', (req, res) => {
-  const d = req.body;
-  const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
-  db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [lastNo+1,d.gubun,d.req_date,d.corp,d.dept,d.requester,d.work_name,d.loc_region,d.loc_dong,d.loc_floor,d.loc_detail,d.move_region,d.move_dong,d.move_floor,d.move_detail,d.demolish_region,d.demolish_dong,d.demolish_floor,d.demolish_detail,d.status,d.deadline,d.complete_date,d.purchase_doc,d.payment_doc,d.related_doc,d.it_manager,d.worker,d.memo]);
-  saveDB();
-  const newId = queryOne('SELECT last_insert_rowid() as id').id;
-  recordHistory(newId, 'create', d.changed_by, [{ field: 'work_name', label: '공사명', before: '', after: d.work_name }]);
-  saveDB();
-  res.json({ id: newId, no: lastNo+1 });
+  try {
+    const d = req.body;
+    const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
+    db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [lastNo+1,
+       s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
+       s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
+       s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
+       s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
+       s(d.status),s(d.deadline),s(d.complete_date),
+       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),
+       s(d.it_manager),s(d.worker),s(d.memo)]);
+    saveDB();
+    const newId = queryOne('SELECT last_insert_rowid() as id').id;
+    recordHistory(newId, 'create', d.changed_by, [{ field: 'work_name', label: '공사명', before: '', after: d.work_name }]);
+    saveDB();
+    res.json({ id: newId, no: lastNo+1 });
+  } catch(e) {
+    console.error('POST error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.put('/api/constructions/:id', (req, res) => {
@@ -167,13 +182,13 @@ app.put('/api/constructions/:id', (req, res) => {
     const d = req.body;
     const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
     db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=? WHERE id=?`,
-      [d.gubun||'',d.req_date||'',d.corp||'',d.dept||'',d.requester||'',d.work_name||'',
-       d.loc_region||'',d.loc_dong||'',d.loc_floor||'',d.loc_detail||'',
-       d.move_region||'',d.move_dong||'',d.move_floor||'',d.move_detail||'',
-       d.demolish_region||'',d.demolish_dong||'',d.demolish_floor||'',d.demolish_detail||'',
-       d.status||'',d.deadline||'',d.complete_date||'',
-       d.purchase_doc||'',d.payment_doc||'',d.related_doc||'',
-       d.it_manager||'',d.worker||'',d.memo||'',req.params.id]);
+      [s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
+       s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
+       s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
+       s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
+       s(d.status),s(d.deadline),s(d.complete_date),
+       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),
+       s(d.it_manager),s(d.worker),s(d.memo),req.params.id]);
     const diff = diffRecords(before, d);
     if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
     saveDB();
