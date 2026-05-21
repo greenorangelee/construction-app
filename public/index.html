@@ -1671,6 +1671,39 @@
     .remap-btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
     .remap-btn-secondary:hover { background: rgba(255,255,255,0.2); }
     .remap-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── 선번 검색 ── */
+    .cable-search-wrap {
+      padding: 10px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      position: relative;
+    }
+    .cable-search-input {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 7px 32px 7px 10px;
+      font-size: 12px;
+      font-family: 'Noto Sans KR', sans-serif;
+      outline: none;
+      box-sizing: border-box;
+      color: #1a1a1a;
+      transition: border-color 0.15s;
+    }
+    .cable-search-input:focus { border-color: #c0392b; }
+    .cable-search-clear {
+      position: absolute;
+      right: 24px; top: 50%;
+      transform: translateY(-50%);
+      color: #9ca3af; cursor: pointer;
+      font-size: 14px; display: none;
+    }
+    .cable-item.highlight {
+      background: #fff5f5;
+      border-left: 3px solid #c0392b;
+    }
+    .cable-item.dimmed { opacity: 0.35; }
   </style>
 </head>
 <body>
@@ -1938,6 +1971,13 @@
         <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">
           <span style="font-size:12px;font-weight:700;color:#374151">선번 목록</span>
           <span id="cableTotalCount" style="font-size:11px;color:#9ca3af"></span>
+        </div>
+        <div class="cable-search-wrap">
+          <input type="text" class="cable-search-input" id="cableSearchInput"
+            placeholder="🔍 선번 검색 (예: DA01)"
+            oninput="onCableSearch(this.value)"
+            onkeydown="if(event.key==='Escape'){clearCableSearch()}" />
+          <span class="cable-search-clear" id="cableSearchClear" onclick="clearCableSearch()">✕</span>
         </div>
         <div class="cable-list-area" id="cableList">
           <div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">위치를 선택하세요</div>
@@ -3099,6 +3139,151 @@ async function importExcel(input) {
 
 
 
+
+// ── 선번 검색 ──────────────────────────────────────────
+
+let cableSearchQuery = '';
+
+function onCableSearch(val) {
+  cableSearchQuery = val.trim().toLowerCase();
+  const clearBtn = document.getElementById('cableSearchClear');
+  if (clearBtn) clearBtn.style.display = cableSearchQuery ? 'block' : 'none';
+
+  if (!cableSearchQuery) {
+    renderCableList(cableLines);
+    drawCanvas();
+    return;
+  }
+
+  // 매칭 핀 찾기
+  const matched = cableLines.filter(l =>
+    (l.cable_no || '').toLowerCase().includes(cableSearchQuery) ||
+    (l.construction_no || '').toLowerCase().includes(cableSearchQuery) ||
+    (l.memo || '').toLowerCase().includes(cableSearchQuery)
+  );
+
+  renderCableListWithSearch(matched);
+
+  // 첫 번째 매칭 핀으로 자동 이동 + 강조
+  if (matched.length > 0) {
+    focusPin(matched[0].id);
+  }
+  drawCanvasWithSearch(matched.map(l => l.id));
+}
+
+function clearCableSearch() {
+  document.getElementById('cableSearchInput').value = '';
+  cableSearchQuery = '';
+  const clearBtn = document.getElementById('cableSearchClear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  renderCableList(cableLines);
+  drawCanvas();
+}
+
+function renderCableListWithSearch(matched) {
+  const matchedIds = new Set(matched.map(l => l.id));
+  document.getElementById('cableTotalCount').textContent =
+    matched.length ? `${matched.length}/${cableLines.length}개` : '0개';
+
+  document.getElementById('cableList').innerHTML = cableLines.length
+    ? cableLines.map(l => {
+        const isMatch = matchedIds.has(l.id);
+        return `<div class="cable-item ${l.id === cableSelectedId ? 'selected' : ''} ${isMatch ? 'highlight' : 'dimmed'}"
+          onclick="selectCablePin(${l.id});focusPin(${l.id})">
+          <div class="cable-color-dot" style="background:${l.color}"></div>
+          <div class="cable-item-info">
+            <div class="cable-item-no">${l.cable_no || '(선번 없음)'}</div>
+            <div class="cable-item-sub">${l.construction_no ? '공사 ' + l.construction_no : ''} ${l.memo ? '· ' + l.memo : ''}</div>
+          </div>
+          <button class="cable-item-del" onclick="event.stopPropagation();deleteCablePin(${l.id})">✕</button>
+        </div>`;
+      }).join('')
+    : '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">등록된 선번이 없습니다</div>';
+}
+
+// 핀 위치로 캔버스 이동
+function focusPin(id) {
+  const pin = cableLines.find(l => l.id === id);
+  if (!pin || !cableImg) return;
+
+  const wrap = document.getElementById('canvasWrap');
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const scaledW = cableImg.naturalWidth * cableZoom;
+  const scaledH = cableImg.naturalHeight * cableZoom;
+
+  // 핀의 화면 좌표 계산 후 중앙으로 이동
+  const pinScreenX = pin.x * scaledW;
+  const pinScreenY = pin.y * scaledH;
+  panX = ww / 2 - pinScreenX;
+  panY = wh / 2 - pinScreenY;
+
+  applyCanvasTransform();
+  cableSelectedId = id;
+  drawCanvasWithSearch(cableSearchQuery
+    ? cableLines.filter(l => (l.cable_no||'').toLowerCase().includes(cableSearchQuery)).map(l => l.id)
+    : null);
+}
+
+function drawCanvasWithSearch(highlightIds) {
+  const canvas = document.getElementById('floorCanvas');
+  if (!canvas || canvas.style.display === 'none') return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (cableImg) ctx.drawImage(cableImg, 0, 0, canvas.width, canvas.height);
+
+  const hlSet = highlightIds ? new Set(highlightIds) : null;
+
+  cableLines.forEach(l => {
+    const cx = l.x * canvas.width;
+    const cy = l.y * canvas.height;
+    const selected = l.id === cableSelectedId;
+    const dimmed = hlSet && !hlSet.has(l.id);
+    const color = l.color || '#e74c3c';
+    const r = selected ? PIN_R + 3 : PIN_R;
+    const shape = l.shape || 'circle';
+
+    ctx.globalAlpha = dimmed ? 0.2 : 1.0;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = selected ? '#000' : '#fff';
+    ctx.lineWidth = selected ? 2.5 : 1.5;
+    ctx.beginPath();
+
+    if (shape === 'circle') {
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    } else if (shape === 'diamond') {
+      ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy);
+      ctx.lineTo(cx, cy+r); ctx.lineTo(cx-r, cy); ctx.closePath();
+    } else if (shape === 'star') {
+      for (let i = 0; i < 5; i++) {
+        const a1 = (i*4*Math.PI/5)-Math.PI/2, a2 = ((i*4+2)*Math.PI/5)-Math.PI/2;
+        i===0 ? ctx.moveTo(cx+r*Math.cos(a1),cy+r*Math.sin(a1)) : ctx.lineTo(cx+r*Math.cos(a1),cy+r*Math.sin(a1));
+        ctx.lineTo(cx+(r*0.4)*Math.cos(a2),cy+(r*0.4)*Math.sin(a2));
+      }
+      ctx.closePath();
+    } else if (shape === 'square') {
+      ctx.rect(cx-r, cy-r, r*2, r*2);
+    } else if (shape === 'triangle') {
+      ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy+r); ctx.lineTo(cx-r, cy+r); ctx.closePath();
+    } else {
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    }
+    ctx.fill(); ctx.stroke();
+
+    if (l.cable_no) {
+      ctx.font = `bold 11px sans-serif`;
+      const tw = ctx.measureText(l.cable_no).width;
+      const lx = cx - tw/2 - 4, ly = cy - r - 16;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lx, ly, tw+8, 15, 3) : ctx.rect(lx, ly, tw+8, 15);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l.cable_no, cx - tw/2, ly + 11);
+    }
+    ctx.globalAlpha = 1.0;
+  });
+}
+
 // ── 기준점 재매핑 ──────────────────────────────────────────
 
 let remapOldImg = null;
@@ -3818,9 +4003,13 @@ function loadFloorplanImage(filename) {
 async function loadCableLines() {
   if (!cableFloorplanId) return;
   cableLines = await api('GET', `/api/cables?floorplan_id=${cableFloorplanId}`);
-  renderCableList(cableLines);
-  drawCanvas();
-  // 핀이 있으면 재배치 버튼 표시
+  // 검색 중이면 검색 상태 유지
+  if (cableSearchQuery) {
+    onCableSearch(cableSearchQuery);
+  } else {
+    renderCableList(cableLines);
+    drawCanvas();
+  }
   const btn = document.getElementById('remapTriggerBtn');
   if (btn) btn.style.display = cableLines.length > 0 ? 'block' : 'none';
 }
