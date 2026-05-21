@@ -3599,7 +3599,7 @@ function setZoom(val, centerX, centerY) {
   if (!cableImg || canvas.style.display === 'none') return;
 
   const oldZoom = cableZoom;
-  cableZoom = Math.max(0.2, Math.min(5, val / 100));
+  cableZoom = Math.max(0.05, Math.min(5, val / 100));
 
   // 줌 중심점 기준으로 pan 조정
   if (centerX !== undefined && centerY !== undefined) {
@@ -4007,7 +4007,11 @@ async function deleteCablePin(id) {
     const mouseY = e.clientY - rect.top - panY;
     const delta = e.deltaY > 0 ? -10 : 10;
     const newZoomPct = Math.round(cableZoom * 100) + delta;
-    setZoom(newZoomPct, e.clientX - rect.left, e.clientY - rect.top);
+    // 최소 줌: wrap에 도면이 꽉 차는 크기 기준
+    const minZoomPct = cableImg ? Math.round(
+      Math.min(rect.width / cableImg.naturalWidth, rect.height / cableImg.naturalHeight) * 95
+    ) : 10;
+    setZoom(Math.max(minZoomPct, newZoomPct), e.clientX - rect.left, e.clientY - rect.top);
   }, { passive: false });
 
   // 휠 클릭(중간 버튼) 드래그
