@@ -269,30 +269,31 @@ app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
       fs.renameSync(path.join(FLOOR_IMG_DIR, candidates[0]), path.join(FLOOR_IMG_DIR, finalFilename));
 
     } else if (origName.endsWith('.dxf') || origName.endsWith('.dwg')) {
-      // DXF → PNG 변환 (Python ezdxf)
+      // DXF → PNG 변환 (Python ezdxf, 스크립트 파일 방식)
       const tmpDxf = path.join(FLOOR_IMG_DIR, base + '.dxf');
       const outPng = path.join(FLOOR_IMG_DIR, base + '.png');
+      const pyFile = path.join(FLOOR_IMG_DIR, base + '_convert.py');
       fs.writeFileSync(tmpDxf, req.file.buffer);
-      const pyScript = `
-import ezdxf
-from ezdxf.addons.drawing import RenderContext, Frontend
-from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-doc = ezdxf.readfile('${tmpDxf}')
-msp = doc.modelspace()
-fig = plt.figure(figsize=(16,12), dpi=100)
-ax = fig.add_axes([0,0,1,1])
-ctx = RenderContext(doc)
-out = MatplotlibBackend(ax)
-Frontend(ctx, out).draw_layout(msp)
-fig.savefig('${outPng}', dpi=150, bbox_inches='tight', facecolor='white')
-plt.close()
-`;
-      execSync(`python3 -c "${pyScript.replace(/
-/g,' ').replace(/'/g,"\'")}"`);
+      fs.writeFileSync(pyFile, [
+        'import ezdxf',
+        'from ezdxf.addons.drawing import RenderContext, Frontend',
+        'from ezdxf.addons.drawing.matplotlib import MatplotlibBackend',
+        'import matplotlib',
+        'matplotlib.use("Agg")',
+        'import matplotlib.pyplot as plt',
+        `doc = ezdxf.readfile(r"${tmpDxf}")`,
+        'msp = doc.modelspace()',
+        'fig = plt.figure(figsize=(16,12), dpi=100)',
+        'ax = fig.add_axes([0,0,1,1])',
+        'ctx = RenderContext(doc)',
+        'out = MatplotlibBackend(ax)',
+        'Frontend(ctx, out).draw_layout(msp)',
+        `fig.savefig(r"${outPng}", dpi=150, bbox_inches="tight", facecolor="white")`,
+        'plt.close()',
+      ].join('\n'));
+      execSync(`python3 "${pyFile}"`);
       fs.unlinkSync(tmpDxf);
+      fs.unlinkSync(pyFile);
       finalFilename = base + '.png';
 
     } else {
