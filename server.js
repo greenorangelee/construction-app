@@ -6,6 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
+const { execSync } = require('child_process');
+
+// 도면 이미지 저장 경로
+const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +37,29 @@ async function initDB() {
     changed_at TEXT DEFAULT (datetime('now','localtime')),
     diff TEXT           -- JSON string of changed fields
   )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS floorplans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    location_id INTEGER,   -- locations 테이블 FK
+    region TEXT, dong TEXT, floor TEXT,
+    filename TEXT,         -- 저장된 이미지 파일명
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS cables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    floorplan_id INTEGER,
+    cable_no TEXT,         -- 선번
+    construction_no TEXT,  -- 공사번호
+    x REAL, y REAL,        -- 핀 위치 (비율 0~1)
+    color TEXT DEFAULT '#e74c3c',
+    memo TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  // 기존 DB 컬럼 대응
+  try { db.run('ALTER TABLE cables ADD COLUMN x REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
 
   db.run(`CREATE TABLE IF NOT EXISTS locations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,6 +242,128 @@ app.get('/api/history/:id', (req, res) => {
   res.json(rows.map(r => ({ ...r, diff: JSON.parse(r.diff || '[]') })));
 });
 
+
+
+// ── 선번 관리 API ──────────────────────────────────────────
+
+// 도면 파일 업로드 (JPG/PNG/PDF/DXF → PNG 변환)
+app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
+  try {
+    const { region, dong, floor } = req.body;
+    if (!req.file) return res.status(400).json({ error: '파일 없음' });
+
+    const origName = req.file.originalname.toLowerCase();
+    const base = `${region}_${dong}_${floor}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    let finalFilename;
+
+    if (origName.endsWith('.pdf')) {
+      // PDF → PNG 변환 (첫 페이지)
+      const tmpPdf = path.join(FLOOR_IMG_DIR, base + '.pdf');
+      fs.writeFileSync(tmpPdf, req.file.buffer);
+      execSync(`pdftoppm -r 150 -f 1 -l 1 -png "${tmpPdf}" "${path.join(FLOOR_IMG_DIR, base)}"`);
+      fs.unlinkSync(tmpPdf);
+      // pdftoppm은 base-1.png 형태로 생성
+      const candidates = fs.readdirSync(FLOOR_IMG_DIR).filter(f => f.startsWith(base) && f.endsWith('.png'));
+      if (!candidates.length) throw new Error('PDF 변환 실패');
+      finalFilename = base + '.png';
+      fs.renameSync(path.join(FLOOR_IMG_DIR, candidates[0]), path.join(FLOOR_IMG_DIR, finalFilename));
+
+    } else if (origName.endsWith('.dxf') || origName.endsWith('.dwg')) {
+      // DXF → PNG 변환 (Python ezdxf)
+      const tmpDxf = path.join(FLOOR_IMG_DIR, base + '.dxf');
+      const outPng = path.join(FLOOR_IMG_DIR, base + '.png');
+      fs.writeFileSync(tmpDxf, req.file.buffer);
+      const pyScript = `
+import ezdxf
+from ezdxf.addons.drawing import RenderContext, Frontend
+from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+doc = ezdxf.readfile('${tmpDxf}')
+msp = doc.modelspace()
+fig = plt.figure(figsize=(16,12), dpi=100)
+ax = fig.add_axes([0,0,1,1])
+ctx = RenderContext(doc)
+out = MatplotlibBackend(ax)
+Frontend(ctx, out).draw_layout(msp)
+fig.savefig('${outPng}', dpi=150, bbox_inches='tight', facecolor='white')
+plt.close()
+`;
+      execSync(`python3 -c "${pyScript.replace(/
+/g,' ').replace(/'/g,"\'")}"`);
+      fs.unlinkSync(tmpDxf);
+      finalFilename = base + '.png';
+
+    } else {
+      // JPG/PNG 그대로 저장
+      const ext = origName.endsWith('.jpg') || origName.endsWith('.jpeg') ? 'jpg' : 'png';
+      finalFilename = base + '.' + ext;
+      fs.writeFileSync(path.join(FLOOR_IMG_DIR, finalFilename), req.file.buffer);
+    }
+
+    // DB 저장
+    const existing = queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
+    if (existing) {
+      db.run('UPDATE floorplans SET filename=? WHERE id=?', [finalFilename, existing.id]);
+      res.json({ id: existing.id, filename: finalFilename });
+    } else {
+      db.run('INSERT INTO floorplans (region,dong,floor,filename) VALUES (?,?,?,?)', [region, dong, floor, finalFilename]);
+      const newId = queryOne('SELECT last_insert_rowid() as id').id;
+      res.json({ id: newId, filename: finalFilename });
+    }
+    saveDB();
+  } catch(e) {
+    console.error('Upload error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 도면 이미지 조회
+app.get('/api/floorplan', (req, res) => {
+  const { region, dong, floor } = req.query;
+  const row = queryOne('SELECT * FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
+  res.json(row || null);
+});
+
+// 도면 이미지 파일 서빙
+app.get('/api/floorplan/image/:filename', (req, res) => {
+  const filepath = path.join(FLOOR_IMG_DIR, req.params.filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: '없음' });
+  res.sendFile(filepath);
+});
+
+// 선번 목록 조회
+app.get('/api/cables', (req, res) => {
+  const { floorplan_id } = req.query;
+  res.json(queryAll('SELECT * FROM cables WHERE floorplan_id=? ORDER BY id DESC', [floorplan_id]));
+});
+
+// 선번(핀) 추가
+app.post('/api/cables', (req, res) => {
+  const { floorplan_id, cable_no, construction_no, x, y, color, memo } = req.body;
+  db.run('INSERT INTO cables (floorplan_id,cable_no,construction_no,x,y,color,memo) VALUES (?,?,?,?,?,?,?)',
+    [floorplan_id, s(cable_no), s(construction_no), x, y, color||'#e74c3c', s(memo)]);
+  saveDB();
+  const newId = queryOne('SELECT last_insert_rowid() as id').id;
+  res.json({ id: newId });
+});
+
+// 선번 수정
+app.put('/api/cables/:id', (req, res) => {
+  const { cable_no, construction_no, color, memo } = req.body;
+  db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,memo=? WHERE id=?',
+    [s(cable_no), s(construction_no), color||'#e74c3c', s(memo), req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+// 선번 삭제
+app.delete('/api/cables/:id', (req, res) => {
+  db.run('DELETE FROM cables WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
 
 // ── 위치 관리 API ──────────────────────────────────────────
 
