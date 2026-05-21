@@ -1997,6 +1997,7 @@
             <span id="zoomLabel">100%</span>
           </label>
           <span id="canvasHint" style="margin-left:auto">위치와 도면을 선택하면 핀을 찍을 수 있습니다</span>
+          <button id="exportPdfBtn" class="tool-btn" style="display:none;margin-left:8px" onclick="exportCanvasPdf()">📄 PDF 저장</button>
         </div>
         <div class="canvas-wrap" id="canvasWrap">
           <div class="canvas-empty" id="canvasEmpty">
@@ -3140,6 +3141,138 @@ async function importExcel(input) {
 
 
 
+
+// ── PDF 내보내기 ──────────────────────────────────────────
+
+async function exportCanvasPdf() {
+  if (!cableImg) return;
+
+  const canvas = document.getElementById('floorCanvas');
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const floor = document.getElementById('cable-floor').value;
+
+  // 전체 도면 + 핀을 원본 해상도로 다시 그리기
+  const offscreen = document.createElement('canvas');
+  offscreen.width = canvas.width;
+  offscreen.height = canvas.height;
+  const ctx = offscreen.getContext('2d');
+  ctx.drawImage(cableImg, 0, 0, offscreen.width, offscreen.height);
+
+  // 모든 핀 그리기 (원본 크기 기준)
+  const pinR = Math.max(8, Math.round(offscreen.width / 150));
+  cableLines.forEach(l => {
+    const cx = l.x * offscreen.width;
+    const cy = l.y * offscreen.height;
+    const color = l.color || '#e74c3c';
+    const shape = l.shape || 'circle';
+
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = Math.max(2, pinR * 0.3);
+    ctx.beginPath();
+
+    if (shape === 'circle') {
+      ctx.arc(cx, cy, pinR, 0, Math.PI * 2);
+    } else if (shape === 'diamond') {
+      ctx.moveTo(cx, cy-pinR); ctx.lineTo(cx+pinR, cy);
+      ctx.lineTo(cx, cy+pinR); ctx.lineTo(cx-pinR, cy); ctx.closePath();
+    } else if (shape === 'square') {
+      ctx.rect(cx-pinR, cy-pinR, pinR*2, pinR*2);
+    } else if (shape === 'triangle') {
+      ctx.moveTo(cx, cy-pinR); ctx.lineTo(cx+pinR, cy+pinR); ctx.lineTo(cx-pinR, cy+pinR); ctx.closePath();
+    } else if (shape === 'star') {
+      for (let i = 0; i < 5; i++) {
+        const a1 = (i*4*Math.PI/5)-Math.PI/2, a2 = ((i*4+2)*Math.PI/5)-Math.PI/2;
+        i===0 ? ctx.moveTo(cx+pinR*Math.cos(a1),cy+pinR*Math.sin(a1)) : ctx.lineTo(cx+pinR*Math.cos(a1),cy+pinR*Math.sin(a1));
+        ctx.lineTo(cx+(pinR*0.4)*Math.cos(a2),cy+(pinR*0.4)*Math.sin(a2));
+      }
+      ctx.closePath();
+    } else {
+      ctx.arc(cx, cy, pinR, 0, Math.PI * 2);
+    }
+    ctx.fill(); ctx.stroke();
+
+    if (l.cable_no) {
+      const fs = Math.max(12, Math.round(offscreen.width / 120));
+      ctx.font = `bold ${fs}px sans-serif`;
+      const tw = ctx.measureText(l.cable_no).width;
+      const lx = cx - tw/2 - 4, ly = cy - pinR - fs - 4;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lx, ly, tw+8, fs+6, 3) : ctx.rect(lx, ly, tw+8, fs+6);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l.cable_no, cx - tw/2, ly + fs + 1);
+    }
+  });
+
+  // 이미지 데이터 URL
+  const imgData = offscreen.toDataURL('image/png');
+
+  // jsPDF 로드 (CDN)
+  if (!window.jspdf) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  const { jsPDF } = window.jspdf;
+  const imgW = offscreen.width, imgH = offscreen.height;
+  const isLandscape = imgW > imgH;
+
+  // A4 기준 (mm)
+  const pageW = isLandscape ? 297 : 210;
+  const pageH = isLandscape ? 210 : 297;
+  const margin = 10;
+  const availW = pageW - margin * 2;
+  const availH = pageH - margin * 2 - 12; // 상단 제목 공간
+
+  const scale = Math.min(availW / imgW, availH / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+
+  const pdf = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+
+  // 제목
+  const title = `${region} ${dong} ${floor} 선번 배치도`;
+  const dateStr = new Date().toLocaleDateString('ko-KR');
+  pdf.setFontSize(11);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(title, margin, margin + 6);
+  pdf.setFontSize(8);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(dateStr, pageW - margin, margin + 6, { align: 'right' });
+
+  // 구분선
+  pdf.setDrawColor(192, 57, 43);
+  pdf.setLineWidth(0.5);
+  pdf.line(margin, margin + 9, pageW - margin, margin + 9);
+
+  // 도면 이미지
+  pdf.addImage(imgData, 'PNG', margin, margin + 12, drawW, drawH);
+
+  // 선번 범례 (오른쪽 여백에 표시 가능하면)
+  if (cableLines.length > 0 && drawW < availW - 20) {
+    const legendX = margin + drawW + 3;
+    const legendY = margin + 12;
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('선번 목록', legendX, legendY + 4);
+    pdf.setFont('helvetica', 'normal');
+    cableLines.slice(0, 30).forEach((l, i) => {
+      pdf.text(`• ${l.cable_no || '-'}${l.construction_no ? ' (공사' + l.construction_no + ')' : ''}`, legendX, legendY + 10 + i * 5);
+    });
+  }
+
+  const filename = `${region}_${dong}_${floor}_선번배치도_${dateStr.replace(/\./g,'')}.pdf`;
+  pdf.save(filename);
+  showToast('📄 PDF 저장 완료');
+}
+
 // ── 선번 검색 ──────────────────────────────────────────
 
 let cableSearchQuery = '';
@@ -3992,6 +4125,8 @@ function loadFloorplanImage(filename) {
     empty.style.display = 'none';
     applyCanvasTransform();
     document.getElementById('canvasHint').textContent = '클릭으로 핀 추가, 핀 클릭으로 편집/삭제';
+    const pdfBtn = document.getElementById('exportPdfBtn');
+    if (pdfBtn) pdfBtn.style.display = 'block';
     drawCanvas();
   };
   img.onerror = () => {
