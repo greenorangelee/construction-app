@@ -1635,11 +1635,12 @@
     }
 
     .remap-canvas-wrap {
-      position: relative; overflow: auto;
+      position: relative; overflow: hidden;
       max-width: 45vw; max-height: 55vh;
       border: 2px solid rgba(255,255,255,0.2); border-radius: 8px;
       background: #1a1a1a; cursor: crosshair;
     }
+    .remap-canvas-wrap.panning { cursor: grabbing !important; }
 
     .remap-canvas-wrap.active-side { border-color: #c0392b; }
 
@@ -3126,15 +3127,88 @@ function startRemapMode() {
   input.click();
 }
 
+// 재매핑 캔버스 줌/패닝 상태
+const remapView = {
+  old: { zoom: 1, panX: 0, panY: 0 },
+  new: { zoom: 1, panX: 0, panY: 0 }
+};
+
+function applyRemapTransform(side) {
+  const canvas = document.getElementById(side === 'old' ? 'remapOldCanvas' : 'remapNewCanvas');
+  const v = remapView[side];
+  const img = side === 'old' ? remapOldImg : remapNewImg;
+  if (!img || !canvas) return;
+  canvas.style.width = (img.naturalWidth * v.zoom) + 'px';
+  canvas.style.height = (img.naturalHeight * v.zoom) + 'px';
+  canvas.style.transform = `translate(${v.panX}px, ${v.panY}px)`;
+  canvas.style.transformOrigin = '0 0';
+}
+
+function initRemapCanvasEvents(side) {
+  const wrap = document.getElementById(side === 'old' ? 'remapOldWrap' : 'remapNewWrap');
+  let isPanning = false, startX, startY, startPanX, startPanY;
+
+  // 클릭 이벤트 (기준점 찍기)
+  wrap.onclick = (e) => {
+    if (e._isPan) return;
+    onRemapClick(e, side);
+  };
+
+  // 휠 줌
+  wrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const v = remapView[side];
+    const rect = wrap.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const oldZoom = v.zoom;
+    v.zoom = Math.max(0.2, Math.min(5, v.zoom + delta));
+    const scale = v.zoom / oldZoom;
+    v.panX = mouseX - (mouseX - v.panX) * scale;
+    v.panY = mouseY - (mouseY - v.panY) * scale;
+    applyRemapTransform(side);
+  }, { passive: false });
+
+  // 휠클릭 드래그
+  wrap.addEventListener('mousedown', (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    isPanning = true;
+    startX = e.clientX; startY = e.clientY;
+    startPanX = remapView[side].panX;
+    startPanY = remapView[side].panY;
+    wrap.classList.add('panning');
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    remapView[side].panX = startPanX + (e.clientX - startX);
+    remapView[side].panY = startPanY + (e.clientY - startY);
+    applyRemapTransform(side);
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    if (!isPanning) return;
+    isPanning = false;
+    wrap.classList.remove('panning');
+  });
+}
+
 function openRemapOverlay() {
+  // 줌/패닝 초기화
+  remapView.old = { zoom: 1, panX: 0, panY: 0 };
+  remapView.new = { zoom: 1, panX: 0, panY: 0 };
+
   document.getElementById('remapOverlay').classList.add('open');
   drawRemapCanvas('old');
   drawRemapCanvas('new');
+  applyRemapTransform('old');
+  applyRemapTransform('new');
   updateRemapUI();
 
-  // 클릭 이벤트
-  document.getElementById('remapOldWrap').onclick = (e) => onRemapClick(e, 'old');
-  document.getElementById('remapNewWrap').onclick = (e) => onRemapClick(e, 'new');
+  initRemapCanvasEvents('old');
+  initRemapCanvasEvents('new');
 }
 
 function drawRemapCanvas(side) {
@@ -3150,6 +3224,8 @@ function drawRemapCanvas(side) {
   canvas.height = img.naturalHeight;
   canvas.style.width = (img.naturalWidth * scale) + 'px';
   canvas.style.height = (img.naturalHeight * scale) + 'px';
+
+  applyRemapTransform(side);
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3187,15 +3263,24 @@ function drawRemapCanvas(side) {
 }
 
 function onRemapClick(e, side) {
-  // 현재 활성 사이드가 아니면 무시
   if (remapPhase !== side) return;
   const pts = side === 'old' ? remapOldPoints : remapNewPoints;
   if (pts.length >= REMAP_COUNT) return;
 
+  const wrap = document.getElementById(side === 'old' ? 'remapOldWrap' : 'remapNewWrap');
   const canvas = document.getElementById(side === 'old' ? 'remapOldCanvas' : 'remapNewCanvas');
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width;
-  const y = (e.clientY - rect.top) / rect.height;
+  const v = remapView[side];
+  const wrapRect = wrap.getBoundingClientRect();
+
+  // 줌/패닝 반영한 캔버스 내 비율 좌표 계산
+  const mouseX = e.clientX - wrapRect.left;
+  const mouseY = e.clientY - wrapRect.top;
+  const canvasPixelX = (mouseX - v.panX) / v.zoom;
+  const canvasPixelY = (mouseY - v.panY) / v.zoom;
+  const x = canvasPixelX / canvas.width;
+  const y = canvasPixelY / canvas.height;
+
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
   pts.push({ x, y });
 
   drawRemapCanvas(side);
