@@ -4160,10 +4160,11 @@ function selectCablePin(id) {
     renderCableListWithSearch(matched);
     drawCanvasWithSearch(matched.map(l => l.id));
   } else {
-    // 검색 없어도 클릭한 핀만 강조, 나머지 흐리게
     renderCableList(cableLines);
     drawCanvasWithSearch([id]);
   }
+  // 해당 핀 위치로 도면 자동 이동
+  focusPin(id);
 }
 
 let editingCableId = null;
