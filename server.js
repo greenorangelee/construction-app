@@ -14,6 +14,7 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'construction.db');
 
 // 도면 이미지 저장 경로 (DB_PATH 선언 후에 정의)
 const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
+if (!fs.existsSync(FLOOR_IMG_DIR)) fs.mkdirSync(FLOOR_IMG_DIR, { recursive: true });
 
 app.use(cors());
 app.use(express.json());
