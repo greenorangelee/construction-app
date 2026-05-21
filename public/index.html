@@ -1761,9 +1761,7 @@
       <!-- 캔버스 패널 -->
       <div class="canvas-panel">
         <div class="canvas-toolbar">
-          <button class="tool-btn active" id="toolPin" onclick="setTool('pin')">📍 핀 찍기</button>
-          <button class="tool-btn" id="toolSelect" onclick="setTool('select')">↖ 선택/수정</button>
-          <button class="tool-btn" id="toolDelete" onclick="setTool('delete')">🗑 삭제</button>
+          <button class="tool-btn active" id="toolPin">📍 핀 찍기 (클릭으로 추가, 핀 클릭으로 편집/삭제)</button>
           <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
           <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
             핀 색상
@@ -1792,10 +1790,25 @@
 <!-- 선번 입력 모달 -->
 <div class="cable-modal" id="cableInputModal">
   <div class="cable-modal-box">
-    <h3 id="cableModalTitle">선번 정보 입력</h3>
+    <h3 id="cableModalTitle">핀 정보</h3>
     <div class="cable-form-group">
-      <label>선번 *</label>
-      <input type="text" id="ci-cable_no" placeholder="예) DA-001, VP-023" />
+      <label>선번 타입 *</label>
+      <div style="display:flex;gap:8px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:#fff5f5;border:2px solid #fecaca;border-radius:8px;padding:8px 12px;transition:all 0.15s" id="label-DA">
+          <input type="radio" name="cable_type" value="DA" id="type-DA" onchange="onCableTypeChange()" style="accent-color:#e74c3c" />
+          <span style="font-weight:700;color:#c0392b">DA</span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#e74c3c;display:inline-block"></span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:#fffbeb;border:2px solid #fde68a;border-radius:8px;padding:8px 12px;transition:all 0.15s" id="label-VP">
+          <input type="radio" name="cable_type" value="VP" id="type-VP" onchange="onCableTypeChange()" style="accent-color:#f59e0b" />
+          <span style="font-weight:700;color:#d97706">VP</span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#f59e0b;display:inline-block"></span>
+        </label>
+      </div>
+    </div>
+    <div class="cable-form-group">
+      <label>번호 *</label>
+      <input type="number" id="ci-cable_num" placeholder="예) 1" min="1" style="width:100%;box-sizing:border-box" />
     </div>
     <div class="cable-form-group">
       <label>공사번호</label>
@@ -1805,7 +1818,8 @@
       <label>메모</label>
       <textarea id="ci-memo" placeholder="특이사항 등" rows="2" style="resize:none"></textarea>
     </div>
-    <div class="cable-modal-footer">
+    <div class="cable-modal-footer" id="cableModalFooter">
+      <button class="btn btn-danger btn-sm" id="cableDeleteBtn" onclick="deleteCablePinFromModal()" style="display:none">삭제</button>
       <button class="btn btn-outline" onclick="closeCableModal()">취소</button>
       <button class="btn btn-primary" onclick="saveCableLine()">저장</button>
     </div>
@@ -2820,16 +2834,10 @@ let cableZoom = 1.0;
 
 function setTool(t) {
   cableTool = t;
-  ['pin','select','delete'].forEach(n => {
-    const btn = document.getElementById('tool' + n.charAt(0).toUpperCase() + n.slice(1));
-    if (btn) btn.classList.toggle('active', n === t);
-  });
   const canvas = document.getElementById('floorCanvas');
-  if (!canvas) return;
-  canvas.style.cursor = t === 'pin' ? 'crosshair' : t === 'delete' ? 'not-allowed' : 'pointer';
-  const hints = { pin: '도면을 클릭해 핀을 찍으세요', select: '핀을 클릭하면 정보를 수정할 수 있습니다', delete: '삭제할 핀을 클릭하세요' };
+  if (canvas) canvas.style.cursor = 'crosshair';
   const hint = document.getElementById('canvasHint');
-  if (hint) hint.textContent = hints[t] || '';
+  if (hint) hint.textContent = '도면을 클릭해 핀 추가, 핀을 클릭해 편집/삭제';
 }
 
 function setZoom(val) {
@@ -2968,7 +2976,7 @@ function renderCableList(lines) {
     : '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">등록된 선번이 없습니다</div>';
 }
 
-const PIN_R = 12; // 핀 반지름 (px, 캔버스 기준)
+const PIN_R = 6; // 핀 반지름 (px, 캔버스 기준)
 
 function drawCanvas() {
   const canvas = document.getElementById('floorCanvas');
@@ -3007,7 +3015,7 @@ function drawCanvas() {
       ctx.font = `bold ${fontSize}px sans-serif`;
       const tw = ctx.measureText(l.cable_no).width;
       const lx = cx - tw/2 - 4;
-      const ly = cy - PIN_R - 18;
+      const ly = cy - PIN_R - 16;
       // 배경
       ctx.fillStyle = selected ? '#f59e0b' : color;
       ctx.beginPath();
@@ -3038,18 +3046,14 @@ document.getElementById('floorCanvas').addEventListener('click', function(e) {
   const x = (e.clientX - rect.left) / rect.width;
   const y = (e.clientY - rect.top) / rect.height;
 
-  if (cableTool === 'pin') {
+  // 핀 클릭 여부 먼저 확인
+  const hit = findPinAt(x, y);
+  if (hit) {
+    selectCablePin(hit.id);
+    openCableModal(hit);
+  } else {
+    // 빈 곳 클릭 = 새 핀 추가
     openCableModal(null, x, y);
-  } else if (cableTool === 'select' || cableTool === 'delete') {
-    const hit = findPinAt(x, y);
-    if (hit) {
-      if (cableTool === 'delete') {
-        deleteCablePin(hit.id);
-      } else {
-        selectCablePin(hit.id);
-        openCableModal(hit);
-      }
-    }
   }
 });
 
@@ -3072,16 +3076,55 @@ function selectCablePin(id) {
 let editingCableId = null;
 let pendingPinX = null, pendingPinY = null;
 
+function onCableTypeChange() {
+  const type = document.querySelector('input[name="cable_type"]:checked')?.value;
+  const color = type === 'DA' ? '#e74c3c' : '#f59e0b';
+  document.getElementById('cableColorPicker').value = color;
+}
+
 function openCableModal(existing = null, px = null, py = null) {
   editingCableId = existing ? existing.id : null;
   pendingPinX = px; pendingPinY = py;
-  document.getElementById('cableModalTitle').textContent = existing ? '선번 정보 수정' : '핀 정보 입력';
-  document.getElementById('ci-cable_no').value = existing?.cable_no || '';
+  document.getElementById('cableModalTitle').textContent = existing ? '핀 정보 수정' : '핀 정보 입력';
+
+  if (existing?.cable_no) {
+    // DA01, VP01 형태에서 타입과 번호 분리
+    const match = existing.cable_no.match(/^(DA|VP)(\d+)$/i);
+    if (match) {
+      const typeVal = match[1].toUpperCase();
+      const numVal = parseInt(match[2]);
+      const radio = document.getElementById('type-' + typeVal);
+      if (radio) radio.checked = true;
+      document.getElementById('ci-cable_num').value = numVal;
+    } else {
+      document.getElementById('type-DA').checked = true;
+      document.getElementById('ci-cable_num').value = '';
+    }
+  } else {
+    document.getElementById('type-DA').checked = true;
+    document.getElementById('ci-cable_num').value = '';
+  }
+
   document.getElementById('ci-construction_no').value = existing?.construction_no || '';
   document.getElementById('ci-memo').value = existing?.memo || '';
-  if (existing?.color) document.getElementById('cableColorPicker').value = existing.color;
+
+  // 색상 자동 설정
+  const color = existing?.color || '#e74c3c';
+  document.getElementById('cableColorPicker').value = color;
+
+  // 삭제 버튼 표시 여부
+  const delBtn = document.getElementById('cableDeleteBtn');
+  if (delBtn) delBtn.style.display = existing ? 'block' : 'none';
+
   document.getElementById('cableInputModal').classList.add('open');
-  setTimeout(() => document.getElementById('ci-cable_no').focus(), 100);
+  setTimeout(() => document.getElementById('ci-cable_num').focus(), 100);
+}
+
+function deleteCablePinFromModal() {
+  if (!editingCableId) return;
+  const id = editingCableId;
+  closeCableModal();
+  deleteCablePin(id);
 }
 
 function closeCableModal() {
@@ -3091,10 +3134,13 @@ function closeCableModal() {
 }
 
 async function saveCableLine() {
-  const cable_no = document.getElementById('ci-cable_no').value.trim();
+  const type = document.querySelector('input[name="cable_type"]:checked')?.value || 'DA';
+  const num = document.getElementById('ci-cable_num').value.trim();
+  if (!num) { alert('번호를 입력하세요'); return; }
+  const cable_no = type + num.padStart(2, '0');
+  const color = type === 'DA' ? '#e74c3c' : '#f59e0b';
   const construction_no = document.getElementById('ci-construction_no').value.trim();
   const memo = document.getElementById('ci-memo').value.trim();
-  const color = document.getElementById('cableColorPicker').value;
 
   if (editingCableId) {
     await api('PUT', `/api/cables/${editingCableId}`, { cable_no, construction_no, color, memo });
