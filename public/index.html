@@ -1637,9 +1637,10 @@
 
     .remap-canvas-wrap {
       position: relative; overflow: hidden;
-      max-width: 45vw; max-height: 55vh;
+      width: 44vw; height: 52vh;
       border: 2px solid rgba(255,255,255,0.2); border-radius: 8px;
       background: #1a1a1a; cursor: crosshair;
+      flex-shrink: 0;
     }
     .remap-canvas-wrap.panning { cursor: grabbing !important; }
 
@@ -1974,8 +1975,35 @@
 <div class="remap-overlay" id="remapOverlay">
   <div class="remap-step-badge" id="remapStepBadge">1/4 - 구 도면에서 기준점 클릭</div>
   <div class="remap-header" id="remapHeader">
-    구 도면과 신 도면에서 같은 위치 4곳을 순서대로 찍어주세요<br>
-    <span style="font-size:12px;color:#9ca3af">벽 모서리, 기둥, 출입구 등 변하지 않는 고정 지점을 선택하세요</span>
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
+      <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px 20px;text-align:center">
+        <div style="font-size:22px;margin-bottom:4px">🏢</div>
+        <div style="font-size:13px;font-weight:700;color:#fff">건물 외곽 꼭지점</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:2px">양쪽 도면에서<br>같은 모서리 4곳</div>
+      </div>
+      <div style="color:#6b7280;font-size:20px">→</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px;background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);border-radius:8px;padding:6px 14px">
+          <span style="font-size:16px">🔴</span>
+          <span style="font-size:12px;color:#fff">외곽 <b>좌상단</b> 모서리</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:6px 14px">
+          <span style="font-size:16px">🟡</span>
+          <span style="font-size:12px;color:#fff">외곽 <b>우상단</b> 모서리</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:6px 14px">
+          <span style="font-size:16px">🟢</span>
+          <span style="font-size:12px;color:#fff">외곽 <b>우하단</b> 모서리</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:6px 14px">
+          <span style="font-size:16px">🔵</span>
+          <span style="font-size:12px;color:#fff">외곽 <b>좌하단</b> 모서리</span>
+        </div>
+      </div>
+      <div style="color:#6b7280;font-size:11px;text-align:center;max-width:160px;line-height:1.6">
+        ⚠️ 구 도면과 신 도면에서<br><b style="color:#fff">같은 순서</b>로 찍어야<br>정확하게 재배치됩니다
+      </div>
+    </div>
   </div>
   <div class="remap-canvases">
     <div class="remap-panel">
@@ -3139,9 +3167,10 @@ function applyRemapTransform(side) {
   const v = remapView[side];
   const img = side === 'old' ? remapOldImg : remapNewImg;
   if (!img || !canvas) return;
-  canvas.style.width = (img.naturalWidth * v.zoom) + 'px';
-  canvas.style.height = (img.naturalHeight * v.zoom) + 'px';
-  canvas.style.transform = `translate(${v.panX}px, ${v.panY}px)`;
+  // 크기는 자연 크기 고정, transform으로만 줌/패닝 (wrap 크기에 영향 없음)
+  canvas.style.width = img.naturalWidth + 'px';
+  canvas.style.height = img.naturalHeight + 'px';
+  canvas.style.transform = `translate(${v.panX}px, ${v.panY}px) scale(${v.zoom})`;
   canvas.style.transformOrigin = '0 0';
 }
 
@@ -3197,15 +3226,23 @@ function initRemapCanvasEvents(side) {
 }
 
 function openRemapOverlay() {
-  // 줌/패닝 초기화
-  remapView.old = { zoom: 1, panX: 0, panY: 0 };
-  remapView.new = { zoom: 1, panX: 0, panY: 0 };
-
   document.getElementById('remapOverlay').classList.add('open');
-  drawRemapCanvas('old');
-  drawRemapCanvas('new');
-  applyRemapTransform('old');
-  applyRemapTransform('new');
+
+  // 초기 줌: wrap 크기에 도면이 꽉 차도록 자동 계산
+  setTimeout(() => {
+    ['old','new'].forEach(side => {
+      const img = side === 'old' ? remapOldImg : remapNewImg;
+      const wrap = document.getElementById(side === 'old' ? 'remapOldWrap' : 'remapNewWrap');
+      if (!img || !wrap) return;
+      const wRect = wrap.getBoundingClientRect();
+      const fitZoom = Math.min(wRect.width / img.naturalWidth, wRect.height / img.naturalHeight) * 0.95;
+      remapView[side] = { zoom: fitZoom, panX: 0, panY: 0 };
+    });
+    drawRemapCanvas('old');
+    drawRemapCanvas('new');
+    applyRemapTransform('old');
+    applyRemapTransform('new');
+  }, 50);
   updateRemapUI();
 
   initRemapCanvasEvents('old');
@@ -3217,14 +3254,11 @@ function drawRemapCanvas(side) {
   const img = side === 'old' ? remapOldImg : remapNewImg;
   if (!img) return;
 
-  // 캔버스 크기 설정
-  const maxW = window.innerWidth * 0.42;
-  const maxH = window.innerHeight * 0.5;
-  const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+  // 캔버스 해상도는 자연 크기, DOM 크기도 자연 크기 고정 (transform으로만 조절)
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
-  canvas.style.width = (img.naturalWidth * scale) + 'px';
-  canvas.style.height = (img.naturalHeight * scale) + 'px';
+  canvas.style.width = img.naturalWidth + 'px';
+  canvas.style.height = img.naturalHeight + 'px';
 
   applyRemapTransform(side);
 
