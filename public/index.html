@@ -1432,9 +1432,10 @@
     .canvas-wrap {
       position: relative;
       overflow: hidden;
-      max-height: 70vh;
+      height: 70vh;
       background: #f3f4f6;
       cursor: crosshair;
+      flex-shrink: 0;
     }
     .canvas-wrap.panning { cursor: grabbing; }
 
@@ -3615,14 +3616,16 @@ function setZoom(val, centerX, centerY) {
 
   applyCanvasTransform();
   drawCanvas();
+  // 줌 변경 시 레이아웃 영향 없음 (transform만 사용)
 }
 
 function applyCanvasTransform() {
   const canvas = document.getElementById('floorCanvas');
   if (!cableImg) return;
-  canvas.style.width = (cableImg.naturalWidth * cableZoom) + 'px';
-  canvas.style.height = (cableImg.naturalHeight * cableZoom) + 'px';
-  canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+  // width/height는 자연 크기로 고정, transform으로만 줌/패닝 처리
+  canvas.style.width = cableImg.naturalWidth + 'px';
+  canvas.style.height = cableImg.naturalHeight + 'px';
+  canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${cableZoom})`;
   canvas.style.transformOrigin = '0 0';
 }
 
@@ -3730,6 +3733,9 @@ function loadFloorplanImage(filename) {
     if (labelEl) labelEl.textContent = '100%';
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
+    // 캔버스 DOM 크기는 자연 크기로 고정 (레이아웃에 영향 없음)
+    canvas.style.width = img.naturalWidth + 'px';
+    canvas.style.height = img.naturalHeight + 'px';
     canvas.style.display = 'block';
     empty.style.display = 'none';
     applyCanvasTransform();
