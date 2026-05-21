@@ -8,12 +8,12 @@ const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 const { execSync } = require('child_process');
 
-// 도면 이미지 저장 경로
-const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'construction.db');
+
+// 도면 이미지 저장 경로 (DB_PATH 선언 후에 정의)
+const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
 
 app.use(cors());
 app.use(express.json());
