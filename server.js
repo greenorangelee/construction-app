@@ -64,6 +64,13 @@ async function initDB() {
   try { db.run('ALTER TABLE cables ADD COLUMN x REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN shape TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE cables ADD COLUMN dxf_x REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE cables ADD COLUMN dxf_y REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_minx REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_miny REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_maxx REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_maxy REAL'); } catch(e) {}
+  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_labels TEXT'); } catch(e) {}
 
   db.run(`CREATE TABLE IF NOT EXISTS locations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +150,31 @@ function queryAll(sql, params = []) {
 }
 
 function queryOne(sql, params = []) { return queryAll(sql, params)[0] || null; }
+
+// DXF 좌표 기반 핀 재매핑
+function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
+  const cables = queryAll('SELECT * FROM cables WHERE floorplan_id=?', [floorplanId]);
+  if (!cables.length) return;
+
+  const oldW = (oldFp.dxf_maxx || 1) - (oldFp.dxf_minx || 0);
+  const oldH = (oldFp.dxf_maxy || 1) - (oldFp.dxf_miny || 0);
+  const newW = newCoords.maxx - newCoords.minx;
+  const newH = newCoords.maxy - newCoords.miny;
+
+  let remapped = 0;
+  for (const cable of cables) {
+    if (cable.dxf_x !== null && cable.dxf_x !== undefined) {
+      // DXF 실제 좌표로 새 도면에서 비율 재계산
+      const newX = (cable.dxf_x - newCoords.minx) / newW;
+      const newY = 1 - ((cable.dxf_y - newCoords.miny) / newH); // Y축 반전
+      db.run('UPDATE cables SET x=?, y=? WHERE id=?', [newX, newY, cable.id]);
+      remapped++;
+    }
+  }
+  console.log(`핀 재매핑 완료: ${remapped}/${cables.length}개`);
+}
+
+
 
 // ── 공사 이력 API ──────────────────────────────────────────
 
@@ -262,6 +294,7 @@ app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
     const origName = req.file.originalname.toLowerCase();
     const base = `${region}_${dong}_${floor}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '_');
     let finalFilename;
+    let dxfCoords = null;
     if (origName.endsWith('.pdf')) {
       const tmpPdf = path.join(FLOOR_IMG_DIR, base + '.pdf');
       fs.writeFileSync(tmpPdf, req.file.buffer);
@@ -274,34 +307,80 @@ app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
     } else if (origName.endsWith('.dxf') || origName.endsWith('.dwg')) {
       const tmpDxf = path.join(FLOOR_IMG_DIR, base + '.dxf');
       const outPng = path.join(FLOOR_IMG_DIR, base + '.png');
+      const outJson = path.join(FLOOR_IMG_DIR, base + '_coords.json');
       const pyFile = path.join(FLOOR_IMG_DIR, base + '_convert.py');
       fs.writeFileSync(tmpDxf, req.file.buffer);
       fs.writeFileSync(pyFile, [
-        'import ezdxf',
+        'import ezdxf, json, sys',
         'from ezdxf.addons.drawing import RenderContext, Frontend',
         'from ezdxf.addons.drawing.matplotlib import MatplotlibBackend',
         'import matplotlib','matplotlib.use("Agg")','import matplotlib.pyplot as plt',
         `doc = ezdxf.readfile(r"${tmpDxf}")`,
-        'msp = doc.modelspace()','fig = plt.figure(figsize=(16,12), dpi=100)',
-        'ax = fig.add_axes([0,0,1,1])','ctx = RenderContext(doc)','out = MatplotlibBackend(ax)',
+        'msp = doc.modelspace()',
+        '# 좌표 범위 및 텍스트 레이블 추출',
+        'pts = []',
+        'labels = []',
+        'for e in msp:',
+        '    try:',
+        '        if hasattr(e.dxf,"start"): pts.append(e.dxf.start)',
+        '        if hasattr(e.dxf,"end"): pts.append(e.dxf.end)',
+        '        if hasattr(e.dxf,"insert"): pts.append(e.dxf.insert)',
+        '        if e.dxftype() in ("TEXT","MTEXT"):',
+        '            ins = e.dxf.insert',
+        '            txt = e.dxf.text if e.dxftype()=="TEXT" else e.text',
+        '            txt = txt.strip().replace("\\n"," ")',
+        '            if txt: labels.append({"text":txt,"x":float(ins[0]),"y":float(ins[1])})',
+        '    except: pass',
+        'if pts:',
+        '    xs=[p[0] for p in pts]; ys=[p[1] for p in pts]',
+        '    coords={"minx":min(xs),"miny":min(ys),"maxx":max(xs),"maxy":max(ys),"labels":labels}',
+        'else:',
+        '    coords={"minx":0,"miny":0,"maxx":1,"maxy":1,"labels":[]}',
+        `with open(r"${outJson}","w",encoding="utf-8") as f: json.dump(coords,f,ensure_ascii=False)`,
+        '# PNG 렌더링',
+        'fig = plt.figure(figsize=(20,15), dpi=100)',
+        'ax = fig.add_axes([0,0,1,1])',
+        'ctx = RenderContext(doc)',
+        'out = MatplotlibBackend(ax)',
         'Frontend(ctx, out).draw_layout(msp)',
-        `fig.savefig(r"${outPng}", dpi=150, bbox_inches="tight", facecolor="white")`,'plt.close()',
+        `fig.savefig(r"${outPng}", dpi=150, bbox_inches="tight", facecolor="white")`,
+        'plt.close()',
       ].join('\n'));
       execSync(`python3 "${pyFile}"`);
       fs.unlinkSync(tmpDxf); fs.unlinkSync(pyFile);
       finalFilename = base + '.png';
+
+      // DXF 좌표 데이터 읽기
+      if (fs.existsSync(outJson)) {
+        try {
+          dxfCoords = JSON.parse(fs.readFileSync(outJson, 'utf-8'));
+          fs.unlinkSync(outJson);
+        } catch(e) { console.error('DXF coords parse error:', e); }
+      }
     } else {
       const ext = origName.endsWith('.jpg') || origName.endsWith('.jpeg') ? 'jpg' : 'png';
       finalFilename = base + '.' + ext;
       fs.writeFileSync(path.join(FLOOR_IMG_DIR, finalFilename), req.file.buffer);
     }
     const existing = queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
+    const dxfMin = dxfCoords?.minx, dxfMax = dxfCoords?.maxx;
+    const labelsJson = dxfCoords ? JSON.stringify(dxfCoords.labels) : null;
+
     if (existing) {
-      db.run('UPDATE floorplans SET filename=? WHERE id=?', [finalFilename, existing.id]);
-      res.json({ id: existing.id, filename: finalFilename });
+      // 신 도면 업로드 시 기존 핀 DXF 좌표로 재매핑
+      if (dxfCoords) {
+        const oldFp = queryOne('SELECT * FROM floorplans WHERE id=?', [existing.id]);
+        if (oldFp?.dxf_minx !== null && oldFp?.dxf_minx !== undefined) {
+          remapCablesToNewDxf(existing.id, oldFp, dxfCoords);
+        }
+      }
+      db.run('UPDATE floorplans SET filename=?,dxf_minx=?,dxf_miny=?,dxf_maxx=?,dxf_maxy=?,dxf_labels=? WHERE id=?',
+        [finalFilename, dxfCoords?.minx, dxfCoords?.miny, dxfCoords?.maxx, dxfCoords?.maxy, labelsJson, existing.id]);
+      res.json({ id: existing.id, filename: finalFilename, dxfCoords });
     } else {
-      db.run('INSERT INTO floorplans (region,dong,floor,filename) VALUES (?,?,?,?)', [region, dong, floor, finalFilename]);
-      res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename: finalFilename });
+      db.run('INSERT INTO floorplans (region,dong,floor,filename,dxf_minx,dxf_miny,dxf_maxx,dxf_maxy,dxf_labels) VALUES (?,?,?,?,?,?,?,?,?)',
+        [region, dong, floor, finalFilename, dxfCoords?.minx, dxfCoords?.miny, dxfCoords?.maxx, dxfCoords?.maxy, labelsJson]);
+      res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename: finalFilename, dxfCoords });
     }
     saveDB();
   } catch(e) { console.error('Upload error:', e); res.status(500).json({ error: e.message }); }
@@ -318,22 +397,61 @@ app.get('/api/floorplan/image/:filename', (req, res) => {
   res.sendFile(filepath);
 });
 
+
+// 재매핑 후 신 도면을 실제 위치에 저장
+app.post('/api/floorplan/remap-finalize', (req, res) => {
+  try {
+    const { tmpId, region, dong, floor } = req.body;
+    const tmpFp = queryOne('SELECT * FROM floorplans WHERE id=?', [tmpId]);
+    if (!tmpFp) return res.status(404).json({ error: '임시 도면 없음' });
+
+    // 기존 도면 교체
+    const existing = queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
+    if (existing) {
+      db.run('UPDATE floorplans SET filename=? WHERE id=?', [tmpFp.filename, existing.id]);
+      db.run('DELETE FROM floorplans WHERE id=?', [tmpId]);
+    } else {
+      db.run('UPDATE floorplans SET region=?,dong=?,floor=? WHERE id=?', [region, dong, floor, tmpId]);
+    }
+    saveDB();
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/cables', (req, res) => {
   res.json(queryAll('SELECT * FROM cables WHERE floorplan_id=? ORDER BY id DESC', [req.query.floorplan_id]));
 });
 
 app.post('/api/cables', (req, res) => {
   const { floorplan_id, cable_no, construction_no, x, y, color, shape, memo } = req.body;
-  db.run('INSERT INTO cables (floorplan_id,cable_no,construction_no,x,y,color,shape,memo) VALUES (?,?,?,?,?,?,?,?)',
-    [floorplan_id, s(cable_no), s(construction_no), x, y, color||'#e74c3c', shape||'circle', s(memo)]);
+
+  // DXF 좌표 역산 (픽셀 비율 → DXF 실좌표)
+  let dxf_x = null, dxf_y = null;
+  const fp = queryOne('SELECT * FROM floorplans WHERE id=?', [floorplan_id]);
+  if (fp?.dxf_minx !== null && fp?.dxf_minx !== undefined) {
+    const w = fp.dxf_maxx - fp.dxf_minx;
+    const h = fp.dxf_maxy - fp.dxf_miny;
+    dxf_x = fp.dxf_minx + x * w;
+    dxf_y = fp.dxf_miny + (1 - y) * h; // Y축 반전
+  }
+
+  db.run('INSERT INTO cables (floorplan_id,cable_no,construction_no,x,y,dxf_x,dxf_y,color,shape,memo) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    [floorplan_id, s(cable_no), s(construction_no), x, y, dxf_x, dxf_y, color||'#e74c3c', shape||'circle', s(memo)]);
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
 app.put('/api/cables/:id', (req, res) => {
-  const { cable_no, construction_no, color, shape, memo } = req.body;
-  db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=? WHERE id=?',
-    [s(cable_no), s(construction_no), color||'#e74c3c', shape||'circle', s(memo), req.params.id]);
+  const { cable_no, construction_no, color, shape, memo, x, y } = req.body;
+  if (x !== undefined && y !== undefined) {
+    db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=?,x=?,y=? WHERE id=?',
+      [s(cable_no), s(construction_no), color||'#e74c3c', shape||'circle', s(memo), x, y, req.params.id]);
+  } else {
+    db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=? WHERE id=?',
+      [s(cable_no), s(construction_no), color||'#e74c3c', shape||'circle', s(memo), req.params.id]);
+  }
   saveDB(); res.json({ success: true });
 });
 
