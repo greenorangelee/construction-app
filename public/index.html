@@ -3335,37 +3335,44 @@ function resetCanvas() {
   cableFloorplanId = null;
 }
 
-// 캔버스 클릭
-document.getElementById('floorCanvas').addEventListener('click', function(e) {
+// 캔버스 클릭 - canvasWrap 기준으로 좌표 계산
+document.getElementById('canvasWrap').addEventListener('click', function(e) {
   if (!cableFloorplanId || !cableImg) return;
   if (e._fromPan) return;
-  const rect = this.getBoundingClientRect();
-  // 캔버스가 transform으로 이동/확대됐으므로 실제 캔버스 내 위치로 변환
-  const x = (e.clientX - rect.left) / rect.width;
-  const y = (e.clientY - rect.top) / rect.height;
 
-  // 핀 클릭 여부 먼저 확인
+  const wrapRect = this.getBoundingClientRect();
+  // wrap 내 마우스 위치
+  const mouseX = e.clientX - wrapRect.left;
+  const mouseY = e.clientY - wrapRect.top;
+
+  // panX/panY와 zoom을 반영해 캔버스 픽셀 좌표로 변환
+  const canvasPixelX = (mouseX - panX) / cableZoom;
+  const canvasPixelY = (mouseY - panY) / cableZoom;
+
+  // 캔버스 크기 대비 비율 (0~1)
+  const canvas = document.getElementById('floorCanvas');
+  const x = canvasPixelX / canvas.width;
+  const y = canvasPixelY / canvas.height;
+
+  // 도면 범위 밖이면 무시
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
   const hit = findPinAt(x, y);
   if (hit) {
     selectCablePin(hit.id);
     openCableModal(hit);
   } else {
-    // 빈 곳 클릭 = 새 핀 추가
     openCableModal(null, x, y);
   }
 });
 
 function findPinAt(nx, ny) {
   const canvas = document.getElementById('floorCanvas');
-  // 화면상 PIN_R 픽셀을 캔버스 비율로 변환
-  const rect = canvas.getBoundingClientRect();
-  const THRESH = (PIN_R + 8) / (canvas.width * (rect.width / canvas.width) / canvas.width);
-  const threshX = (PIN_R + 8) / rect.width;
-  const threshY = (PIN_R + 8) / rect.height;
+  // 클릭 감지 반경: 화면상 PIN_R+8 픽셀을 캔버스 비율로 변환
+  const threshX = (PIN_R + 8) / (canvas.width * cableZoom);
+  const threshY = (PIN_R + 8) / (canvas.height * cableZoom);
   for (const l of cableLines) {
-    const dx = Math.abs(nx - l.x);
-    const dy = Math.abs(ny - l.y);
-    if (dx < threshX * 3 && dy < threshY * 3) return l;
+    if (Math.abs(nx - l.x) < threshX && Math.abs(ny - l.y) < threshY) return l;
   }
   return null;
 }
