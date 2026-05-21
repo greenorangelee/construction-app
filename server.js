@@ -72,29 +72,7 @@ async function initDB() {
   )`);
   saveDB();
 
-  const count = queryOne('SELECT COUNT(*) as cnt FROM constructions');
-  if (count.cnt === 0) {
-    const samples = [
-      [1,'자체공사','25.12.31','FKSM','IT관리팀','허충범','HO를 서버실 온습도, 누수, 가스 센서 펜선 포설','대국','HO','3F','서버실','','','','','완료','26.01.03','26.01.03','경영-자유-26-0007','N/A','경영-품의-26-0008','김문기','이운성·이윤지',''],
-      [2,'외주공사','25.12.19','KSMC','중무팀','김성진','대포공장 2층 회의실 AP 추가 설치','대포','1층','2F','자율좌석','','','','','완료','26.01.20','26.01.20','경영-구품-26-0024','경영-구품-26-0620','경영-품의-25-1152','이운성','대열정보기술',''],
-      [3,'자체공사','25.12.19','KSMC','중무팀','김성진','대포공장 2층 회의실 추가 설치 (펜선포설)','대포','1층','2F','YHE회의실','','','','','완료','26.01.20','26.01.19','N/A','N/A','경영-품의-25-1152','이운성','이운성·이윤지',''],
-      [4,'외주공사','25.12.19','KSM','중무팀','김성진','대국 구내식당 네트워크 설비 공사 (AP설치, 스위치교체)','대국','R&D1','3F','식당','','','','','완료','26.01.20','26.01.20','경영-구품-26-0001','경영-지품-26-0623','경영-품의-25-1015','이운성','대열정보기술',''],
-      [5,'자체공사','26.01.26','KSM','생산담당','김진만','HO동 B1층 간 자리 이동 포설 진행','대국','B1','2F','생산사무실','대국','HO','4F','경기기술부','완료','26.02.02','26.01.28','N/A','N/A','경영-자유-26-0007','이운성','이운성·이윤지',''],
-      [6,'자체공사','26.02.03','KSM','기술기획팀','김기환','HO동 4층 연구소 내 자리 이동','대국','HO','4F','연구소','','','','','완료','26.02.07','26.02.07','기술-구품-26-0203','N/A','N/A','이운성','이운성·이윤지',''],
-      [7,'자체공사','26.02.05','KSM','중무팀','-','하성 신규 입원실 조성','하성','A1','2F','회의실1','','','','','완료','26.03.21','26.03.23','N/A','N/A','경영-지품-26-1576','김문기','이운성·성두룡',''],
-      [8,'외주공사','26.02.05','KSM','운영관리팀','이현우','HO동 1층 워크스테이션 VINA 신규 PC 요청','대국','HO','1F','현장','','','','','완료','26.02.21','26.02.19','생산-구품-26-1143','경영-지품-26-1306','','이운성','대열정보기술',''],
-      [9,'외주공사','26.02.06','KSM','가공기술팀','김상민','B1동 1층 KSM 가공기술팀 설비 및 사무공간 이전','대국','B1','1F','현장','','','','','완료','26.02.21','26.02.19','생산-구품-26-1109','경영-지품-26-1306','','이운성','대열정보기술',''],
-      [10,'지급','26.02.06','KSM','생산기술팀','강준현','HO 2F 수명검사실 내 펜선 포설','대국','HO','2F','수명검사실','','','','','진행중','26.02.06','26.02.06','생산-구품-26-1002','N/A','N/A','이운성','이운성·이윤지',''],
-      [11,'자체공사','26.02.10','FKSM','생산기술팀','서홍수','S1동 1층 사무실 플로우서버 펜선 포설','대국','S1','1F','사무실','','','','','완료','기함업술','26.02.19','생산-구품-26-0927','경영-지품-26-1306','','이운성','대열정보기술',''],
-      [12,'구매','-','FKSM','자재관리팀','이상흡(퇴사) > 박준희','QRC WMS 구축 (AP구매) - 대영','N/A','N/A','N/A','N/A','','','','','진행중','26.02.05','26.02.05','자재-구품-25-0050','경영-지품-26-1032','','김문기','대열정보기술',''],
-      [13,'외주공사','-','FKSM','자재관리팀','이상흡(퇴사) > 박준희','QRC WMS 구축 (영남QRC) - 서현','영남','','','영남QRC','','','','','완료','26.02.06','26.02.06','자재-구품-25-0050','경영-지품-26-1117','','김문기','서현텔레콤',''],
-      [14,'자체공사','-','FKSM','자재관리팀','이상흡(퇴사) > 박준희','QRC WMS 구축 (여수QRC)','여수','','','여수QRC','','','','','Holding','7월중','','자재-구품-25-0050','','','김문기','',''],
-    ];
-    for (const s of samples) {
-      db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [...s, '','','',''  ]);
-    }
-    saveDB();
-  }
+
 }
 
 function saveDB() {
@@ -256,28 +234,16 @@ app.delete('/api/locations/:id', (req, res) => {
 
 // ── 엑셀 양식 다운로드 ──────────────────────────────────────────
 app.get('/api/template', (req, res) => {
-  const headers = ['구분','요청일','법인','부서','요청자','공사명',
-    '작업지역','작업동','작업층','작업상세위치',
-    '철거지역','철거동','철거층','철거상세위치',
-    '상태','기한일','작업완료일',
-    '구매품의서','지출품의서','연관품의서',
-    'IT관리팀담당자','작업자','메모'];
-
-  const example = ['자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설',
-    '대곶','HO동','3F','서버실',
-    '','','','',
-    '완료','26.03.10','26.03.09',
-    '경영-구품-26-0001','경영-지품-26-0001','',
-    '이준성','김준기, 이준성','특이사항 없음'];
-
-  // 헤더 주석 행 추가
-  const note = ['※ 구분: 자체공사/외주공사/지급/구매', '', '※ 상태: 완료/진행중/Holding', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+  // 실제 엑셀 양식과 동일한 헤더 (2행 구조)
+  const header1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
+  const header2 = ['','','','','부서','이름','','지역','동','층','상세위치','지역','동','층','상세위치','상태','기한일','작업 완료일','구매품의서','지출품의서','연관품의서','','',''];
+  const example = ['','자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설','대곶','HO','3F','서버실','','','','','완료','26.03.10','26.03.09','경영-구품-26-0001','경영-지품-26-0001','','이준성','김준기, 이준성','특이사항 없음'];
 
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, example, note]);
+  const ws = XLSX.utils.aoa_to_sheet([header1, header2, example]);
 
   // 컬럼 너비
-  ws['!cols'] = headers.map((h, i) => ({ wch: i === 5 ? 40 : i < 6 ? 12 : 18 }));
+  ws['!cols'] = header1.map((h, i) => ({ wch: i === 6 ? 45 : i === 23 ? 40 : i < 7 ? 12 : 16 }));
 
   // 헤더 행 스타일
   const range = XLSX.utils.decode_range(ws['!ref']);
@@ -308,20 +274,24 @@ app.post('/api/import', upload.single('file'), (req, res) => {
 
     if (rows.length < 2) return res.json({ success: true, count: 0 });
 
-    const headers = rows[0];
-    const dataRows = rows.slice(1).filter(r => r.some(c => c !== undefined && c !== ''));
+    // 실제 엑셀 양식: 1행=대분류헤더, 2행=소분류헤더, 3행부터=데이터
+    // 컬럼 인덱스 (0-based):
+    // 0:No, 1:구분, 2:요청일, 3:법인, 4:부서, 5:요청자이름, 6:공사명,
+    // 7:작업지역, 8:작업동, 9:작업층, 10:작업상세,
+    // 11:이동전지역, 12:이동전동, 13:이동전층, 14:이동전상세,
+    // 15:상태, 16:기한일, 17:완료일, 18:구매품의, 19:지출품의, 20:연관품의,
+    // 21:IT담당자, 22:작업자, 23:비고(메모)
 
-    const colIdx = (name) => headers.indexOf(name);
+    // 헤더 행 건너뛰기 (1행, 2행이 헤더)
+    const dataRows = rows.slice(2).filter(r => r.some(c => c !== undefined && c !== '') && r[1]); // 구분 있는 행만
+
+    const g = (row, i) => (row[i] !== undefined && row[i] !== null) ? String(row[i]).trim() : '';
 
     let count = 0;
     let lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
 
     for (const row of dataRows) {
-      const get = (name) => {
-        const i = colIdx(name);
-        return i >= 0 ? (row[i] !== undefined ? String(row[i]).trim() : '') : '';
-      };
-
+      if (!g(row, 1)) continue; // 구분 없으면 스킵
       lastNo++;
       db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,
         loc_region,loc_dong,loc_floor,loc_detail,
@@ -331,13 +301,13 @@ app.post('/api/import', upload.single('file'), (req, res) => {
         purchase_doc,payment_doc,related_doc,it_manager,worker,memo)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [lastNo,
-         get('구분'), get('요청일'), get('법인'), get('부서'), get('요청자'), get('공사명'),
-         get('작업지역'), get('작업동'), get('작업층'), get('작업상세위치'),
+         g(row,1), g(row,2), g(row,3), g(row,4), g(row,5), g(row,6),
+         g(row,7), g(row,8), g(row,9), g(row,10),
+         g(row,11), g(row,12), g(row,13), g(row,14),
          '','','','',
-         get('철거지역'), get('철거동'), get('철거층'), get('철거상세위치'),
-         get('상태'), get('기한일'), get('작업완료일'),
-         get('구매품의서'), get('지출품의서'), get('연관품의서'),
-         get('IT관리팀담당자'), get('작업자'), get('메모')
+         g(row,15), g(row,16), g(row,17),
+         g(row,18), g(row,19), g(row,20),
+         g(row,21), g(row,22), g(row,23)
         ]);
       count++;
     }
@@ -354,12 +324,21 @@ app.get('/api/export', (req, res) => {
   const rows = queryAll('SELECT * FROM constructions ORDER BY no ASC');
   const now = new Date();
   const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
-  const headers = ['No','구분','요청일','법인','부서','요청자','공사명','작업지역','작업동','작업층','작업상세위치','철거지역','철거동','철거층','철거상세위치','상태','기한일','작업완료일','구매품의서','지출품의서','연관품의서','IT관리팀담당자','작업자','메모'];
-  const data = [headers, ...rows.map(r => [r.no,r.gubun,r.req_date,r.corp,r.dept,r.requester,r.work_name,r.loc_region,r.loc_dong,r.loc_floor,r.loc_detail,r.demolish_region,r.demolish_dong,r.demolish_floor,r.demolish_detail,r.status,r.deadline,r.complete_date,r.purchase_doc,r.payment_doc,r.related_doc,r.it_manager,r.worker,r.memo])];
+  // 실제 엑셀 양식과 동일한 2행 헤더 구조
+  const header1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
+  const header2 = ['','','','','부서','이름','','지역','동','층','상세위치','지역','동','층','상세위치','상태','기한일','작업 완료일','구매품의서','지출품의서','연관품의서','','',''];
+  const data = [header1, header2, ...rows.map(r => [
+    r.no, r.gubun, r.req_date, r.corp, r.dept, r.requester, r.work_name,
+    r.loc_region, r.loc_dong, r.loc_floor, r.loc_detail,
+    r.demolish_region, r.demolish_dong, r.demolish_floor, r.demolish_detail,
+    r.status, r.deadline, r.complete_date,
+    r.purchase_doc, r.payment_doc, r.related_doc,
+    r.it_manager, r.worker, r.memo
+  ])];
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = headers.map((h,i) => ({ wch: i===6?48:i<2?6:i<7?12:18 }));
-  XLSX.utils.book_append_sheet(wb, ws, '네트워크 공사 이력');
+  ws['!cols'] = header1.map((h,i) => ({ wch: i===6?45:i===23?40:i<7?12:16 }));
+  XLSX.utils.book_append_sheet(wb, ws, '2026_공사이력_전체');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${dateStr}_네트워크공사이력.xlsx`)}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
