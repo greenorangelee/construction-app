@@ -4151,8 +4151,19 @@ function findPinAt(nx, ny) {
 
 function selectCablePin(id) {
   cableSelectedId = id;
-  renderCableList(cableLines);
-  drawCanvas();
+  if (cableSearchQuery) {
+    const matched = cableLines.filter(l =>
+      (l.cable_no||'').toLowerCase().includes(cableSearchQuery) ||
+      (l.construction_no||'').toLowerCase().includes(cableSearchQuery) ||
+      (l.memo||'').toLowerCase().includes(cableSearchQuery)
+    );
+    renderCableListWithSearch(matched);
+    drawCanvasWithSearch(matched.map(l => l.id));
+  } else {
+    // 검색 없어도 클릭한 핀만 강조, 나머지 흐리게
+    renderCableList(cableLines);
+    drawCanvasWithSearch([id]);
+  }
 }
 
 let editingCableId = null;
