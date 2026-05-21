@@ -3363,59 +3363,106 @@ function drawCanvasWithSearch(highlightIds) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (cableImg) ctx.drawImage(cableImg, 0, 0, canvas.width, canvas.height);
-
-  const hlSet = highlightIds ? new Set(highlightIds) : null;
-
-  cableLines.forEach(l => {
-    const cx = l.x * canvas.width;
-    const cy = l.y * canvas.height;
-    const selected = l.id === cableSelectedId;
-    const dimmed = hlSet && !hlSet.has(l.id);
-    const color = l.color || '#e74c3c';
-    const r = selected ? PIN_R + 3 : PIN_R;
-    const shape = l.shape || 'circle';
-
-    ctx.globalAlpha = dimmed ? 0.2 : 1.0;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = selected ? '#000' : '#fff';
-    ctx.lineWidth = selected ? 2.5 : 1.5;
-    ctx.beginPath();
-
-    if (shape === 'circle') {
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    } else if (shape === 'diamond') {
-      ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy);
-      ctx.lineTo(cx, cy+r); ctx.lineTo(cx-r, cy); ctx.closePath();
-    } else if (shape === 'star') {
-      for (let i = 0; i < 5; i++) {
-        const a1 = (i*4*Math.PI/5)-Math.PI/2, a2 = ((i*4+2)*Math.PI/5)-Math.PI/2;
-        i===0 ? ctx.moveTo(cx+r*Math.cos(a1),cy+r*Math.sin(a1)) : ctx.lineTo(cx+r*Math.cos(a1),cy+r*Math.sin(a1));
-        ctx.lineTo(cx+(r*0.4)*Math.cos(a2),cy+(r*0.4)*Math.sin(a2));
-      }
-      ctx.closePath();
-    } else if (shape === 'square') {
-      ctx.rect(cx-r, cy-r, r*2, r*2);
-    } else if (shape === 'triangle') {
-      ctx.moveTo(cx, cy-r); ctx.lineTo(cx+r, cy+r); ctx.lineTo(cx-r, cy+r); ctx.closePath();
-    } else {
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    }
-    ctx.fill(); ctx.stroke();
-
-    if (l.cable_no) {
-      ctx.font = `bold 11px sans-serif`;
-      const tw = ctx.measureText(l.cable_no).width;
-      const lx = cx - tw/2 - 4, ly = cy - r - 16;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(lx, ly, tw+8, 15, 3) : ctx.rect(lx, ly, tw+8, 15);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.fillText(l.cable_no, cx - tw/2, ly + 11);
-    }
-    ctx.globalAlpha = 1.0;
-  });
+  drawPins(ctx, cableLines, canvas, cableSelectedId, highlightIds);
 }
+
+
+// ── 핀 드래그 이동 ──────────────────────────────────────────
+
+let hoveredPinId = null;
+let draggingPinId = null;
+let dragOffsetX = 0, dragOffsetY = 0;
+let didDrag = false;
+
+// canvasWrap mousemove - 호버 + 드래그
+document.getElementById('canvasWrap').addEventListener('mousemove', function(e) {
+  if (!cableImg) return;
+  const wrapRect = this.getBoundingClientRect();
+  const mouseX = e.clientX - wrapRect.left;
+  const mouseY = e.clientY - wrapRect.top;
+  const x = (mouseX - panX) / (cableImg.naturalWidth * cableZoom);
+  const y = (mouseY - panY) / (cableImg.naturalHeight * cableZoom);
+
+  if (draggingPinId !== null) {
+    // 드래그 중: 핀 위치 업데이트
+    didDrag = true;
+    const pin = cableLines.find(l => l.id === draggingPinId);
+    if (pin) {
+      pin.x = Math.max(0, Math.min(1, x));
+      pin.y = Math.max(0, Math.min(1, y));
+      cableSearchQuery ? drawCanvasWithSearch(
+        cableLines.filter(l => (l.cable_no||'').toLowerCase().includes(cableSearchQuery)).map(l => l.id)
+      ) : drawCanvas();
+    }
+    this.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 호버 감지
+  const hit = findPinAt(x, y);
+  const newHover = hit ? hit.id : null;
+  if (newHover !== hoveredPinId) {
+    hoveredPinId = newHover;
+    cableSearchQuery ? drawCanvasWithSearch(
+      cableLines.filter(l => (l.cable_no||'').toLowerCase().includes(cableSearchQuery)).map(l => l.id)
+    ) : drawCanvas();
+  }
+  this.style.cursor = hit ? 'grab' : 'crosshair';
+});
+
+// mousedown - 드래그 시작
+document.getElementById('canvasWrap').addEventListener('mousedown', function(e) {
+  if (e.button !== 0 || !cableImg) return;
+  const wrapRect = this.getBoundingClientRect();
+  const x = (e.clientX - wrapRect.left - panX) / (cableImg.naturalWidth * cableZoom);
+  const y = (e.clientY - wrapRect.top - panY) / (cableImg.naturalHeight * cableZoom);
+  const hit = findPinAt(x, y);
+  if (hit) {
+    draggingPinId = hit.id;
+    didDrag = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+});
+
+// mouseup - 드래그 종료 후 서버 저장
+document.getElementById('canvasWrap').addEventListener('mouseup', async function(e) {
+  if (draggingPinId === null) return;
+  const id = draggingPinId;
+  draggingPinId = null;
+  this.style.cursor = 'crosshair';
+
+  if (didDrag) {
+    const pin = cableLines.find(l => l.id === id);
+    if (pin) {
+      await api('PUT', `/api/cables/${pin.id}`, {
+        cable_no: pin.cable_no, construction_no: pin.construction_no,
+        color: pin.color, shape: pin.shape, memo: pin.memo,
+        x: pin.x, y: pin.y
+      });
+      showToast('핀 위치 저장됨');
+    }
+    didDrag = false;
+  }
+});
+
+// 캔버스 벗어났을 때 드래그 취소
+window.addEventListener('mouseup', async function() {
+  if (draggingPinId === null) return;
+  const id = draggingPinId;
+  draggingPinId = null;
+  if (didDrag) {
+    const pin = cableLines.find(l => l.id === id);
+    if (pin) {
+      await api('PUT', `/api/cables/${pin.id}`, {
+        cable_no: pin.cable_no, construction_no: pin.construction_no,
+        color: pin.color, shape: pin.shape, memo: pin.memo,
+        x: pin.x, y: pin.y
+      });
+    }
+    didDrag = false;
+  }
+});
 
 // ── 기준점 재매핑 ──────────────────────────────────────────
 
@@ -4166,70 +4213,120 @@ function renderCableList(lines) {
 
 const PIN_R = 6; // 핀 반지름 (px, 캔버스 기준)
 
+
+// 라벨 겹침 방지 - 각 핀의 최적 라벨 위치 계산
+function calcLabelPositions(lines, canvasW, canvasH) {
+  const ctx = document.getElementById('floorCanvas').getContext('2d');
+  ctx.font = 'bold 11px sans-serif';
+  const LABEL_H = 15;
+  const LABEL_PAD = 4;
+  const MARGIN = 2; // 라벨 간 최소 간격
+
+  // 각 핀의 후보 라벨 위치 (위, 아래, 왼쪽, 오른쪽)
+  const positions = lines.map(l => {
+    if (!l.cable_no) return null;
+    const cx = l.x * canvasW;
+    const cy = l.y * canvasH;
+    const tw = ctx.measureText(l.cable_no).width;
+    const lw = tw + 8;
+    const r = PIN_R;
+    return {
+      id: l.id, cx, cy, lw, lh: LABEL_H,
+      candidates: [
+        { x: cx - lw/2, y: cy - r - LABEL_H - 2, dir: 'top' },
+        { x: cx - lw/2, y: cy + r + 2,            dir: 'bottom' },
+        { x: cx + r + 2, y: cy - LABEL_H/2,        dir: 'right' },
+        { x: cx - lw - r - 2, y: cy - LABEL_H/2,   dir: 'left' },
+      ]
+    };
+  }).filter(Boolean);
+
+  // 그리디 방식: 이미 배치된 라벨과 겹치지 않는 첫 번째 후보 선택
+  const placed = []; // { x, y, w, h }
+  const result = {};
+
+  positions.forEach(p => {
+    let best = p.candidates[0]; // 기본: 위
+    for (const cand of p.candidates) {
+      const overlaps = placed.some(pl =>
+        cand.x < pl.x + pl.w + MARGIN &&
+        cand.x + p.lw + MARGIN > pl.x &&
+        cand.y < pl.y + pl.h + MARGIN &&
+        cand.y + p.lh + MARGIN > pl.y
+      );
+      if (!overlaps) { best = cand; break; }
+    }
+    placed.push({ x: best.x, y: best.y, w: p.lw, h: p.lh });
+    result[p.id] = { x: best.x, y: best.y, lw: p.lw };
+  });
+
+  return result;
+}
+
+function drawPins(ctx, lines, canvas, selectedId, highlightIds) {
+  const hlSet = highlightIds ? new Set(highlightIds) : null;
+  const labelPos = calcLabelPositions(lines, canvas.width, canvas.height);
+
+  lines.forEach(l => {
+    const cx = l.x * canvas.width;
+    const cy = l.y * canvas.height;
+    const selected = l.id === selectedId;
+    const hovered = l.id === hoveredPinId && l.id !== selectedId;
+    const dimmed = hlSet && !hlSet.has(l.id);
+    const color = l.color || '#e74c3c';
+    const r = selected ? PIN_R + 3 : hovered ? PIN_R + 2 : PIN_R;
+    const shape = l.shape || 'circle';
+
+    ctx.globalAlpha = dimmed ? 0.2 : 1.0;
+    ctx.fillStyle = hovered ? '#fff' : color;
+    ctx.strokeStyle = selected ? '#000' : hovered ? color : '#fff';
+    ctx.lineWidth = selected ? 2.5 : hovered ? 2.5 : 1.5;
+    ctx.beginPath();
+
+    if (shape === 'circle') { ctx.arc(cx, cy, r, 0, Math.PI * 2); }
+    else if (shape === 'diamond') { ctx.moveTo(cx,cy-r); ctx.lineTo(cx+r,cy); ctx.lineTo(cx,cy+r); ctx.lineTo(cx-r,cy); ctx.closePath(); }
+    else if (shape === 'star') {
+      for (let i=0;i<5;i++) { const a1=(i*4*Math.PI/5)-Math.PI/2,a2=((i*4+2)*Math.PI/5)-Math.PI/2; i===0?ctx.moveTo(cx+r*Math.cos(a1),cy+r*Math.sin(a1)):ctx.lineTo(cx+r*Math.cos(a1),cy+r*Math.sin(a1)); ctx.lineTo(cx+(r*0.4)*Math.cos(a2),cy+(r*0.4)*Math.sin(a2)); } ctx.closePath();
+    }
+    else if (shape === 'square') { ctx.rect(cx-r, cy-r, r*2, r*2); }
+    else if (shape === 'triangle') { ctx.moveTo(cx,cy-r); ctx.lineTo(cx+r,cy+r); ctx.lineTo(cx-r,cy+r); ctx.closePath(); }
+    else { ctx.arc(cx, cy, r, 0, Math.PI * 2); }
+    ctx.fill(); ctx.stroke();
+
+    // 라벨
+    if (l.cable_no && labelPos[l.id]) {
+      const lp = labelPos[l.id];
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lp.x, lp.y, lp.lw, 15, 3) : ctx.rect(lp.x, lp.y, lp.lw, 15);
+      ctx.fill();
+      // 핀과 라벨 연결선 (멀리 떨어진 경우)
+      const lCx = lp.x + lp.lw/2, lCy = lp.y + 7.5;
+      const dist = Math.sqrt((lCx-cx)**2 + (lCy-cy)**2);
+      if (dist > r + 12) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = dimmed ? 0.2 : 0.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(lp.x + (lCx > cx ? 0 : lp.lw), lp.y + 7.5);
+        ctx.stroke();
+        ctx.globalAlpha = dimmed ? 0.2 : 1.0;
+      }
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l.cable_no, lp.x + 4, lp.y + 11);
+    }
+    ctx.globalAlpha = 1.0;
+  });
+}
 function drawCanvas() {
   const canvas = document.getElementById('floorCanvas');
   if (!canvas || canvas.style.display === 'none') return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (cableImg) ctx.drawImage(cableImg, 0, 0, canvas.width, canvas.height);
-
-  cableLines.forEach(l => {
-    const cx = l.x * canvas.width;
-    const cy = l.y * canvas.height;
-    const selected = l.id === cableSelectedId;
-    const color = l.color || '#e74c3c';
-    const r = selected ? PIN_R + 3 : PIN_R;
-    const shape = l.shape || 'circle';
-
-    ctx.fillStyle = color;
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-
-    if (shape === 'circle') {
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    } else if (shape === 'diamond') {
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r, cy);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r, cy);
-      ctx.closePath();
-    } else if (shape === 'star') {
-      for (let i = 0; i < 5; i++) {
-        const a1 = (i * 4 * Math.PI / 5) - Math.PI/2;
-        const a2 = ((i * 4 + 2) * Math.PI / 5) - Math.PI/2;
-        i === 0 ? ctx.moveTo(cx + r*Math.cos(a1), cy + r*Math.sin(a1)) : ctx.lineTo(cx + r*Math.cos(a1), cy + r*Math.sin(a1));
-        ctx.lineTo(cx + (r*0.4)*Math.cos(a2), cy + (r*0.4)*Math.sin(a2));
-      }
-      ctx.closePath();
-    } else if (shape === 'square') {
-      ctx.rect(cx - r, cy - r, r*2, r*2);
-    } else if (shape === 'triangle') {
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r, cy + r);
-      ctx.lineTo(cx - r, cy + r);
-      ctx.closePath();
-    } else {
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    }
-
-    ctx.fill();
-    ctx.stroke();
-
-    // 선번 라벨
-    if (l.cable_no) {
-      ctx.font = `bold 11px sans-serif`;
-      const tw = ctx.measureText(l.cable_no).width;
-      const lx = cx - tw/2 - 4;
-      const ly = cy - r - 16;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(lx, ly, tw + 8, 15, 3) : ctx.rect(lx, ly, tw + 8, 15);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.fillText(l.cable_no, cx - tw/2, ly + 11);
-    }
-  });
+  drawPins(ctx, cableLines, canvas, cableSelectedId, null);
 }
 
 function resetCanvas() {
@@ -4246,6 +4343,7 @@ function resetCanvas() {
 document.getElementById('canvasWrap').addEventListener('click', function(e) {
   if (!cableFloorplanId || !cableImg) return;
   if (e._fromPan) return;
+  if (didDrag) { didDrag = false; return; } // 드래그 후 클릭 무시
 
   const wrapRect = this.getBoundingClientRect();
   // wrap 내 마우스 위치
