@@ -3210,7 +3210,44 @@ async function exportCanvasPdf() {
   // 이미지 데이터 URL
   const imgData = offscreen.toDataURL('image/png');
 
-  // jsPDF 로드 (CDN)
+  // 제목 + 날짜를 캔버스에 직접 그려서 이미지로 포함 (한글 깨짐 방지)
+  const dateStr = new Date().toLocaleDateString('ko-KR');
+  const title = `${region} ${dong} ${floor} 선번 배치도`;
+
+  // 헤더 캔버스 (제목 영역)
+  const headerH = 60;
+  const final = document.createElement('canvas');
+  final.width = offscreen.width;
+  final.height = offscreen.height + headerH;
+  const fctx = final.getContext('2d');
+
+  // 헤더 배경
+  fctx.fillStyle = '#c0392b';
+  fctx.fillRect(0, 0, final.width, headerH);
+
+  // 제목 텍스트
+  const fontSize = Math.max(20, Math.round(final.width / 60));
+  fctx.fillStyle = '#ffffff';
+  fctx.font = `bold ${fontSize}px "Noto Sans KR", "Malgun Gothic", sans-serif`;
+  fctx.textBaseline = 'middle';
+  fctx.fillText(title, 20, headerH * 0.45);
+
+  // 날짜
+  fctx.font = `${Math.round(fontSize * 0.65)}px "Noto Sans KR", "Malgun Gothic", sans-serif`;
+  fctx.fillStyle = 'rgba(255,255,255,0.8)';
+  fctx.textAlign = 'right';
+  fctx.fillText(dateStr, final.width - 20, headerH * 0.45);
+  fctx.textAlign = 'left';
+
+  // 선번 수
+  fctx.font = `${Math.round(fontSize * 0.6)}px "Noto Sans KR", "Malgun Gothic", sans-serif`;
+  fctx.fillStyle = 'rgba(255,255,255,0.7)';
+  fctx.fillText(`총 ${cableLines.length}개 선번`, 20, headerH * 0.78);
+
+  // 도면 이미지
+  fctx.drawImage(offscreen, 0, headerH);
+
+  // PNG → PDF (jsPDF 없이 순수 이미지 PDF)
   if (!window.jspdf) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
@@ -3220,53 +3257,16 @@ async function exportCanvasPdf() {
     });
   }
 
+  const finalImgData = final.toDataURL('image/png');
   const { jsPDF } = window.jspdf;
-  const imgW = offscreen.width, imgH = offscreen.height;
+  const imgW = final.width, imgH = final.height;
   const isLandscape = imgW > imgH;
-
-  // A4 기준 (mm)
   const pageW = isLandscape ? 297 : 210;
   const pageH = isLandscape ? 210 : 297;
-  const margin = 10;
-  const availW = pageW - margin * 2;
-  const availH = pageH - margin * 2 - 12; // 상단 제목 공간
-
-  const scale = Math.min(availW / imgW, availH / imgH);
-  const drawW = imgW * scale;
-  const drawH = imgH * scale;
+  const scale = Math.min(pageW / imgW, pageH / imgH);
 
   const pdf = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
-
-  // 제목
-  const title = `${region} ${dong} ${floor} 선번 배치도`;
-  const dateStr = new Date().toLocaleDateString('ko-KR');
-  pdf.setFontSize(11);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(title, margin, margin + 6);
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(dateStr, pageW - margin, margin + 6, { align: 'right' });
-
-  // 구분선
-  pdf.setDrawColor(192, 57, 43);
-  pdf.setLineWidth(0.5);
-  pdf.line(margin, margin + 9, pageW - margin, margin + 9);
-
-  // 도면 이미지
-  pdf.addImage(imgData, 'PNG', margin, margin + 12, drawW, drawH);
-
-  // 선번 범례 (오른쪽 여백에 표시 가능하면)
-  if (cableLines.length > 0 && drawW < availW - 20) {
-    const legendX = margin + drawW + 3;
-    const legendY = margin + 12;
-    pdf.setFontSize(7);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('선번 목록', legendX, legendY + 4);
-    pdf.setFont('helvetica', 'normal');
-    cableLines.slice(0, 30).forEach((l, i) => {
-      pdf.text(`• ${l.cable_no || '-'}${l.construction_no ? ' (공사' + l.construction_no + ')' : ''}`, legendX, legendY + 10 + i * 5);
-    });
-  }
+  pdf.addImage(finalImgData, 'PNG', 0, 0, imgW * scale, imgH * scale);
 
   const filename = `${region}_${dong}_${floor}_선번배치도_${dateStr.replace(/\./g,'')}.pdf`;
   pdf.save(filename);
