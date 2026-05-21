@@ -335,7 +335,7 @@
     }
 
     th {
-      padding: 10px 12px;
+      padding: 8px 10px;
       text-align: left;
       color: #6b7280;
       font-weight: 600;
@@ -343,6 +343,7 @@
       letter-spacing: 0.04em;
       border-bottom: 1px solid #e5e7eb;
       text-transform: uppercase;
+      white-space: nowrap;
     }
 
     th.group-header {
@@ -361,18 +362,24 @@
     tbody tr:hover { background: #fef2f2; }
 
     td {
-      padding: 9px 12px;
+      padding: 8px 10px;
       color: var(--text-dim);
       vertical-align: middle;
     }
 
     td.work-name {
       color: #1a1a1a;
-      max-width: 280px;
+      min-width: 240px;
+      max-width: 380px;
       white-space: normal;
       line-height: 1.4;
       font-weight: 500;
     }
+
+    /* 컴팩트 열 */
+    td.col-sm { max-width: 80px; font-size: 11.5px; }
+    td.col-md { max-width: 110px; font-size: 11.5px; }
+    td.col-doc { max-width: 130px; font-size: 11px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* STATUS BADGES */
     .badge {
@@ -1254,6 +1261,233 @@
       border: 1px solid #e5e7eb;
     }
     .bulk-bar .cancel-btn:hover { background: #f9fafb; color: #374151; }
+
+    /* ── COLUMN RESIZE ── */
+    th {
+      position: relative;
+    }
+    .col-resizer {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 5px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+      z-index: 10;
+    }
+    .col-resizer:hover,
+    .col-resizer.resizing {
+      background: #c0392b;
+      opacity: 0.5;
+    }
+    th.resizable {
+      overflow: hidden;
+    }
+
+    /* ── CABLE / FLOORPLAN ── */
+    #cablePage { display: none; }
+
+    .cable-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .cable-sidebar {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .cable-sidebar-head {
+      padding: 14px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      font-weight: 700;
+      color: #374151;
+    }
+
+    .cable-loc-selects {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .cable-loc-selects select {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #1a1a1a;
+      outline: none;
+    }
+    .cable-loc-selects select:focus { border-color: #c0392b; }
+
+    .cable-upload-area {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .cable-upload-btn {
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #f9fafb;
+      border: 1.5px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .cable-upload-btn:hover { border-color: #c0392b; color: #c0392b; background: #fef2f2; }
+
+    .cable-list-area {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .cable-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-bottom: 1px solid #f9fafb;
+      cursor: pointer;
+      transition: background 0.1s;
+      font-size: 12px;
+    }
+    .cable-item:hover { background: #fef2f2; }
+    .cable-item.selected { background: #fef2f2; border-left: 3px solid #c0392b; }
+
+    .cable-color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .cable-item-info { flex: 1; min-width: 0; }
+    .cable-item-no { font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cable-item-sub { font-size: 11px; color: #9ca3af; }
+
+    .cable-item-del {
+      background: none;
+      border: none;
+      color: #d1d5db;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+    }
+    .cable-item-del:hover { color: #c0392b; }
+
+    /* 캔버스 영역 */
+    .canvas-panel {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .canvas-toolbar {
+      padding: 10px 16px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .canvas-toolbar span { font-size: 12px; color: #6b7280; }
+
+    .tool-btn {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      color: #374151;
+      font-family: 'Noto Sans KR', sans-serif;
+      transition: all 0.15s;
+    }
+    .tool-btn:hover { border-color: #c0392b; color: #c0392b; }
+    .tool-btn.active { background: #c0392b; color: #fff; border-color: #c0392b; }
+
+    .canvas-wrap {
+      position: relative;
+      overflow: auto;
+      max-height: 70vh;
+      background: #f3f4f6;
+    }
+
+    #floorCanvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    .canvas-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 400px;
+      color: #9ca3af;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    /* 선번 입력 모달 */
+    .cable-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      display: none;
+    }
+    .cable-modal.open { display: flex; }
+    .cable-modal-box {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px;
+      width: 360px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    }
+    .cable-modal-box h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: #1a1a1a; }
+    .cable-form-group { margin-bottom: 12px; }
+    .cable-form-group label { display: block; font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
+    .cable-form-group input, .cable-form-group textarea, .cable-form-group select {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #1a1a1a;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .cable-form-group input:focus, .cable-form-group textarea:focus { border-color: #c0392b; }
+    .cable-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -1265,6 +1499,7 @@
     <span class="header-title">네트워크 공사 이력 관리 시스템</span>
     <nav class="header-nav">
       <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">공사 이력</button>
+      <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -1426,6 +1661,7 @@
             <div class="col-toggle-footer" style="margin-bottom:6px;padding-bottom:8px;border-bottom:1px solid #f3f4f6;padding-top:0;margin-top:0;border-top:none">
               <button onclick="setAllCols(true)">전체 선택</button>
               <button onclick="setAllCols(false)">전체 해제</button>
+              <button onclick="resetColWidths();closeFileDropdown()" style="flex:none;padding:5px 8px;font-size:11px" title="컬럼 너비 초기화">↺ 너비 초기화</button>
             </div>
             <div id="colCheckboxList"></div>
           </div>
@@ -1464,6 +1700,117 @@
 </div>
 
 </div> <!-- /mainPage -->
+
+<!-- ─── 선번 관리 페이지 ─── -->
+<div id="cablePage">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-c">공사 이력</button>
+        <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="exportExcel()">
+        <span>↓</span> 엑셀 내보내기
+      </button>
+      <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()">
+        <span>+</span> 새 공사 등록
+      </button>
+    </div>
+  </header>
+  <div class="container">
+    <div class="settings-header">
+      <h2>🗺️ 선번 관리</h2>
+      <span style="font-size:12px;color:#9ca3af">도면 이미지 위에 선 포설 위치와 선번을 기록합니다</span>
+    </div>
+    <div class="cable-layout">
+
+      <!-- 사이드바 -->
+      <div class="cable-sidebar">
+        <div class="cable-sidebar-head">위치 선택</div>
+        <div class="cable-loc-selects">
+          <select id="cable-region" onchange="onCableRegionChange()">
+            <option value="">지역 선택</option>
+          </select>
+          <select id="cable-dong" onchange="onCableDongChange()">
+            <option value="">동 선택</option>
+          </select>
+          <select id="cable-floor" onchange="onCableFloorChange()">
+            <option value="">층 선택</option>
+          </select>
+        </div>
+        <div class="cable-upload-area">
+          <label class="cable-upload-btn" id="cableUploadLabel">
+            📁 도면 업로드 (JPG·PNG·PDF·DXF)
+            <input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />
+          </label>
+        </div>
+        <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:700;color:#374151">선번 목록</span>
+          <span id="cableTotalCount" style="font-size:11px;color:#9ca3af"></span>
+        </div>
+        <div class="cable-list-area" id="cableList">
+          <div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">위치를 선택하세요</div>
+        </div>
+      </div>
+
+      <!-- 캔버스 패널 -->
+      <div class="canvas-panel">
+        <div class="canvas-toolbar">
+          <button class="tool-btn active" id="toolPin" onclick="setTool('pin')">📍 핀 찍기</button>
+          <button class="tool-btn" id="toolSelect" onclick="setTool('select')">↖ 선택/수정</button>
+          <button class="tool-btn" id="toolDelete" onclick="setTool('delete')">🗑 삭제</button>
+          <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
+          <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
+            핀 색상
+            <input type="color" id="cableColorPicker" value="#e74c3c" style="width:32px;height:24px;border:none;cursor:pointer;border-radius:4px;padding:0" />
+          </label>
+          <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
+          <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
+            확대
+            <input type="range" id="zoomRange" min="50" max="300" value="100" step="10" style="width:80px" onchange="setZoom(this.value)" />
+            <span id="zoomLabel">100%</span>
+          </label>
+          <span id="canvasHint" style="margin-left:auto">위치와 도면을 선택하면 핀을 찍을 수 있습니다</span>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <div class="canvas-empty" id="canvasEmpty">
+            <div style="font-size:40px">🗺️</div>
+            <div>왼쪽에서 위치를 선택하고 도면을 업로드하세요</div>
+          </div>
+          <canvas id="floorCanvas" style="display:none"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 선번 입력 모달 -->
+<div class="cable-modal" id="cableInputModal">
+  <div class="cable-modal-box">
+    <h3 id="cableModalTitle">선번 정보 입력</h3>
+    <div class="cable-form-group">
+      <label>선번 *</label>
+      <input type="text" id="ci-cable_no" placeholder="예) DA-001, VP-023" />
+    </div>
+    <div class="cable-form-group">
+      <label>공사번호</label>
+      <input type="text" id="ci-construction_no" placeholder="예) 26" />
+    </div>
+    <div class="cable-form-group">
+      <label>메모</label>
+      <textarea id="ci-memo" placeholder="특이사항 등" rows="2" style="resize:none"></textarea>
+    </div>
+    <div class="cable-modal-footer">
+      <button class="btn btn-outline" onclick="closeCableModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveCableLine()">저장</button>
+    </div>
+  </div>
+</div>
 <!-- ─── 설정 페이지 ─── -->
 <div id="settingsPage">
   <header class="header">
@@ -1472,6 +1819,7 @@
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
         <button class="nav-tab" onclick="switchTab('main')" id="tab-main-s">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
         <button class="nav-tab active" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -1905,24 +2253,26 @@ async function loadData() {
     return;
   }
 
+  // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
+  setTimeout(initColResize, 0);
   tbody.innerHTML = data.map(r => `
     <tr>
       <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
       ${v('no') ? `<td><code style="color:#9ca3af;font-size:11px">${r.no}</code></td>` : ''}
       ${v('gubun') ? `<td>${gubunBadge(r.gubun)}</td>` : ''}
-      ${v('req_date') ? `<td style="font-size:12px;color:#6b7280">${r.req_date || '-'}</td>` : ''}
-      ${v('corp') ? `<td style="font-size:12px">${r.corp || '-'}</td>` : ''}
-      ${v('dept') ? `<td style="font-size:12px">${r.dept || '-'}</td>` : ''}
-      ${v('requester') ? `<td style="font-size:12px">${r.requester || '-'}</td>` : ''}
+      ${v('req_date') ? `<td class="col-sm">${r.req_date || '-'}</td>` : ''}
+      ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
+      ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
+      ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
       ${v('work_name') ? `<td class="work-name">${r.work_name || '-'}</td>` : ''}
-      ${v('loc') ? `<td style="font-size:12px">${r.loc_region || ''}</td><td style="font-size:12px">${r.loc_dong || ''}</td><td style="font-size:12px">${r.loc_floor || ''}</td><td style="font-size:12px">${r.loc_detail || ''}</td>` : ''}
-      ${v('status') ? `<td>${statusBadge(r.status)}</td>` : ''}
-      ${v('deadline') ? `<td style="font-size:12px">${r.deadline || '-'}</td>` : ''}
-      ${v('complete_date') ? `<td style="font-size:12px">${r.complete_date || '-'}</td>` : ''}
-      ${v('purchase_doc') ? `<td style="font-size:11px;color:#9ca3af">${r.purchase_doc || '-'}</td>` : ''}
-      ${v('payment_doc') ? `<td style="font-size:11px;color:#9ca3af">${r.payment_doc || '-'}</td>` : ''}
-      ${v('it_manager') ? `<td style="font-size:12px">${r.it_manager || '-'}</td>` : ''}
-      ${v('worker') ? `<td style="font-size:12px">${r.worker || '-'}</td>` : ''}
+      ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
+      ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
+      ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
+      ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
+      ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
+      ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+      ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
+      ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
       ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="showDetail(${r.id})">보기</button><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button></div></td>` : ''}
     </tr>
   `).join('');
@@ -2458,6 +2808,318 @@ async function importExcel(input) {
   }
 }
 
+
+// ── 선번 관리 (핀 방식) ──────────────────────────────────────────
+
+let cableTool = 'pin';
+let cableFloorplanId = null;
+let cableLines = [];
+let cableSelectedId = null;
+let cableImg = null;
+let cableZoom = 1.0;
+
+function setTool(t) {
+  cableTool = t;
+  ['pin','select','delete'].forEach(n => {
+    const btn = document.getElementById('tool' + n.charAt(0).toUpperCase() + n.slice(1));
+    if (btn) btn.classList.toggle('active', n === t);
+  });
+  const canvas = document.getElementById('floorCanvas');
+  if (!canvas) return;
+  canvas.style.cursor = t === 'pin' ? 'crosshair' : t === 'delete' ? 'not-allowed' : 'pointer';
+  const hints = { pin: '도면을 클릭해 핀을 찍으세요', select: '핀을 클릭하면 정보를 수정할 수 있습니다', delete: '삭제할 핀을 클릭하세요' };
+  const hint = document.getElementById('canvasHint');
+  if (hint) hint.textContent = hints[t] || '';
+}
+
+function setZoom(val) {
+  cableZoom = val / 100;
+  document.getElementById('zoomLabel').textContent = val + '%';
+  const canvas = document.getElementById('floorCanvas');
+  if (cableImg && canvas.style.display !== 'none') {
+    canvas.style.width = (cableImg.naturalWidth * cableZoom) + 'px';
+    canvas.style.height = (cableImg.naturalHeight * cableZoom) + 'px';
+    drawCanvas();
+  }
+}
+
+function initCablePage() {
+  if (!allLocations.length) loadLocations();
+  const regions = [...new Set(allLocations.map(l => l.region))];
+  const regionSel = document.getElementById('cable-region');
+  regionSel.innerHTML = '<option value="">지역 선택</option>' + regions.map(r => `<option value="${r}">${r}</option>`).join('');
+  document.getElementById('cable-dong').innerHTML = '<option value="">동 선택</option>';
+  document.getElementById('cable-floor').innerHTML = '<option value="">층 선택</option>';
+  renderCableList([]);
+  resetCanvas();
+}
+
+function onCableRegionChange() {
+  const region = document.getElementById('cable-region').value;
+  const locs = allLocations.filter(l => l.region === region);
+  document.getElementById('cable-dong').innerHTML = '<option value="">동 선택</option>' +
+    locs.map(l => `<option value="${l.dong}">${l.dong}</option>`).join('');
+  document.getElementById('cable-floor').innerHTML = '<option value="">층 선택</option>';
+  resetCanvas();
+}
+
+function onCableDongChange() {
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const loc = allLocations.find(l => l.region === region && l.dong === dong);
+  const floors = loc ? JSON.parse(loc.floors || '[]') : [];
+  document.getElementById('cable-floor').innerHTML = '<option value="">층 선택</option>' +
+    floors.map(f => `<option value="${f}">${f}</option>`).join('');
+  resetCanvas();
+}
+
+async function onCableFloorChange() {
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const floor = document.getElementById('cable-floor').value;
+  if (!region || !dong || !floor) return;
+
+  document.getElementById('canvasHint').textContent = '도면 불러오는 중...';
+  const fp = await api('GET', `/api/floorplan?region=${encodeURIComponent(region)}&dong=${encodeURIComponent(dong)}&floor=${encodeURIComponent(floor)}`);
+  if (fp) {
+    cableFloorplanId = fp.id;
+    loadFloorplanImage(fp.filename);
+    loadCableLines();
+  } else {
+    cableFloorplanId = null;
+    resetCanvas();
+    document.getElementById('canvasHint').textContent = '도면을 업로드하세요';
+    renderCableList([]);
+  }
+}
+
+async function uploadFloorplan(input) {
+  const region = document.getElementById('cable-region').value;
+  const dong = document.getElementById('cable-dong').value;
+  const floor = document.getElementById('cable-floor').value;
+  if (!region || !dong || !floor) { alert('먼저 위치를 선택하세요'); input.value=''; return; }
+  if (!input.files[0]) return;
+
+  const label = document.getElementById('cableUploadLabel');
+  label.textContent = '⏳ 변환 중... (PDF/DXF는 시간이 걸릴 수 있습니다)';
+
+  const fd = new FormData();
+  fd.append('image', input.files[0]);
+  fd.append('region', region);
+  fd.append('dong', dong);
+  fd.append('floor', floor);
+  input.value = '';
+
+  try {
+    const res = await fetch('/api/floorplan/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { alert('업로드 실패: ' + data.error); return; }
+    cableFloorplanId = data.id;
+    loadFloorplanImage(data.filename);
+    loadCableLines();
+    showToast('도면 업로드 완료');
+    label.innerHTML = '📁 도면 업로드 (JPG·PNG·PDF·DXF)<input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />';
+  } catch(e) {
+    alert('업로드 오류: ' + e.message);
+    label.innerHTML = '📁 도면 업로드 (JPG·PNG·PDF·DXF)<input type="file" accept="image/*,.pdf,.dxf,.dwg" style="display:none" onchange="uploadFloorplan(this)" />';
+  }
+}
+
+function loadFloorplanImage(filename) {
+  const canvas = document.getElementById('floorCanvas');
+  const empty = document.getElementById('canvasEmpty');
+  const img = new Image();
+  img.onload = () => {
+    cableImg = img;
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.style.width = (img.naturalWidth * cableZoom) + 'px';
+    canvas.style.height = (img.naturalHeight * cableZoom) + 'px';
+    canvas.style.display = 'block';
+    empty.style.display = 'none';
+    document.getElementById('canvasHint').textContent = '클릭으로 핀을 찍으세요';
+    drawCanvas();
+  };
+  img.onerror = () => {
+    document.getElementById('canvasHint').textContent = '이미지 로드 실패';
+  };
+  img.src = `/api/floorplan/image/${filename}?t=${Date.now()}`;
+}
+
+async function loadCableLines() {
+  if (!cableFloorplanId) return;
+  cableLines = await api('GET', `/api/cables?floorplan_id=${cableFloorplanId}`);
+  renderCableList(cableLines);
+  drawCanvas();
+}
+
+function renderCableList(lines) {
+  document.getElementById('cableTotalCount').textContent = lines.length ? `${lines.length}개` : '';
+  document.getElementById('cableList').innerHTML = lines.length
+    ? lines.map(l => `
+      <div class="cable-item ${l.id === cableSelectedId ? 'selected' : ''}" onclick="selectCablePin(${l.id})">
+        <div class="cable-color-dot" style="background:${l.color}"></div>
+        <div class="cable-item-info">
+          <div class="cable-item-no">${l.cable_no || '(선번 없음)'}</div>
+          <div class="cable-item-sub">${l.construction_no ? '공사 ' + l.construction_no : ''} ${l.memo ? '· ' + l.memo : ''}</div>
+        </div>
+        <button class="cable-item-del" onclick="event.stopPropagation();deleteCablePin(${l.id})">✕</button>
+      </div>`).join('')
+    : '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">등록된 선번이 없습니다</div>';
+}
+
+const PIN_R = 12; // 핀 반지름 (px, 캔버스 기준)
+
+function drawCanvas() {
+  const canvas = document.getElementById('floorCanvas');
+  if (!canvas || canvas.style.display === 'none') return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (cableImg) ctx.drawImage(cableImg, 0, 0, canvas.width, canvas.height);
+
+  cableLines.forEach(l => {
+    const cx = l.x * canvas.width;
+    const cy = l.y * canvas.height;
+    const selected = l.id === cableSelectedId;
+    const color = l.color || '#e74c3c';
+
+    // 핀 원
+    ctx.beginPath();
+    ctx.arc(cx, cy, selected ? PIN_R + 3 : PIN_R, 0, Math.PI * 2);
+    ctx.fillStyle = selected ? '#f59e0b' : color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 핀 아이콘 (간단한 포인터 아래 삼각형)
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + PIN_R);
+    ctx.lineTo(cx - 5, cy + PIN_R + 8);
+    ctx.lineTo(cx + 5, cy + PIN_R + 8);
+    ctx.closePath();
+    ctx.fillStyle = selected ? '#f59e0b' : color;
+    ctx.fill();
+
+    // 선번 라벨
+    if (l.cable_no) {
+      const fontSize = 11;
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      const tw = ctx.measureText(l.cable_no).width;
+      const lx = cx - tw/2 - 4;
+      const ly = cy - PIN_R - 18;
+      // 배경
+      ctx.fillStyle = selected ? '#f59e0b' : color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lx, ly, tw + 8, 16, 4) : ctx.rect(lx, ly, tw + 8, 16);
+      ctx.fill();
+      // 텍스트
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l.cable_no, cx - tw/2, ly + 12);
+    }
+  });
+}
+
+function resetCanvas() {
+  const canvas = document.getElementById('floorCanvas');
+  if (canvas) canvas.style.display = 'none';
+  const empty = document.getElementById('canvasEmpty');
+  if (empty) empty.style.display = 'flex';
+  cableImg = null;
+  cableLines = [];
+  cableFloorplanId = null;
+}
+
+// 캔버스 클릭
+document.getElementById('floorCanvas').addEventListener('click', function(e) {
+  if (!cableFloorplanId || !cableImg) return;
+  const rect = this.getBoundingClientRect();
+  // 화면좌표 → 캔버스 좌표 비율
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+
+  if (cableTool === 'pin') {
+    openCableModal(null, x, y);
+  } else if (cableTool === 'select' || cableTool === 'delete') {
+    const hit = findPinAt(x, y);
+    if (hit) {
+      if (cableTool === 'delete') {
+        deleteCablePin(hit.id);
+      } else {
+        selectCablePin(hit.id);
+        openCableModal(hit);
+      }
+    }
+  }
+});
+
+function findPinAt(nx, ny) {
+  const canvas = document.getElementById('floorCanvas');
+  const THRESH = (PIN_R + 8) / canvas.width;
+  for (const l of cableLines) {
+    const dist = Math.sqrt((nx - l.x)**2 + (ny - l.y)**2);
+    if (dist < THRESH) return l;
+  }
+  return null;
+}
+
+function selectCablePin(id) {
+  cableSelectedId = id;
+  renderCableList(cableLines);
+  drawCanvas();
+}
+
+let editingCableId = null;
+let pendingPinX = null, pendingPinY = null;
+
+function openCableModal(existing = null, px = null, py = null) {
+  editingCableId = existing ? existing.id : null;
+  pendingPinX = px; pendingPinY = py;
+  document.getElementById('cableModalTitle').textContent = existing ? '선번 정보 수정' : '핀 정보 입력';
+  document.getElementById('ci-cable_no').value = existing?.cable_no || '';
+  document.getElementById('ci-construction_no').value = existing?.construction_no || '';
+  document.getElementById('ci-memo').value = existing?.memo || '';
+  if (existing?.color) document.getElementById('cableColorPicker').value = existing.color;
+  document.getElementById('cableInputModal').classList.add('open');
+  setTimeout(() => document.getElementById('ci-cable_no').focus(), 100);
+}
+
+function closeCableModal() {
+  document.getElementById('cableInputModal').classList.remove('open');
+  editingCableId = null;
+  pendingPinX = null; pendingPinY = null;
+}
+
+async function saveCableLine() {
+  const cable_no = document.getElementById('ci-cable_no').value.trim();
+  const construction_no = document.getElementById('ci-construction_no').value.trim();
+  const memo = document.getElementById('ci-memo').value.trim();
+  const color = document.getElementById('cableColorPicker').value;
+
+  if (editingCableId) {
+    await api('PUT', `/api/cables/${editingCableId}`, { cable_no, construction_no, color, memo });
+    showToast('수정됐습니다');
+  } else if (pendingPinX !== null) {
+    await api('POST', '/api/cables', {
+      floorplan_id: cableFloorplanId,
+      cable_no, construction_no, color, memo,
+      x: pendingPinX, y: pendingPinY
+    });
+    showToast('핀 저장됐습니다');
+  }
+
+  closeCableModal();
+  await loadCableLines();
+}
+
+async function deleteCablePin(id) {
+  if (!confirm('이 핀을 삭제할까요?')) return;
+  await api('DELETE', `/api/cables/${id}`);
+  if (cableSelectedId === id) cableSelectedId = null;
+  showToast('삭제됐습니다');
+  await loadCableLines();
+}
+
 // ── SETTINGS & LOCATIONS ──────────────────────────────────────────
 
 let allLocations = [];
@@ -2626,16 +3288,19 @@ async function deleteFloor(locId, floorIdx) {
 // ── 탭 전환 ──────────────────────────────────────────
 
 function switchTab(tab) {
-  const isMain = tab === 'main';
-  document.getElementById('mainPage').style.display = isMain ? 'block' : 'none';
-  document.getElementById('settingsPage').style.display = isMain ? 'none' : 'block';
-  // 메인 헤더 탭
-  document.getElementById('tab-main').classList.toggle('active', isMain);
-  document.getElementById('tab-settings').classList.toggle('active', !isMain);
-  // 설정 헤더 탭
-  document.getElementById('tab-main-s').classList.toggle('active', isMain);
-  document.getElementById('tab-settings-s').classList.toggle('active', !isMain);
-  if (!isMain) loadLocations();
+  document.getElementById('mainPage').style.display = tab === 'main' ? 'block' : 'none';
+  document.getElementById('cablePage').style.display = tab === 'cable' ? 'block' : 'none';
+  document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
+
+  ['main','cable','settings'].forEach(t => {
+    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('active', t === tab);
+    });
+  });
+
+  if (tab === 'settings') loadLocations();
+  if (tab === 'cable') initCablePage();
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -2732,11 +3397,72 @@ async function showHistory(id, workName) {
   `;
 }
 
+
+// ── COLUMN RESIZE ──────────────────────────────────────────
+
+function initColResize() {
+  const table = document.querySelector('table');
+  if (!table) return;
+
+  // 저장된 너비 복원
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('colWidths') || '{}'); } catch { return {}; } })();
+
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach((th, i) => {
+    th.classList.add('resizable');
+
+    // 저장된 너비 적용
+    if (saved[i]) th.style.width = saved[i] + 'px';
+
+    // 리사이저 핸들 추가
+    const resizer = document.createElement('div');
+    resizer.className = 'col-resizer';
+    th.appendChild(resizer);
+
+    let startX, startW;
+
+    resizer.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      startX = e.clientX;
+      startW = th.offsetWidth;
+      resizer.classList.add('resizing');
+
+      const onMove = e => {
+        const newW = Math.max(50, startW + e.clientX - startX);
+        th.style.width = newW + 'px';
+      };
+
+      const onUp = () => {
+        resizer.classList.remove('resizing');
+        // 너비 저장
+        const widths = {};
+        table.querySelectorAll('thead th').forEach((t, idx) => {
+          if (t.style.width) widths[idx] = parseInt(t.style.width);
+        });
+        localStorage.setItem('colWidths', JSON.stringify(widths));
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+// 너비 초기화 버튼
+function resetColWidths() {
+  localStorage.removeItem('colWidths');
+  document.querySelectorAll('thead th').forEach(th => { th.style.width = ''; });
+  showToast('컬럼 너비가 초기화됐습니다');
+}
+
 // ── INIT ──────────────────────────────────────────
 
 initColVisibility();
 loadStats();
-loadData();
+loadData().then(() => initColResize());
 loadLocations();
 </script>
 </body>
