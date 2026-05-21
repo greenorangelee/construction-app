@@ -1431,10 +1431,12 @@
 
     .canvas-wrap {
       position: relative;
-      overflow: auto;
+      overflow: hidden;
       max-height: 70vh;
       background: #f3f4f6;
+      cursor: crosshair;
     }
+    .canvas-wrap.panning { cursor: grabbing; }
 
     #floorCanvas {
       display: block;
@@ -1488,6 +1490,116 @@
     }
     .cable-form-group input:focus, .cable-form-group textarea:focus { border-color: #c0392b; }
     .cable-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+    /* ── NETWORK SETTINGS ── */
+    .network-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      transition: box-shadow 0.15s;
+    }
+    .network-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+    .network-preview {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .network-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a1a;
+      min-width: 50px;
+    }
+
+    .network-shape-label {
+      font-size: 12px;
+      color: #6b7280;
+      flex: 1;
+    }
+
+    .network-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .net-btn {
+      background: none;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #6b7280;
+      transition: all 0.15s;
+    }
+    .net-btn:hover { border-color: #c0392b; color: #c0392b; }
+    .net-btn.danger:hover { border-color: #ef4444; color: #ef4444; }
+
+    .shape-selector {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .shape-opt {
+      width: 32px;
+      height: 32px;
+      border: 2px solid #e5e7eb;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      background: #fff;
+    }
+    .shape-opt:hover { border-color: #c0392b; }
+    .shape-opt.selected { border-color: #c0392b; background: #fef2f2; }
+
+    /* 망 추가 폼 */
+    .network-add-form {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+    .network-add-form .form-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .network-add-form input[type=text] {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: 'Noto Sans KR', sans-serif;
+      outline: none;
+      width: 80px;
+    }
+    .network-add-form input[type=text]:focus { border-color: #c0392b; }
+    .network-add-form input[type=color] {
+      width: 40px;
+      height: 36px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 2px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -1763,10 +1875,7 @@
         <div class="canvas-toolbar">
           <button class="tool-btn active" id="toolPin">📍 핀 찍기 (클릭으로 추가, 핀 클릭으로 편집/삭제)</button>
           <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
-          <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
-            핀 색상
-            <input type="color" id="cableColorPicker" value="#e74c3c" style="width:32px;height:24px;border:none;cursor:pointer;border-radius:4px;padding:0" />
-          </label>
+          <input type="color" id="cableColorPicker" value="#e74c3c" style="display:none" />
           <div style="width:1px;height:20px;background:#e5e7eb;margin:0 4px"></div>
           <label style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px">
             확대
@@ -1792,19 +1901,8 @@
   <div class="cable-modal-box">
     <h3 id="cableModalTitle">핀 정보</h3>
     <div class="cable-form-group">
-      <label>선번 타입 *</label>
-      <div style="display:flex;gap:8px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:#fff5f5;border:2px solid #fecaca;border-radius:8px;padding:8px 12px;transition:all 0.15s" id="label-DA">
-          <input type="radio" name="cable_type" value="DA" id="type-DA" onchange="onCableTypeChange()" style="accent-color:#e74c3c" />
-          <span style="font-weight:700;color:#c0392b">DA</span>
-          <span style="width:12px;height:12px;border-radius:50%;background:#e74c3c;display:inline-block"></span>
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:#fffbeb;border:2px solid #fde68a;border-radius:8px;padding:8px 12px;transition:all 0.15s" id="label-VP">
-          <input type="radio" name="cable_type" value="VP" id="type-VP" onchange="onCableTypeChange()" style="accent-color:#f59e0b" />
-          <span style="font-weight:700;color:#d97706">VP</span>
-          <span style="width:12px;height:12px;border-radius:50%;background:#f59e0b;display:inline-block"></span>
-        </label>
-      </div>
+      <label>망 선택 *</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="cableTypeSelector"></div>
     </div>
     <div class="cable-form-group">
       <label>번호 *</label>
@@ -2823,6 +2921,116 @@ async function importExcel(input) {
 }
 
 
+
+// ── 망 설정 ──────────────────────────────────────────
+
+let allNetworks = [];
+
+const SHAPE_ICONS = { circle:'⬤', diamond:'◆', star:'★', square:'■', triangle:'▲' };
+const SHAPE_NAMES = { circle:'원', diamond:'다이아몬드', star:'별', square:'사각형', triangle:'삼각형' };
+
+async function loadNetworks() {
+  allNetworks = await api('GET', '/api/networks');
+  renderNetworkList();
+  renderCableTypeSelector();
+}
+
+function renderNetworkList() {
+  const el = document.getElementById('networkList');
+  if (!el) return;
+  document.getElementById('networkCount').textContent = allNetworks.length + '개';
+  el.innerHTML = allNetworks.map(n => `
+    <div class="network-card">
+      <div class="network-preview">
+        <span style="font-size:22px;color:${n.color}">${SHAPE_ICONS[n.shape] || '⬤'}</span>
+      </div>
+      <div class="network-name">${n.name}</div>
+      <div class="network-shape-label">${SHAPE_NAMES[n.shape] || '원'}</div>
+      <input type="color" value="${n.color}" style="width:32px;height:28px;border:1px solid #e5e7eb;border-radius:6px;padding:1px;cursor:pointer"
+        onchange="updateNetworkColor(${n.id}, this.value)" title="색상 변경" />
+      <div class="shape-selector">
+        ${Object.keys(SHAPE_ICONS).map(s => `
+          <div class="shape-opt ${n.shape===s?'selected':''}" onclick="updateNetworkShape(${n.id},'${s}')" title="${SHAPE_NAMES[s]}" style="width:26px;height:26px;font-size:13px;color:${n.color}">
+            ${SHAPE_ICONS[s]}
+          </div>`).join('')}
+      </div>
+      <button class="net-btn danger" onclick="deleteNetwork(${n.id})">삭제</button>
+    </div>
+  `).join('') || '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">망을 추가하세요</div>';
+}
+
+function renderCableTypeSelector() {
+  const el = document.getElementById('cableTypeSelector');
+  if (!el) return;
+  el.innerHTML = allNetworks.map((n, i) => `
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;border:2px solid #e5e7eb;border-radius:8px;padding:7px 12px;transition:all 0.15s;background:#fff"
+      id="netlabel-${n.id}" onclick="selectNetworkType(${n.id})">
+      <input type="radio" name="cable_type" value="${n.id}" id="nettype-${n.id}" style="display:none" ${i===0?'checked':''} />
+      <span style="color:${n.color};font-size:16px">${SHAPE_ICONS[n.shape]||'⬤'}</span>
+      <span style="font-weight:700;color:#374151">${n.name}</span>
+    </label>
+  `).join('');
+  // 첫 번째 선택
+  if (allNetworks.length) selectNetworkType(allNetworks[0].id, true);
+}
+
+function selectNetworkType(id, silent) {
+  allNetworks.forEach(n => {
+    const lbl = document.getElementById('netlabel-' + n.id);
+    const radio = document.getElementById('nettype-' + n.id);
+    if (lbl && radio) {
+      const sel = n.id === id;
+      radio.checked = sel;
+      lbl.style.borderColor = sel ? n.color : '#e5e7eb';
+      lbl.style.background = sel ? (n.color + '18') : '#fff';
+    }
+  });
+}
+
+function getSelectedNetwork() {
+  const radio = document.querySelector('input[name="cable_type"]:checked');
+  if (!radio) return allNetworks[0];
+  return allNetworks.find(n => n.id == radio.value) || allNetworks[0];
+}
+
+function selectNewShape(el) {
+  document.querySelectorAll('#newNetShapeSelector .shape-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function addNetwork() {
+  const name = document.getElementById('newNetName').value.trim().toUpperCase();
+  const color = document.getElementById('newNetColor').value;
+  const shape = document.querySelector('#newNetShapeSelector .shape-opt.selected')?.dataset.shape || 'circle';
+  if (!name) { alert('망 이름을 입력하세요'); return; }
+  await api('POST', '/api/networks', { name, color, shape });
+  document.getElementById('newNetName').value = '';
+  await loadNetworks();
+  showToast(`'${name}' 망 추가됐습니다`);
+}
+
+async function updateNetworkColor(id, color) {
+  const n = allNetworks.find(x => x.id === id);
+  if (!n) return;
+  await api('PUT', `/api/networks/${id}`, { name: n.name, color, shape: n.shape });
+  await loadNetworks();
+}
+
+async function updateNetworkShape(id, shape) {
+  const n = allNetworks.find(x => x.id === id);
+  if (!n) return;
+  await api('PUT', `/api/networks/${id}`, { name: n.name, color: n.color, shape });
+  await loadNetworks();
+}
+
+async function deleteNetwork(id) {
+  const n = allNetworks.find(x => x.id === id);
+  if (!confirm(`'${n?.name}' 망을 삭제할까요?`)) return;
+  await api('DELETE', `/api/networks/${id}`);
+  await loadNetworks();
+  showToast('삭제됐습니다');
+}
+
 // ── 선번 관리 (핀 방식) ──────────────────────────────────────────
 
 let cableTool = 'pin';
@@ -2840,15 +3048,40 @@ function setTool(t) {
   if (hint) hint.textContent = '도면을 클릭해 핀 추가, 핀을 클릭해 편집/삭제';
 }
 
-function setZoom(val) {
-  cableZoom = val / 100;
-  document.getElementById('zoomLabel').textContent = val + '%';
+let panX = 0, panY = 0;
+
+function setZoom(val, centerX, centerY) {
+  const wrap = document.getElementById('canvasWrap');
   const canvas = document.getElementById('floorCanvas');
-  if (cableImg && canvas.style.display !== 'none') {
-    canvas.style.width = (cableImg.naturalWidth * cableZoom) + 'px';
-    canvas.style.height = (cableImg.naturalHeight * cableZoom) + 'px';
-    drawCanvas();
+  if (!cableImg || canvas.style.display === 'none') return;
+
+  const oldZoom = cableZoom;
+  cableZoom = Math.max(0.2, Math.min(5, val / 100));
+
+  // 줌 중심점 기준으로 pan 조정
+  if (centerX !== undefined && centerY !== undefined) {
+    const scale = cableZoom / oldZoom;
+    panX = centerX - (centerX - panX) * scale;
+    panY = centerY - (centerY - panY) * scale;
   }
+
+  const zoomPct = Math.round(cableZoom * 100);
+  const rangeEl = document.getElementById('zoomRange');
+  const labelEl = document.getElementById('zoomLabel');
+  if (rangeEl) rangeEl.value = Math.min(300, Math.max(50, zoomPct));
+  if (labelEl) labelEl.textContent = zoomPct + '%';
+
+  applyCanvasTransform();
+  drawCanvas();
+}
+
+function applyCanvasTransform() {
+  const canvas = document.getElementById('floorCanvas');
+  if (!cableImg) return;
+  canvas.style.width = (cableImg.naturalWidth * cableZoom) + 'px';
+  canvas.style.height = (cableImg.naturalHeight * cableZoom) + 'px';
+  canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+  canvas.style.transformOrigin = '0 0';
 }
 
 function initCablePage() {
@@ -2939,13 +3172,17 @@ function loadFloorplanImage(filename) {
   const img = new Image();
   img.onload = () => {
     cableImg = img;
+    panX = 0; panY = 0; cableZoom = 1.0;
+    const rangeEl = document.getElementById('zoomRange');
+    const labelEl = document.getElementById('zoomLabel');
+    if (rangeEl) rangeEl.value = 100;
+    if (labelEl) labelEl.textContent = '100%';
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
-    canvas.style.width = (img.naturalWidth * cableZoom) + 'px';
-    canvas.style.height = (img.naturalHeight * cableZoom) + 'px';
     canvas.style.display = 'block';
     empty.style.display = 'none';
-    document.getElementById('canvasHint').textContent = '클릭으로 핀을 찍으세요';
+    applyCanvasTransform();
+    document.getElementById('canvasHint').textContent = '클릭으로 핀 추가, 핀 클릭으로 편집/삭제';
     drawCanvas();
   };
   img.onerror = () => {
@@ -2989,41 +3226,57 @@ function drawCanvas() {
     const cx = l.x * canvas.width;
     const cy = l.y * canvas.height;
     const selected = l.id === cableSelectedId;
-    const color = l.color || '#e74c3c';
+    const color = selected ? '#f59e0b' : (l.color || '#e74c3c');
+    const r = selected ? PIN_R + 2 : PIN_R;
+    const shape = l.shape || 'circle';
 
-    // 핀 원
-    ctx.beginPath();
-    ctx.arc(cx, cy, selected ? PIN_R + 3 : PIN_R, 0, Math.PI * 2);
-    ctx.fillStyle = selected ? '#f59e0b' : color;
-    ctx.fill();
+    ctx.fillStyle = color;
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // 핀 아이콘 (간단한 포인터 아래 삼각형)
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(cx, cy + PIN_R);
-    ctx.lineTo(cx - 5, cy + PIN_R + 8);
-    ctx.lineTo(cx + 5, cy + PIN_R + 8);
-    ctx.closePath();
-    ctx.fillStyle = selected ? '#f59e0b' : color;
+
+    if (shape === 'circle') {
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    } else if (shape === 'diamond') {
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r, cy);
+      ctx.closePath();
+    } else if (shape === 'star') {
+      for (let i = 0; i < 5; i++) {
+        const a1 = (i * 4 * Math.PI / 5) - Math.PI/2;
+        const a2 = ((i * 4 + 2) * Math.PI / 5) - Math.PI/2;
+        i === 0 ? ctx.moveTo(cx + r*Math.cos(a1), cy + r*Math.sin(a1)) : ctx.lineTo(cx + r*Math.cos(a1), cy + r*Math.sin(a1));
+        ctx.lineTo(cx + (r*0.4)*Math.cos(a2), cy + (r*0.4)*Math.sin(a2));
+      }
+      ctx.closePath();
+    } else if (shape === 'square') {
+      ctx.rect(cx - r, cy - r, r*2, r*2);
+    } else if (shape === 'triangle') {
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy + r);
+      ctx.lineTo(cx - r, cy + r);
+      ctx.closePath();
+    } else {
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    }
+
     ctx.fill();
+    ctx.stroke();
 
     // 선번 라벨
     if (l.cable_no) {
-      const fontSize = 11;
-      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.font = `bold 11px sans-serif`;
       const tw = ctx.measureText(l.cable_no).width;
       const lx = cx - tw/2 - 4;
-      const ly = cy - PIN_R - 16;
-      // 배경
-      ctx.fillStyle = selected ? '#f59e0b' : color;
+      const ly = cy - r - 16;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(lx, ly, tw + 8, 16, 4) : ctx.rect(lx, ly, tw + 8, 16);
+      ctx.roundRect ? ctx.roundRect(lx, ly, tw + 8, 15, 3) : ctx.rect(lx, ly, tw + 8, 15);
       ctx.fill();
-      // 텍스트
       ctx.fillStyle = '#fff';
-      ctx.fillText(l.cable_no, cx - tw/2, ly + 12);
+      ctx.fillText(l.cable_no, cx - tw/2, ly + 11);
     }
   });
 }
@@ -3041,8 +3294,8 @@ function resetCanvas() {
 // 캔버스 클릭
 document.getElementById('floorCanvas').addEventListener('click', function(e) {
   if (!cableFloorplanId || !cableImg) return;
+  if (e._fromPan) return; // 드래그 후 클릭 무시
   const rect = this.getBoundingClientRect();
-  // 화면좌표 → 캔버스 좌표 비율
   const x = (e.clientX - rect.left) / rect.width;
   const y = (e.clientY - rect.top) / rect.height;
 
@@ -3078,7 +3331,7 @@ let pendingPinX = null, pendingPinY = null;
 
 function onCableTypeChange() {
   const type = document.querySelector('input[name="cable_type"]:checked')?.value;
-  const color = type === 'DA' ? '#e74c3c' : '#f59e0b';
+  const color = type === 'DA' ? '#FF0000' : '#FFD700';
   document.getElementById('cableColorPicker').value = color;
 }
 
@@ -3088,20 +3341,17 @@ function openCableModal(existing = null, px = null, py = null) {
   document.getElementById('cableModalTitle').textContent = existing ? '핀 정보 수정' : '핀 정보 입력';
 
   if (existing?.cable_no) {
-    // DA01, VP01 형태에서 타입과 번호 분리
-    const match = existing.cable_no.match(/^(DA|VP)(\d+)$/i);
-    if (match) {
-      const typeVal = match[1].toUpperCase();
-      const numVal = parseInt(match[2]);
-      const radio = document.getElementById('type-' + typeVal);
-      if (radio) radio.checked = true;
-      document.getElementById('ci-cable_num').value = numVal;
+    // 선번에서 망 이름과 번호 분리
+    const net = allNetworks.find(n => existing.cable_no.startsWith(n.name));
+    if (net) {
+      selectNetworkType(net.id);
+      document.getElementById('ci-cable_num').value = existing.cable_no.slice(net.name.length);
     } else {
-      document.getElementById('type-DA').checked = true;
+      if (allNetworks.length) selectNetworkType(allNetworks[0].id);
       document.getElementById('ci-cable_num').value = '';
     }
   } else {
-    document.getElementById('type-DA').checked = true;
+    if (allNetworks.length) selectNetworkType(allNetworks[0].id);
     document.getElementById('ci-cable_num').value = '';
   }
 
@@ -3109,7 +3359,7 @@ function openCableModal(existing = null, px = null, py = null) {
   document.getElementById('ci-memo').value = existing?.memo || '';
 
   // 색상 자동 설정
-  const color = existing?.color || '#e74c3c';
+  // 색상은 망 설정에서 자동 지정됨
   document.getElementById('cableColorPicker').value = color;
 
   // 삭제 버튼 표시 여부
@@ -3134,21 +3384,23 @@ function closeCableModal() {
 }
 
 async function saveCableLine() {
-  const type = document.querySelector('input[name="cable_type"]:checked')?.value || 'DA';
+  const net = getSelectedNetwork();
+  if (!net) { alert('망을 선택하세요'); return; }
   const num = document.getElementById('ci-cable_num').value.trim();
   if (!num) { alert('번호를 입력하세요'); return; }
-  const cable_no = type + num.padStart(2, '0');
-  const color = type === 'DA' ? '#e74c3c' : '#f59e0b';
+  const cable_no = net.name + num.padStart(2, '0');
+  const color = net.color;
+  const shape = net.shape;
   const construction_no = document.getElementById('ci-construction_no').value.trim();
   const memo = document.getElementById('ci-memo').value.trim();
 
   if (editingCableId) {
-    await api('PUT', `/api/cables/${editingCableId}`, { cable_no, construction_no, color, memo });
+    await api('PUT', `/api/cables/${editingCableId}`, { cable_no, construction_no, color, shape, memo });
     showToast('수정됐습니다');
   } else if (pendingPinX !== null) {
     await api('POST', '/api/cables', {
       floorplan_id: cableFloorplanId,
-      cable_no, construction_no, color, memo,
+      cable_no, construction_no, color, shape, memo,
       x: pendingPinX, y: pendingPinY
     });
     showToast('핀 저장됐습니다');
@@ -3165,6 +3417,57 @@ async function deleteCablePin(id) {
   showToast('삭제됐습니다');
   await loadCableLines();
 }
+
+
+// ── 캔버스 휠 줌 & 휠클릭 드래그 ──────────────────────────────────────────
+
+(function() {
+  const wrap = document.getElementById('canvasWrap');
+  const canvas = document.getElementById('floorCanvas');
+  let isPanning = false, panStartX, panStartY, panStartOffX, panStartOffY;
+  let didPan = false;
+
+  // 휠 스크롤 = 확대/축소
+  wrap.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    if (!cableImg) return;
+    const rect = wrap.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - panX;
+    const mouseY = e.clientY - rect.top - panY;
+    const delta = e.deltaY > 0 ? -10 : 10;
+    const newZoomPct = Math.round(cableZoom * 100) + delta;
+    setZoom(newZoomPct, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  // 휠 클릭(중간 버튼) 드래그
+  wrap.addEventListener('mousedown', function(e) {
+    if (e.button !== 1) return; // 휠 클릭만
+    e.preventDefault();
+    isPanning = true;
+    didPan = false;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panStartOffX = panX;
+    panStartOffY = panY;
+    wrap.classList.add('panning');
+  });
+
+  window.addEventListener('mousemove', function(e) {
+    if (!isPanning) return;
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didPan = true;
+    panX = panStartOffX + dx;
+    panY = panStartOffY + dy;
+    applyCanvasTransform();
+  });
+
+  window.addEventListener('mouseup', function(e) {
+    if (!isPanning) return;
+    isPanning = false;
+    wrap.classList.remove('panning');
+  });
+})();
 
 // ── SETTINGS & LOCATIONS ──────────────────────────────────────────
 
@@ -3345,8 +3648,8 @@ function switchTab(tab) {
     });
   });
 
-  if (tab === 'settings') loadLocations();
-  if (tab === 'cable') initCablePage();
+  if (tab === 'settings') { loadLocations(); loadNetworks(); }
+  if (tab === 'cable') { initCablePage(); loadNetworks(); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -3510,6 +3813,7 @@ initColVisibility();
 loadStats();
 loadData().then(() => initColResize());
 loadLocations();
+loadNetworks();
 </script>
 </body>
 </html>
