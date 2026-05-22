@@ -536,19 +536,22 @@ app.post('/api/nac/sync', async (req, res) => {
       const nodes = Array.isArray(data) ? data : (data.result || []);
       if (!nodes.length) break;
       for (const node of nodes) {
-        const ip = node.NL_IPSTR || node.nl_ipstr || node.ip;
-        const mac = node.NL_MAC || node.nl_mac || node.mac;
-        const hostname = node.NL_FQDN || node.nl_fqdn || node.NL_NAME || '';
-        const lastSeen = node.NL_LASTACTIVE || node.nl_lastactive || '';
+        const ip = node.NL_IPSTR;
+        const mac = node.NL_MAC || '';
+        const hostname = node.NL_FQDN || '';
+        const user_name = node.NL_AUTHUSERNAME || node.DL_AUTHUSERNAME || '';
+        const dept = node.NL_AUTHUSERDEPTNAME || node.DL_AUTHUSERDEPTNAME || '';
+        const os = node.NL_OSNAME || '';
         const nacStatus = node.NL_ACTIVE === 1 ? 'UP' : node.NL_ACTIVE === 0 ? 'DOWN' : '';
+        const lastSeen = node.NL_LASTACTIVE ? new Date(node.NL_LASTACTIVE).toISOString().slice(0,19).replace('T',' ') : '';
         if (!ip) continue;
         const existing = queryOne('SELECT id FROM ip_assets WHERE ip=?', [ip]);
         if (existing) {
-          db.run('UPDATE ip_assets SET mac=?,hostname=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
-            [mac||'', hostname, nacStatus, lastSeen, ip]);
+          db.run('UPDATE ip_assets SET mac=?,hostname=?,user_name=?,dept=?,os=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
+            [mac, hostname, user_name, dept, os, nacStatus, lastSeen, ip]);
         } else {
-          db.run('INSERT OR IGNORE INTO ip_assets (ip,mac,hostname,nac_status,last_seen,status) VALUES (?,?,?,?,?,"used")',
-            [ip, mac||'', hostname, nacStatus, lastSeen]);
+          db.run('INSERT OR IGNORE INTO ip_assets (ip,mac,hostname,user_name,dept,os,nac_status,last_seen,status) VALUES (?,?,?,?,?,?,?,?,"used")',
+            [ip, mac, hostname, user_name, dept, os, nacStatus, lastSeen]);
         }
         synced++;
       }
