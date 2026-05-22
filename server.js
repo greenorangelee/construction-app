@@ -343,21 +343,51 @@ function nacFetch(path) {
       port: urlObj.port || 8443,
       path: urlObj.pathname + urlObj.search,
       method: 'GET',
-      headers: { 'accept': 'application/json;charset=UTF-8' },
+      headers: {
+        'accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
       agent
     };
     const req = https.request(options, res => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch(e) { reject(new Error('JSON parse error: ' + data.slice(0, 100))); }
+        const raw = Buffer.concat(chunks).toString('utf-8');
+        console.log('[NAC] status:', res.statusCode, 'path:', path.split('?')[0]);
+        console.log('[NAC] response preview:', raw.slice(0, 200));
+        // XML 응답이면 에러 처리
+        if (raw.trim().startsWith('<')) {
+          reject(new Error('NAC가 XML을 반환했습니다. API 경로나 인증을 확인하세요. 응답: ' + raw.slice(0, 150)));
+          return;
+        }
+        try { resolve(JSON.parse(raw)); }
+        catch(e) { reject(new Error('JSON 파싱 실패: ' + raw.slice(0, 150))); }
       });
     });
-    req.on('error', reject);
-    req.setTimeout(5000, () => { req.destroy(); reject(new Error('NAC API timeout')); });
+    req.on('error', e => reject(new Error('NAC 연결 오류: ' + e.message)));
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error('NAC 응답 시간 초과 (8초)')); });
     req.end();
   });
+}
+
+// NAC API 경로 테스트 (여러 경로 시도)
+async function nacFetchAuto(endpoint) {
+  const paths = [
+    `/mc2/rest/${endpoint}`,
+    `/rest/${endpoint}`,
+    `/api/rest/${endpoint}`,
+  ];
+  for (const p of paths) {
+    try {
+      const result = await nacFetch(p);
+      console.log('[NAC] 성공한 경로:', p);
+      return result;
+    } catch(e) {
+      console.log('[NAC] 실패:', p, e.message.slice(0, 80));
+    }
+  }
+  throw new Error('모든 NAC API 경로 실패');
 }
 
 // ── IP 대장 API ──────────────────────────────────────────
@@ -449,6 +479,26 @@ app.post('/api/ip/subnets/:id/generate', (req, res) => {
   }
   saveDB();
   res.json({ success: true, added });
+});
+
+
+// NAC API 디버그 - 실제 응답 확인용
+app.get('/api/nac/debug', async (req, res) => {
+  const results = {};
+  const testPaths = [
+    '/mc2/rest/nodes?page=1&pageSize=1',
+    '/mc2/rest/tags?page=1&pageSize=1',
+    '/mc2/rest/users?page=1&pageSize=1',
+  ];
+  for (const p of testPaths) {
+    try {
+      const data = await nacFetch(p);
+      results[p] = { ok: true, sample: JSON.stringify(data).slice(0, 200) };
+    } catch(e) {
+      results[p] = { ok: false, error: e.message.slice(0, 200) };
+    }
+  }
+  res.json({ nacHost: NAC_HOST, results });
 });
 
 // NAC 단말 조회 (IP로 검색)
