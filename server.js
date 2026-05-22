@@ -530,12 +530,32 @@ app.get('/api/nac/nodes', async (req, res) => {
 app.post('/api/nac/sync', async (req, res) => {
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
   try {
-    let page = 1, total = 0, synced = 0;
+    // 등록된 서브넷 목록
+    const subnets = queryAll('SELECT * FROM ip_subnets');
+    if (!subnets.length) return res.status(400).json({ error: '먼저 서브넷을 등록해주세요' });
+
+    // IP가 등록된 서브넷 대역에 속하는지 확인
+    function findSubnet(ip) {
+      if (!ip) return null;
+      const ipParts = ip.split('.').map(Number);
+      if (ipParts.length !== 4) return null;
+      const ipInt = ((ipParts[0]<<24)|(ipParts[1]<<16)|(ipParts[2]<<8)|ipParts[3]) >>> 0;
+      for (const sn of subnets) {
+        const snParts = sn.network.split('.').map(Number);
+        const snInt = ((snParts[0]<<24)|(snParts[1]<<16)|(snParts[2]<<8)|snParts[3]) >>> 0;
+        const mask = (0xFFFFFFFF << (32 - sn.prefix)) >>> 0;
+        if ((ipInt & mask) === (snInt & mask)) return sn.id;
+      }
+      return null;
+    }
+
+    let page = 1, total = 0, synced = 0, skipped = 0;
     while (true) {
       const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=100&view=node`);
       const nodes = Array.isArray(data) ? data : (data.result || []);
       if (!nodes.length) break;
-      for (const node of nodes) {
+
+    for (const node of nodes) {
         const ip = node.NL_IPSTR;
         const mac = node.NL_MAC || '';
         const hostname = node.NL_FQDN || '';
@@ -544,14 +564,18 @@ app.post('/api/nac/sync', async (req, res) => {
         const os = node.NL_OSNAME || '';
         const nacStatus = node.NL_ACTIVE === 1 ? 'UP' : node.NL_ACTIVE === 0 ? 'DOWN' : '';
         const lastSeen = node.NL_LASTACTIVE ? new Date(node.NL_LASTACTIVE).toISOString().slice(0,19).replace('T',' ') : '';
+
+        // 등록된 서브넷 대역에 속하지 않으면 skip
+        const matched_subnet_id = findSubnet(ip);
+        if (!matched_subnet_id) { skipped++; continue; }
         if (!ip) continue;
         const existing = queryOne('SELECT id FROM ip_assets WHERE ip=?', [ip]);
         if (existing) {
-          db.run('UPDATE ip_assets SET mac=?,hostname=?,user_name=?,dept=?,os=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
-            [mac, hostname, user_name, dept, os, nacStatus, lastSeen, ip]);
+          db.run('UPDATE ip_assets SET subnet_id=COALESCE(subnet_id,?),mac=?,hostname=?,user_name=?,dept=?,os=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
+            [matched_subnet_id, mac, hostname, user_name, dept, os, nacStatus, lastSeen, ip]);
         } else {
-          db.run('INSERT OR IGNORE INTO ip_assets (ip,mac,hostname,user_name,dept,os,nac_status,last_seen,status) VALUES (?,?,?,?,?,?,?,?,"used")',
-            [ip, mac, hostname, user_name, dept, os, nacStatus, lastSeen]);
+          db.run('INSERT OR IGNORE INTO ip_assets (subnet_id,ip,mac,hostname,user_name,dept,os,nac_status,last_seen,status) VALUES (?,?,?,?,?,?,?,?,?,"used")',
+            [matched_subnet_id, ip, mac, hostname, user_name, dept, os, nacStatus, lastSeen]);
         }
         synced++;
       }
@@ -560,7 +584,7 @@ app.post('/api/nac/sync', async (req, res) => {
       page++;
     }
     saveDB();
-    res.json({ success: true, total, synced });
+    res.json({ success: true, total, synced, skipped });
   } catch(e) {
     res.status(503).json({ error: 'NAC 동기화 실패: ' + e.message });
   }
@@ -661,6 +685,45 @@ app.get('/api/ip/assets-with-tags', async (req, res) => {
     return a;
   });
   res.json(assets);
+});
+
+
+// subnet_id null인 IP 자산을 서브넷 대역 기준으로 재매핑
+app.post('/api/ip/remap-subnets', (req, res) => {
+  const subnets = queryAll('SELECT * FROM ip_subnets');
+  const assets = queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
+  let updated = 0;
+  for (const asset of assets) {
+    const ipParts = (asset.ip||'').split('.').map(Number);
+    if (ipParts.length !== 4) continue;
+    const ipInt = ((ipParts[0]<<24)|(ipParts[1]<<16)|(ipParts[2]<<8)|ipParts[3]) >>> 0;
+    for (const sn of subnets) {
+      const snParts = sn.network.split('.').map(Number);
+      const snInt = ((snParts[0]<<24)|(snParts[1]<<16)|(snParts[2]<<8)|snParts[3]) >>> 0;
+      const mask = (0xFFFFFFFF << (32 - sn.prefix)) >>> 0;
+      if ((ipInt & mask) === (snInt & mask)) {
+        db.run('UPDATE ip_assets SET subnet_id=? WHERE id=?', [sn.id, asset.id]);
+        updated++;
+        break;
+      }
+    }
+  }
+  saveDB();
+  res.json({ success: true, updated });
+});
+
+
+// 서브넷에 속하지 않는 IP 자산 삭제
+app.delete('/api/ip/cleanup-unmatched', (req, res) => {
+  const subnets = queryAll('SELECT * FROM ip_subnets');
+  const assets = queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
+  let deleted = 0;
+  for (const asset of assets) {
+    db.run('DELETE FROM ip_assets WHERE id=?', [asset.id]);
+    deleted++;
+  }
+  saveDB();
+  res.json({ success: true, deleted });
 });
 
 // ── 망 관리 API ──────────────────────────────────────────
