@@ -486,7 +486,7 @@ app.post('/api/ip/subnets/:id/generate', (req, res) => {
 app.get('/api/nac/debug', async (req, res) => {
   const results = {};
   const testPaths = [
-    '/mc2/rest/nodes?page=1&pageSize=1',
+    '/mc2/rest/nodes?page=1&pageSize=1&view=node',
     '/mc2/rest/tags?page=1&pageSize=1',
     '/mc2/rest/users?page=1&pageSize=1',
   ];
@@ -507,7 +507,7 @@ app.get('/api/nac/node', async (req, res) => {
   if (!ip) return res.status(400).json({ error: 'IP 필수' });
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
   try {
-    const data = await nacFetch(`/mc2/rest/nodes?page=1&pageSize=10&ipAddress=${ip}`);
+    const data = await nacFetch(`/mc2/rest/nodes?page=1&pageSize=10&view=node&ip=${ip}`);
     res.json(data);
   } catch(e) {
     res.status(503).json({ error: 'NAC 연결 실패: ' + e.message });
@@ -519,7 +519,7 @@ app.get('/api/nac/nodes', async (req, res) => {
   const { page = 1, pageSize = 100 } = req.query;
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
   try {
-    const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=${pageSize}`);
+    const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=${pageSize}&view=node`);
     res.json(data);
   } catch(e) {
     res.status(503).json({ error: 'NAC 연결 실패: ' + e.message });
@@ -532,15 +532,15 @@ app.post('/api/nac/sync', async (req, res) => {
   try {
     let page = 1, total = 0, synced = 0;
     while (true) {
-      const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=100`);
-      const nodes = Array.isArray(data) ? data : (data.result || data.nodes || []);
+      const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=100&view=node`);
+      const nodes = Array.isArray(data) ? data : (data.result || []);
       if (!nodes.length) break;
       for (const node of nodes) {
-        const ip = node.ip || node.ipAddress || node.IP;
-        const mac = node.mac || node.macAddress || node.MAC;
-        const hostname = node.hostname || node.nodeName || '';
-        const lastSeen = node.lastAccessTime || node.lastSeen || '';
-        const nacStatus = node.status || node.nodeStatus || '';
+        const ip = node.NL_IPSTR || node.nl_ipstr || node.ip;
+        const mac = node.NL_MAC || node.nl_mac || node.mac;
+        const hostname = node.NL_FQDN || node.nl_fqdn || node.NL_NAME || '';
+        const lastSeen = node.NL_LASTACTIVE || node.nl_lastactive || '';
+        const nacStatus = node.NL_ACTIVE === 1 ? 'UP' : node.NL_ACTIVE === 0 ? 'DOWN' : '';
         if (!ip) continue;
         const existing = queryOne('SELECT id FROM ip_assets WHERE ip=?', [ip]);
         if (existing) {
