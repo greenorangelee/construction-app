@@ -1704,6 +1704,172 @@
       border-left: 3px solid #c0392b;
     }
     .cable-item.dimmed { opacity: 0.35; }
+
+    /* ── IP 대장 ── */
+    #ipPage { display: none; }
+    .ip-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+    .ip-sidebar { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .ip-sidebar-head { padding: 14px 16px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 13px; font-weight: 700; color: #374151; display: flex; justify-content: space-between; align-items: center; }
+    .ip-subnet-item { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; }
+    .ip-subnet-item:hover { background: #fef2f2; }
+    .ip-subnet-item.active { background: #fef2f2; border-left: 3px solid #c0392b; }
+    .ip-subnet-name { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+    .ip-subnet-network { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    .ip-subnet-stats { display: flex; gap: 8px; margin-top: 6px; }
+    .ip-stat-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+    .ip-stat-used { background: #fee2e2; color: #c0392b; }
+    .ip-stat-unused { background: #d1fae5; color: #059669; }
+    .ip-stat-reserved { background: #fef3c7; color: #d97706; }
+    .ip-main { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .ip-toolbar { padding: 12px 16px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .nac-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .nac-online { background: #10b981; }
+    .nac-offline { background: #9ca3af; }
+    .nac-unknown { background: #f59e0b; }
+    .ip-table-wrap { overflow-x: auto; }
+    .ip-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ip-table th { padding: 8px 12px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 11px; color: #6b7280; font-weight: 600; white-space: nowrap; }
+    .ip-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .ip-table tr:hover td { background: #fafafa; }
+    .ip-status-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+    .ip-used { background: #fee2e2; color: #c0392b; }
+    .ip-unused { background: #d1fae5; color: #059669; }
+    .ip-reserved { background: #fef3c7; color: #d97706; }
+
+    /* ── IP 격자 뷰 ── */
+    .ip-grid-wrap {
+      padding: 16px;
+      display: none;
+    }
+    .ip-grid-wrap.active { display: block; }
+    .ip-grid-legend {
+      display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;
+      font-size: 12px; color: #374151;
+    }
+    .ip-grid-legend-item {
+      display: flex; align-items: center; gap: 5px;
+    }
+    .ip-grid-legend-box {
+      width: 16px; height: 16px; border-radius: 3px;
+    }
+    .ip-grid {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 3px;
+    }
+    .ip-cell {
+      aspect-ratio: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.1s, box-shadow 0.1s;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 600; color: rgba(255,255,255,0.8);
+    }
+    .ip-cell:hover {
+      transform: scale(1.3);
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+    .ip-cell.used { background: #ef4444; }
+    .ip-cell.unused { background: #10b981; }
+    .ip-cell.reserved { background: #f59e0b; }
+    .ip-cell.gateway { background: #6366f1; }
+    .ip-cell.special { background: #6b7280; }
+
+    /* 툴팁 */
+    .ip-cell-tooltip {
+      position: fixed;
+      background: #1a1a1a;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 1000;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: none;
+      line-height: 1.6;
+    }
+
+    /* 행 번호 라벨 */
+    .ip-grid-row-label {
+      font-size: 10px; color: #9ca3af;
+      display: flex; align-items: center;
+      margin-bottom: 2px;
+    }
+
+    /* ── IP 히트맵 ── */
+    .ip-heatmap-wrap {
+      padding: 16px;
+      display: none;
+    }
+    .ip-heatmap-wrap.active { display: block; }
+    .ip-heatmap-header {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .ip-heatmap-axis {
+      display: grid;
+      gap: 2px;
+    }
+    .ip-heatmap-row {
+      display: flex; align-items: center; gap: 2px;
+    }
+    .ip-heatmap-row-label {
+      font-size: 10px; color: #9ca3af; font-family: monospace;
+      width: 32px; text-align: right; padding-right: 4px;
+      flex-shrink: 0;
+    }
+    .ip-heatmap-col-labels {
+      display: flex; gap: 2px; margin-bottom: 2px; padding-left: 36px;
+    }
+    .ip-heatmap-col-label {
+      font-size: 10px; color: #9ca3af; font-family: monospace;
+      text-align: center;
+    }
+    .ip-hmap-cell {
+      border-radius: 3px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ip-hmap-cell:hover {
+      transform: scale(1.4);
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    /* ── IP 태그 ── */
+    .ip-tag-manager {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      display: none;
+    }
+    .ip-tag-manager.open { display: block; }
+    .ip-tag-list { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+    .ip-tag-chip {
+      display: flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; color: #fff;
+      cursor: default;
+    }
+    .ip-tag-chip-del {
+      background: none; border: none; color: rgba(255,255,255,0.7);
+      cursor: pointer; font-size: 12px; padding: 0; line-height: 1;
+    }
+    .ip-tag-chip-del:hover { color: #fff; }
+    .ip-tag-add-row { display: flex; gap: 6px; align-items: center; }
+    .ip-tag-add-row input[type=text] {
+      background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+      padding: 5px 10px; font-size: 12px; font-family: 'Noto Sans KR',sans-serif;
+      outline: none; width: 120px;
+    }
+    .ip-tag-add-row input[type=color] {
+      width: 32px; height: 28px; border: 1px solid #e5e7eb;
+      border-radius: 6px; padding: 1px; cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -1716,6 +1882,7 @@
     <nav class="header-nav">
       <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">공사 이력</button>
       <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
+      <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip">🖥️ IP 대장</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -1917,6 +2084,213 @@
 
 </div> <!-- /mainPage -->
 
+
+<!-- ─── IP 대장 페이지 ─── -->
+<div id="ipPage">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-ip">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-ip">🗺️ 선번 관리</button>
+        <button class="nav-tab active" onclick="switchTab('ip')" id="tab-ip-ip">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="nacSync()">
+        🔄 NAC 동기화
+      </button>
+    </div>
+  </header>
+  <div class="container">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:16px;font-weight:700;color:#1a1a1a">🖥️ IP 대장</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="nacStatusBadge" style="font-size:12px;color:#6b7280">NAC 연결 상태 확인 중...</span>
+        <button class="btn-red-sm" onclick="openSubnetModal()">+ 서브넷 추가</button>
+      </div>
+    </div>
+
+    <div class="ip-layout">
+      <!-- 서브넷 사이드바 -->
+      <div class="ip-sidebar">
+        <div class="ip-sidebar-head">
+          <span>서브넷 목록</span>
+          <span id="subnetCount" style="font-size:11px;color:#9ca3af"></span>
+        </div>
+        <div id="subnetList">
+          <div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">서브넷을 추가하세요</div>
+        </div>
+      </div>
+
+      <!-- IP 목록 -->
+      <div class="ip-main">
+        <div class="ip-toolbar">
+          <input type="text" id="ipSearchInput" placeholder="🔍 IP, 호스트명, 사용자, MAC 검색"
+            style="flex:1;min-width:200px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif"
+            oninput="loadIpAssets()" />
+          <select id="ipStatusFilter" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif" onchange="loadIpAssets()">
+            <option value="전체">전체 상태</option>
+            <option value="used">사용중</option>
+            <option value="unused">미사용</option>
+            <option value="reserved">예약</option>
+          </select>
+          <div style="display:flex;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+            <button class="tool-btn" id="viewListBtn" onclick="setIpView('list')" style="border-radius:0;border:none;background:#fef2f2;color:#c0392b;font-weight:700">☰ 목록</button>
+            <button class="tool-btn" id="viewGridBtn" onclick="setIpView('grid')" style="border-radius:0;border:none">⊞ 격자</button>
+            <button class="tool-btn" id="viewHeatBtn" onclick="setIpView('heat')" style="border-radius:0;border:none">🌡 히트맵</button>
+          </div>
+          <button class="tool-btn" onclick="toggleTagManager()">🏷 범례 관리</button>
+          <button class="tool-btn" onclick="showAvailableIps()">✨ 빈 IP 추천</button>
+          <button class="tool-btn" onclick="openIpModal()">+ IP 등록</button>
+          <span id="ipCount" style="font-size:11px;color:#9ca3af;margin-left:auto"></span>
+        </div>
+        <!-- 태그 관리 패널 -->
+        <div class="ip-tag-manager" id="ipTagManager">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-size:12px;font-weight:700;color:#374151">색상 범례 (태그) 관리</span>
+            <button class="cable-item-del" onclick="toggleTagManager()" style="color:#9ca3af">✕</button>
+          </div>
+          <div class="ip-tag-list" id="ipTagList"></div>
+          <div class="ip-tag-add-row">
+            <input type="text" id="newTagName" placeholder="태그 이름 (예: IT팀)" />
+            <input type="color" id="newTagColor" value="#3b82f6" />
+            <button class="net-btn" onclick="addIpTag()">+ 태그 추가</button>
+          </div>
+          <!-- 범위 지정 -->
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f3f4f6">
+            <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:8px">📍 IP 범위 → 태그 지정</div>
+            <div id="ipRangeList" style="margin-bottom:8px;display:flex;flex-direction:column;gap:4px"></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select id="rangeTagSel" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:5px 8px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif">
+                <option value="">태그 선택</option>
+              </select>
+              <input type="text" id="rangeStart" placeholder="시작 IP" style="width:120px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:5px 8px;font-size:12px;outline:none" />
+              <span style="color:#9ca3af;font-size:12px">~</span>
+              <input type="text" id="rangeEnd" placeholder="끝 IP" style="width:120px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:5px 8px;font-size:12px;outline:none" />
+              <button class="net-btn" onclick="addIpRange()">+ 범위 추가</button>
+            </div>
+          </div>
+        </div>
+        <div class="ip-table-wrap">
+          <table class="ip-table">
+            <thead>
+              <tr>
+                <th>IP 주소</th>
+                <th>MAC</th>
+                <th>호스트명</th>
+                <th>사용자</th>
+                <th>부서</th>
+                <th>장치 유형</th>
+                <th>상태</th>
+                <th>NAC 상태</th>
+                <th>마지막 접속</th>
+                <th>위치</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ipTableBody">
+              <tr><td colspan="11" style="text-align:center;padding:40px;color:#9ca3af">서브넷을 선택하세요</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- 격자 뷰 -->
+        <div class="ip-grid-wrap" id="ipGridWrap">
+<div id="ipGridLegend" class="ip-grid-legend"></div>
+          <div class="ip-grid" id="ipGrid"></div>
+        </div>
+        <!-- 히트맵 뷰 -->
+        <div class="ip-heatmap-wrap" id="ipHeatmapWrap">
+          <div class="ip-heatmap-header">
+            <div class="ip-grid-legend">
+              <div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:#ef4444"></div> 사용중</div>
+              <div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:#10b981"></div> 미사용</div>
+              <div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:#f59e0b"></div> 예약</div>
+              <div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:#6366f1"></div> 게이트웨이</div>
+              <div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:#6b7280"></div> NET/BCT</div>
+            </div>
+          </div>
+          <div id="ipHeatmap"></div>
+        </div>
+        <!-- 툴팁 -->
+        <div class="ip-cell-tooltip" id="ipCellTooltip"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 서브넷 모달 -->
+<div class="modal-overlay" id="subnetModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head">
+      <h2 id="subnetModalTitle">서브넷 추가</h2>
+      <button class="modal-close" onclick="closeModal('subnetModal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group"><label>이름 *</label><input type="text" id="sn-name" placeholder="예) 사무망" /></div>
+      <div style="display:grid;grid-template-columns:1fr 80px;gap:10px">
+        <div class="form-group"><label>네트워크 주소 *</label><input type="text" id="sn-network" placeholder="예) 10.100.100.0" /></div>
+        <div class="form-group"><label>프리픽스</label><input type="number" id="sn-prefix" value="24" min="8" max="30" /></div>
+      </div>
+      <div class="form-group"><label>게이트웨이</label><input type="text" id="sn-gateway" placeholder="예) 10.100.100.1" /></div>
+      <div class="form-group"><label>DNS</label><input type="text" id="sn-dns" placeholder="예) 8.8.8.8" /></div>
+      <div class="form-group"><label>VLAN</label><input type="text" id="sn-vlan" placeholder="예) VLAN 100" /></div>
+      <div class="form-group"><label>설명</label><input type="text" id="sn-description" placeholder="용도 설명" /></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="sn-generate" checked /> IP 목록 자동 생성 (전체 대역)
+      </label>
+    </div>
+    <div class="modal-footer"><button class="btn-outline" onclick="closeModal('subnetModal')">취소</button><button class="btn-primary" onclick="saveSubnet()">저장</button></div>
+  </div>
+</div>
+
+<!-- IP 등록/수정 모달 -->
+<div class="modal-overlay" id="ipAssetModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <h2 id="ipAssetModalTitle">IP 등록</h2>
+      <button class="modal-close" onclick="closeModal('ipAssetModal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group"><label>IP 주소 *</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="ia-ip" placeholder="예) 10.100.100.50" style="flex:1" />
+          <button class="tool-btn" onclick="checkNacForIp()">NAC 조회</button>
+        </div>
+      </div>
+      <div id="nacQueryResult" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:12px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>MAC 주소</label><input type="text" id="ia-mac" placeholder="예) AA:BB:CC:DD:EE:FF" /></div>
+        <div class="form-group"><label>호스트명</label><input type="text" id="ia-hostname" placeholder="예) PC-KIM01" /></div>
+        <div class="form-group"><label>사용자</label><input type="text" id="ia-user_name" placeholder="예) 김준기" /></div>
+        <div class="form-group"><label>부서</label><input type="text" id="ia-dept" placeholder="예) IT관리팀" /></div>
+        <div class="form-group"><label>장치 유형</label>
+          <select id="ia-device_type">
+            <option>PC</option><option>노트북</option><option>서버</option>
+            <option>프린터</option><option>AP</option><option>IP폰</option><option>기타</option>
+          </select>
+        </div>
+        <div class="form-group"><label>상태</label>
+          <select id="ia-status">
+            <option value="used">사용중</option>
+            <option value="unused">미사용</option>
+            <option value="reserved">예약</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>태그 (색상 그룹)</label>
+        <select id="ia-tag_id" style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+          <option value="">태그 없음</option>
+        </select>
+      </div>
+      <div class="form-group"><label>위치</label><input type="text" id="ia-location" placeholder="예) HO동 3층 서버실" /></div>
+      <div class="form-group"><label>메모</label><input type="text" id="ia-description" placeholder="용도/특이사항" /></div>
+    </div>
+    <div class="modal-footer"><button class="btn-outline" onclick="closeModal('ipAssetModal')">취소</button><button class="btn-primary" onclick="saveIpAsset()">저장</button></div>
+  </div>
+</div>
 <!-- ─── 선번 관리 페이지 ─── -->
 <div id="cablePage">
   <header class="header">
@@ -1926,6 +2300,7 @@
       <nav class="header-nav">
         <button class="nav-tab" onclick="switchTab('main')" id="tab-main-c">공사 이력</button>
         <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-c">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -2105,6 +2480,7 @@
       <nav class="header-nav">
         <button class="nav-tab" onclick="switchTab('main')" id="tab-main-s">공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-s">🖥️ IP 대장</button>
         <button class="nav-tab active" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -3464,6 +3840,653 @@ window.addEventListener('mouseup', async function() {
   }
 });
 
+
+// ── IP 대장 ──────────────────────────────────────────
+
+let currentSubnetId = null;
+let editingSubnetId = null;
+let editingIpId = null;
+
+async function initIpPage() {
+  await loadSubnets();
+  checkNacStatus();
+}
+
+// rangeTagSel 자동입력 (시작 IP 입력 시 서브넷 prefix 자동 추가)
+document.addEventListener('DOMContentLoaded', () => {
+  const startInput = document.getElementById('rangeStart');
+  if (startInput) {
+    startInput.addEventListener('blur', () => {
+      const endInput = document.getElementById('rangeEnd');
+      if (startInput.value && !endInput.value) {
+        // 시작 IP의 마지막 옥텟만 힌트로 표시
+        const parts = startInput.value.split('.');
+        if (parts.length === 4) {
+          endInput.placeholder = `예) ${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
+        }
+      }
+    });
+  }
+});
+
+async function checkNacStatus() {
+  const badge = document.getElementById('nacStatusBadge');
+  try {
+    const res = await fetch('/api/nac/nodes?page=1&pageSize=1');
+    const data = await res.json();
+    if (data.error) {
+      badge.innerHTML = '🔴 NAC 연결 실패';
+      badge.style.color = '#c0392b';
+    } else {
+      badge.innerHTML = '🟢 NAC 연결됨';
+      badge.style.color = '#059669';
+    }
+  } catch(e) {
+    badge.innerHTML = '🔴 NAC 연결 실패';
+    badge.style.color = '#c0392b';
+  }
+}
+
+async function loadSubnets() {
+  const subnets = await api('GET', '/api/ip/subnets');
+  window._subnets = subnets;
+  document.getElementById('subnetCount').textContent = subnets.length + '개';
+  const el = document.getElementById('subnetList');
+  el.innerHTML = subnets.length ? subnets.map(s => `
+    <div class="ip-subnet-item ${s.id === currentSubnetId ? 'active' : ''}" onclick="selectSubnet(${s.id})">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <div class="ip-subnet-name">${s.name}</div>
+          <div class="ip-subnet-network">${s.network}/${s.prefix} ${s.vlan ? '· ' + s.vlan : ''}</div>
+          <div class="ip-subnet-stats">
+            <span class="ip-stat-badge ip-stat-used">사용 ${s.used}</span>
+            <span class="ip-stat-badge ip-stat-unused">미사용 ${s.unused}</span>
+            ${s.reserved ? `<span class="ip-stat-badge ip-stat-reserved">예약 ${s.reserved}</span>` : ''}
+          </div>
+        </div>
+        <button class="cable-item-del" onclick="event.stopPropagation();deleteSubnet(${s.id})" style="color:#d1d5db">✕</button>
+      </div>
+    </div>`).join('')
+    : '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:12px">서브넷을 추가하세요</div>';
+}
+
+function selectSubnet(id) {
+  currentSubnetId = id;
+  loadSubnets();
+  loadIpTags().then(() => loadIpRanges());
+  loadIpAssets();
+}
+
+async function loadIpAssets() {
+  if (!currentSubnetId) return;
+  const search = document.getElementById('ipSearchInput')?.value || '';
+  const status = document.getElementById('ipStatusFilter')?.value || '전체';
+  let url = `/api/ip/assets-with-tags?subnet_id=${currentSubnetId}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (status !== '전체') url += `&status=${status}`;
+
+  const assets = await api('GET', url);
+  ipAssetsCache = assets;
+  document.getElementById('ipCount').textContent = `${assets.length}개`;
+
+  if (ipViewMode === 'grid') renderIpGrid();
+  if (ipViewMode === 'heat') renderIpHeatmap();
+  const tbody = document.getElementById('ipTableBody');
+  tbody.innerHTML = assets.length ? assets.map(a => `
+    <tr>
+      <td style="font-family:monospace;font-weight:600;color:#1a1a1a">${a.ip}</td>
+      <td style="font-family:monospace;font-size:11px;color:#6b7280">${a.mac || '-'}</td>
+      <td>${a.hostname || '-'}</td>
+      <td>${a.user_name || '-'}</td>
+      <td>${a.dept || '-'}</td>
+      <td><span style="font-size:11px;color:#374151">${a.device_type || '-'}</span></td>
+      <td><span class="ip-status-badge" style="background:${a.tag_color || (a.status === 'used' ? '#fee2e2' : a.status === 'reserved' ? '#fef3c7' : '#d1fae5')};color:${a.tag_color ? '#fff' : (a.status === 'used' ? '#c0392b' : a.status === 'reserved' ? '#d97706' : '#059669')}">${a.tag_name || (a.status === 'used' ? '사용중' : a.status === 'reserved' ? '예약' : '미사용')}</span></td>
+      <td><span class="nac-status-dot ${a.nac_status === 'Allow' ? 'nac-online' : a.nac_status ? 'nac-offline' : 'nac-unknown'}"></span>${a.nac_status || '-'}</td>
+      <td style="font-size:11px;color:#9ca3af">${a.last_seen ? a.last_seen.slice(0,10) : '-'}</td>
+      <td style="font-size:11px">${a.location || '-'}</td>
+      <td style="white-space:nowrap">
+        <button class="net-btn" onclick="openIpModal(${a.id})">수정</button>
+        <button class="net-btn danger" onclick="deleteIpAsset(${a.id})">삭제</button>
+      </td>
+    </tr>`).join('')
+    : '<tr><td colspan="11" style="text-align:center;padding:40px;color:#9ca3af">등록된 IP가 없습니다</td></tr>';
+}
+
+// 서브넷 모달
+function openSubnetModal(id) {
+  editingSubnetId = id || null;
+  document.getElementById('subnetModalTitle').textContent = id ? '서브넷 수정' : '서브넷 추가';
+  ['name','network','prefix','gateway','dns','vlan','description'].forEach(f => {
+    document.getElementById('sn-' + f).value = '';
+  });
+  document.getElementById('sn-prefix').value = 24;
+  openModal('subnetModal');
+}
+
+async function saveSubnet() {
+  const data = {};
+  ['name','network','prefix','gateway','dns','vlan','description'].forEach(f => {
+    data[f] = document.getElementById('sn-' + f).value;
+  });
+  if (!data.name || !data.network) { alert('이름과 네트워크 주소는 필수입니다'); return; }
+  const generate = document.getElementById('sn-generate').checked;
+
+  const result = await api('POST', '/api/ip/subnets', data);
+  if (generate && result.id) {
+    showToast('IP 목록 생성 중...');
+    await api('POST', `/api/ip/subnets/${result.id}/generate`);
+  }
+  closeModal('subnetModal');
+  await loadSubnets();
+  if (result.id) selectSubnet(result.id);
+  showToast('서브넷이 추가됐습니다');
+}
+
+async function deleteSubnet(id) {
+  if (!confirm('서브넷과 모든 IP 기록을 삭제할까요?')) return;
+  await api('DELETE', `/api/ip/subnets/${id}`);
+  if (currentSubnetId === id) { currentSubnetId = null; document.getElementById('ipTableBody').innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:#9ca3af">서브넷을 선택하세요</td></tr>'; }
+  await loadSubnets();
+  showToast('삭제됐습니다');
+}
+
+// IP 등록 모달
+function openIpModal(id) {
+  editingIpId = id || null;
+  document.getElementById('ipAssetModalTitle').textContent = id ? 'IP 수정' : 'IP 등록';
+  ['ip','mac','hostname','user_name','dept','location','description'].forEach(f => {
+    document.getElementById('ia-' + f).value = '';
+  });
+  document.getElementById('ia-device_type').value = 'PC';
+  document.getElementById('ia-status').value = 'used';
+  document.getElementById('nacQueryResult').style.display = 'none';
+
+  if (id) {
+    const asset = document.querySelector(`#ipTableBody tr td`);
+    // ID로 다시 API 조회
+    api('GET', `/api/ip/assets?subnet_id=${currentSubnetId}`).then(assets => {
+      const a = assets.find(x => x.id === id);
+      if (a) {
+        document.getElementById('ia-ip').value = a.ip || '';
+        document.getElementById('ia-mac').value = a.mac || '';
+        document.getElementById('ia-hostname').value = a.hostname || '';
+        document.getElementById('ia-user_name').value = a.user_name || '';
+        document.getElementById('ia-dept').value = a.dept || '';
+        document.getElementById('ia-device_type').value = a.device_type || 'PC';
+        document.getElementById('ia-status').value = a.status || 'used';
+        document.getElementById('ia-tag_id').value = a.tag_id || '';
+        document.getElementById('ia-location').value = a.location || '';
+        document.getElementById('ia-description').value = a.description || '';
+      }
+    });
+  }
+  openModal('ipAssetModal');
+}
+
+async function checkNacForIp() {
+  const ip = document.getElementById('ia-ip').value.trim();
+  if (!ip) { alert('IP를 먼저 입력하세요'); return; }
+  const resultEl = document.getElementById('nacQueryResult');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '⏳ NAC 조회 중...';
+  resultEl.style.background = '#f9fafb';
+  resultEl.style.borderColor = '#e5e7eb';
+
+  try {
+    const data = await api('GET', `/api/nac/node?ip=${encodeURIComponent(ip)}`);
+    const nodes = Array.isArray(data) ? data : (data.result || data.nodes || []);
+    if (nodes.length) {
+      const n = nodes[0];
+      const nacIp = n.ip || n.ipAddress || ip;
+      const nacMac = n.mac || n.macAddress || '';
+      const nacHost = n.hostname || n.nodeName || '';
+      const nacStatus = n.status || n.nodeStatus || '';
+      const lastSeen = n.lastAccessTime || n.lastSeen || '';
+      resultEl.style.background = '#f0fdf4';
+      resultEl.style.borderColor = '#bbf7d0';
+      resultEl.innerHTML = `✅ NAC에서 발견됨<br>
+        MAC: <b>${nacMac || '-'}</b> · 호스트명: <b>${nacHost || '-'}</b> · 상태: <b>${nacStatus}</b><br>
+        마지막 접속: ${lastSeen || '-'}
+        <button class="tool-btn" style="margin-left:8px;font-size:11px" onclick="fillFromNac('${nacMac}','${nacHost}')">자동 입력</button>`;
+    } else {
+      resultEl.style.background = '#fef2f2';
+      resultEl.style.borderColor = '#fecaca';
+      resultEl.innerHTML = '✅ NAC에 없음 — 이 IP는 현재 미사용 상태입니다';
+    }
+  } catch(e) {
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.borderColor = '#fecaca';
+    resultEl.innerHTML = '❌ NAC 연결 실패: ' + e.message;
+  }
+}
+
+function fillFromNac(mac, hostname) {
+  if (mac) document.getElementById('ia-mac').value = mac;
+  if (hostname) document.getElementById('ia-hostname').value = hostname;
+  showToast('NAC 정보가 자동 입력됐습니다');
+}
+
+async function saveIpAsset() {
+  const data = {
+    subnet_id: currentSubnetId,
+    ip: document.getElementById('ia-ip').value.trim(),
+    mac: document.getElementById('ia-mac').value.trim(),
+    hostname: document.getElementById('ia-hostname').value.trim(),
+    user_name: document.getElementById('ia-user_name').value.trim(),
+    dept: document.getElementById('ia-dept').value.trim(),
+    device_type: document.getElementById('ia-device_type').value,
+    status: document.getElementById('ia-status').value,
+    tag_id: document.getElementById('ia-tag_id').value || null,
+    location: document.getElementById('ia-location').value.trim(),
+    description: document.getElementById('ia-description').value.trim(),
+  };
+  if (!data.ip) { alert('IP는 필수입니다'); return; }
+  try {
+    if (editingIpId) {
+      await api('PUT', `/api/ip/assets/${editingIpId}`, data);
+      showToast('수정됐습니다');
+    } else {
+      await api('POST', '/api/ip/assets', data);
+      showToast('등록됐습니다');
+    }
+    closeModal('ipAssetModal');
+    loadIpAssets();
+    loadSubnets();
+  } catch(e) {
+    alert('오류: ' + e.message);
+  }
+}
+
+async function deleteIpAsset(id) {
+  if (!confirm('이 IP 기록을 삭제할까요?')) return;
+  await api('DELETE', `/api/ip/assets/${id}`);
+  showToast('삭제됐습니다');
+  loadIpAssets();
+  loadSubnets();
+}
+
+async function showAvailableIps() {
+  if (!currentSubnetId) { alert('서브넷을 먼저 선택하세요'); return; }
+  const ips = await api('GET', `/api/ip/available?subnet_id=${currentSubnetId}&count=10`);
+  if (!ips.length) { alert('사용 가능한 IP가 없습니다'); return; }
+  alert('사용 가능한 IP (상위 10개):\n\n' + ips.join('\n'));
+}
+
+async function nacSync() {
+  if (!confirm('NAC에서 단말 정보를 가져와 IP 대장을 업데이트할까요?\n\n기존에 등록된 IP는 NAC 상태가 업데이트되고,\n미등록 IP는 자동 추가됩니다.')) return;
+  showToast('NAC 동기화 중...');
+  try {
+    const result = await api('POST', '/api/nac/sync');
+    if (result.error) { alert('동기화 실패: ' + result.error); return; }
+    showToast(`✓ NAC 동기화 완료 — ${result.synced}개 업데이트`);
+    loadSubnets();
+    loadIpAssets();
+  } catch(e) {
+    alert('동기화 오류: ' + e.message);
+  }
+}
+
+
+
+// ── IP 태그/범례 관리 ──────────────────────────────────────────
+
+let ipTagsCache = [];
+
+function buildLegendHtml() {
+  const fixed = [
+    { color: '#10b981', label: '미사용' },
+    { color: '#6366f1', label: '게이트웨이' },
+    { color: '#6b7280', label: 'NET/BCT' },
+  ];
+  const fixedHtml = fixed.map(f =>
+    `<div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:${f.color}"></div> ${f.label}</div>`
+  ).join('');
+  const tagHtml = ipTagsCache.map(t =>
+    `<div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:${t.color}"></div> ${t.name}</div>`
+  ).join('');
+  const usedHtml = ipTagsCache.length ? '' :
+    `<div class="ip-grid-legend-item"><div class="ip-grid-legend-box" style="background:#ef4444"></div> 사용중</div>`;
+  return usedHtml + fixedHtml + tagHtml;
+}
+
+async function loadIpTags() {
+  if (!currentSubnetId) return;
+  ipTagsCache = await api('GET', `/api/ip/tags?subnet_id=${currentSubnetId}`);
+  renderTagList();
+  updateLegends();
+  updateTagSelect();
+  updateRangeTagSelect();
+}
+
+function updateLegends() {
+  const html = buildLegendHtml();
+  const g = document.getElementById('ipGridLegend');
+  const h = document.getElementById('ipHeatLegend');
+  if (g) g.innerHTML = html;
+  if (h) h.innerHTML = html;
+}
+
+function renderTagList() {
+  const el = document.getElementById('ipTagList');
+  if (!el) return;
+  el.innerHTML = ipTagsCache.map(t => `
+    <div class="ip-tag-chip" style="background:${t.color}">
+      <input type="color" value="${t.color}" style="width:16px;height:16px;border:none;padding:0;cursor:pointer;border-radius:50%"
+        onchange="updateIpTag(${t.id}, '${t.name}', this.value)" title="색상 변경" />
+      <span>${t.name}</span>
+      <button class="ip-tag-chip-del" onclick="deleteIpTag(${t.id})">✕</button>
+    </div>
+  `).join('') + (ipTagsCache.length === 0 ? '<span style="font-size:11px;color:#9ca3af">태그를 추가해 범례를 만드세요</span>' : '');
+}
+
+function updateTagSelect() {
+  const sel = document.getElementById('ia-tag_id');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">태그 없음 (기본 빨강)</option>' +
+    ipTagsCache.map(t => `<option value="${t.id}" style="color:${t.color}">${t.name}</option>`).join('');
+}
+
+function toggleTagManager() {
+  const el = document.getElementById('ipTagManager');
+  el.classList.toggle('open');
+}
+
+async function addIpTag() {
+  const name = document.getElementById('newTagName').value.trim();
+  const color = document.getElementById('newTagColor').value;
+  if (!name) { alert('태그 이름을 입력하세요'); return; }
+  await api('POST', '/api/ip/tags', { subnet_id: currentSubnetId, name, color });
+  document.getElementById('newTagName').value = '';
+  await loadIpTags();
+  if (ipViewMode === 'grid') renderIpGrid();
+  if (ipViewMode === 'heat') renderIpHeatmap();
+  showToast(`'${name}' 태그 추가됐습니다`);
+}
+
+async function updateIpTag(id, name, color) {
+  await api('PUT', `/api/ip/tags/${id}`, { name, color });
+  await loadIpTags();
+  if (ipViewMode === 'grid') renderIpGrid();
+  if (ipViewMode === 'heat') renderIpHeatmap();
+}
+
+async function deleteIpTag(id) {
+  if (!confirm('이 태그를 삭제하면 해당 태그가 붙은 IP들의 색상이 초기화됩니다.')) return;
+  await api('DELETE', `/api/ip/tags/${id}`);
+  await loadIpTags();
+  await loadIpRanges();
+  await loadIpAssets();
+  if (ipViewMode === 'grid') renderIpGrid();
+  if (ipViewMode === 'heat') renderIpHeatmap();
+  showToast('태그 삭제됐습니다');
+}
+
+
+// ── IP 태그 범위 관리 ──────────────────────────────────────────
+
+let ipRangesCache = [];
+
+async function loadIpRanges() {
+  if (!currentSubnetId) return;
+  ipRangesCache = await api('GET', `/api/ip/tag-ranges?subnet_id=${currentSubnetId}`);
+  renderRangeList();
+  updateRangeTagSelect();
+}
+
+function renderRangeList() {
+  const el = document.getElementById('ipRangeList');
+  if (!el) return;
+  el.innerHTML = ipRangesCache.length ? ipRangesCache.map(r => `
+    <div style="display:flex;align-items:center;gap:6px;background:#f9fafb;border-radius:8px;padding:5px 10px">
+      <div style="width:10px;height:10px;border-radius:50%;background:${r.tag_color};flex-shrink:0"></div>
+      <span style="font-size:11px;font-weight:600;color:#374151">${r.tag_name}</span>
+      <span style="font-size:11px;color:#6b7280;font-family:monospace">${r.ip_start} ~ ${r.ip_end}</span>
+      <button class="cable-item-del" onclick="deleteIpRange(${r.id})" style="margin-left:auto;color:#d1d5db">✕</button>
+    </div>`).join('')
+    : '<div style="font-size:11px;color:#9ca3af">범위가 없습니다. 아래에서 추가하세요.</div>';
+}
+
+function updateRangeTagSelect() {
+  const sel = document.getElementById('rangeTagSel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">태그 선택</option>' +
+    ipTagsCache.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+}
+
+async function addIpRange() {
+  const tag_id = document.getElementById('rangeTagSel').value;
+  const ip_start = document.getElementById('rangeStart').value.trim();
+  const ip_end = document.getElementById('rangeEnd').value.trim();
+  if (!tag_id) { alert('태그를 선택하세요'); return; }
+  if (!ip_start || !ip_end) { alert('시작/끝 IP를 입력하세요'); return; }
+  await api('POST', '/api/ip/tag-ranges', { tag_id, subnet_id: currentSubnetId, ip_start, ip_end });
+  document.getElementById('rangeStart').value = '';
+  document.getElementById('rangeEnd').value = '';
+  await loadIpRanges();
+  await loadIpAssets();
+  if (ipViewMode === 'grid') renderIpGrid();
+  if (ipViewMode === 'heat') renderIpHeatmap();
+  showToast('범위 태그 추가됐습니다');
+}
+
+async function deleteIpRange(id) {
+  await api('DELETE', `/api/ip/tag-ranges/${id}`);
+  await loadIpRanges();
+  await loadIpAssets();
+  if (ipViewMode === 'grid') renderIpGrid();
+  if (ipViewMode === 'heat') renderIpHeatmap();
+  showToast('삭제됐습니다');
+}
+
+// ── IP 격자 뷰 ──────────────────────────────────────────
+
+let ipViewMode = 'list'; // 'list' | 'grid'
+let ipAssetsCache = [];
+
+function setIpView(mode) {
+  ipViewMode = mode;
+  ['list','grid','heat'].forEach(m => {
+    const btn = document.getElementById('view' + m.charAt(0).toUpperCase() + m.slice(1) + 'Btn');
+    if (!btn) return;
+    btn.style.background = mode === m ? '#fef2f2' : '#fff';
+    btn.style.color = mode === m ? '#c0392b' : '#374151';
+    btn.style.fontWeight = mode === m ? '700' : '400';
+  });
+
+  document.querySelector('.ip-table-wrap').style.display = mode === 'list' ? 'block' : 'none';
+  document.getElementById('ipGridWrap').classList.toggle('active', mode === 'grid');
+  document.getElementById('ipHeatmapWrap').classList.toggle('active', mode === 'heat');
+
+  if (mode === 'grid') renderIpGrid();
+  if (mode === 'heat') renderIpHeatmap();
+}
+
+function renderIpGrid() {
+  const subnet = getCurrentSubnet();
+  if (!subnet || !ipAssetsCache.length) return;
+
+  const grid = document.getElementById('ipGrid');
+  const assetMap = {};
+  ipAssetsCache.forEach(a => { assetMap[a.ip] = a; });
+
+  const parts = subnet.network.split('.').map(Number);
+  const total = Math.pow(2, 32 - subnet.prefix) - 2;
+  const baseOctet = parts[3];
+  const cells = [];
+
+  // 네트워크 주소 (.0)
+  cells.push({ ip: subnet.network, type: 'special', label: 'NET' });
+
+  for (let i = 1; i <= total; i++) {
+    const ip = `${parts[0]}.${parts[1]}.${parts[2]}.${baseOctet + i}`;
+    const isGateway = subnet.gateway && ip === subnet.gateway;
+    const asset = assetMap[ip];
+    let type = 'unused';
+    if (isGateway) type = 'gateway';
+    else if (asset) type = asset.status;
+    cells.push({ ip, type, asset, isGateway });
+  // 태그 색상 반영은 getIpColor()에서 처리
+  }
+
+  // 브로드캐스트
+  const broadcastOctet = baseOctet + total + 1;
+  cells.push({ ip: `${parts[0]}.${parts[1]}.${parts[2]}.${broadcastOctet}`, type: 'special', label: 'BCT' });
+
+  const COLS = 16;
+  grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+
+  grid.innerHTML = cells.map((cell, idx) => {
+    const lastOctet = cell.ip.split('.')[3];
+    const tip = encodeURIComponent(buildTooltip(cell));
+    return `<div class="ip-cell ${cell.type}" 
+      data-tip="${tip}"
+      onmouseenter="showIpTooltip(event, this)"
+      onmouseleave="hideIpTooltip()"
+      onclick="onIpCellClick('${cell.ip}', '${cell.type}')"
+      title="">
+      <span>${lastOctet}</span>
+    </div>`;
+  }).join('');
+}
+
+function getIpColor(cell) {
+  if (cell.type === 'special') return '#6b7280';
+  if (cell.type === 'gateway') return '#6366f1';
+  if (cell.type === 'reserved') return '#f59e0b';
+  if (cell.type === 'unused') return '#10b981';
+  // 사용중: 태그 색상 우선, 없으면 빨강
+  if (cell.asset?.tag_color) return cell.asset.tag_color;
+  return '#ef4444';
+}
+
+function buildTooltip(cell) {
+  const a = cell.asset;
+  if (cell.type === 'special') return `${cell.ip}\n${cell.label === 'NET' ? '네트워크 주소' : '브로드캐스트'}`;
+  if (cell.type === 'gateway') return `${cell.ip}\n게이트웨이`;
+  if (!a) return `${cell.ip}\n미사용`;
+  let lines = [cell.ip];
+  if (a.hostname) lines.push(`호스트: ${a.hostname}`);
+  if (a.user_name) lines.push(`사용자: ${a.user_name}`);
+  if (a.dept) lines.push(`부서: ${a.dept}`);
+  if (a.mac) lines.push(`MAC: ${a.mac}`);
+  if (a.device_type) lines.push(`유형: ${a.device_type}`);
+  if (a.last_seen) lines.push(`마지막 접속: ${a.last_seen.slice(0,10)}`);
+  return lines.join('\n');
+}
+
+function showIpTooltip(e, el) {
+  const tooltip = document.getElementById('ipCellTooltip');
+  const text = decodeURIComponent(el.dataset.tip).replace(/\n/g, '<br>');
+  tooltip.innerHTML = text;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (e.clientX + 12) + 'px';
+  tooltip.style.top = (e.clientY - 10) + 'px';
+}
+
+function hideIpTooltip() {
+  document.getElementById('ipCellTooltip').style.display = 'none';
+}
+
+document.addEventListener('mousemove', (e) => {
+  const tooltip = document.getElementById('ipCellTooltip');
+  if (tooltip && tooltip.style.display === 'block') {
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+  }
+});
+
+function onIpCellClick(ip, type) {
+  if (type === 'special' || type === 'gateway') return;
+  if (type === 'unused') {
+    // 빈 IP 클릭 → 바로 등록 모달
+    document.getElementById('ia-ip').value = ip;
+    document.getElementById('ia-status').value = 'used';
+    editingIpId = null;
+    document.getElementById('ipAssetModalTitle').textContent = 'IP 등록';
+    openModal('ipAssetModal');
+  } else {
+    // 사용중 IP 클릭 → 수정
+    const asset = ipAssetsCache.find(a => a.ip === ip);
+    if (asset) openIpModal(asset.id);
+  }
+}
+
+function getCurrentSubnet() {
+  if (!currentSubnetId) return null;
+  // subnets는 다시 가져오기
+  return window._subnets?.find(s => s.id === currentSubnetId);
+}
+
+
+function renderIpHeatmap() {
+  const subnet = getCurrentSubnet();
+  if (!subnet) return;
+
+  const assetMap = {};
+  ipAssetsCache.forEach(a => { assetMap[a.ip] = a; });
+
+  const parts = subnet.network.split('.').map(Number);
+  const total = Math.pow(2, 32 - subnet.prefix) - 2;
+
+  // 16열 기준으로 행/열 구성
+  const COLS = 16;
+  const allIps = [];
+
+  // .0 (네트워크)
+  allIps.push({ ip: subnet.network, type: 'special', octet: 0 });
+
+  for (let i = 1; i <= total; i++) {
+    const octet = (parts[3] + i) % 256;
+    const ip = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3] + i}`;
+    const isGateway = subnet.gateway && ip === subnet.gateway;
+    const asset = assetMap[ip];
+    let type = 'unused';
+    if (isGateway) type = 'gateway';
+    else if (asset) type = asset.status;
+    allIps.push({ ip, type, asset, isGateway, octet });
+  }
+
+  // 브로드캐스트
+  allIps.push({ ip: `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3] + total + 1}`, type: 'special', octet: (parts[3] + total + 1) % 256 });
+
+  const rows = Math.ceil(allIps.length / COLS);
+  const cellSize = Math.min(36, Math.floor((document.getElementById('ipHeatmap').parentElement.clientWidth - 60) / COLS));
+
+  // 컬럼 헤더 (0~15)
+  let html = `<div class="ip-heatmap-col-labels">`;
+  for (let c = 0; c < COLS; c++) {
+    html += `<div class="ip-heatmap-col-label" style="width:${cellSize}px">+${c}</div>`;
+  }
+  html += `</div><div class="ip-heatmap-axis">`;
+
+  for (let r = 0; r < rows; r++) {
+    const rowStart = allIps[r * COLS];
+    const rowLabel = rowStart ? rowStart.ip.split('.')[3] : '';
+    html += `<div class="ip-heatmap-row">
+      <div class="ip-heatmap-row-label">.${rowLabel}</div>`;
+
+    for (let c = 0; c < COLS; c++) {
+      const cell = allIps[r * COLS + c];
+      if (!cell) {
+        html += `<div style="width:${cellSize}px;height:${cellSize}px"></div>`;
+        continue;
+      }
+      const color = getIpColor(cell);
+
+      const tip = encodeURIComponent(buildTooltip(cell));
+      html += `<div class="ip-hmap-cell"
+        style="width:${cellSize}px;height:${cellSize}px;background:${color}"
+        data-tip="${tip}"
+        onmouseenter="showIpTooltip(event, this)"
+        onmouseleave="hideIpTooltip()"
+        onclick="onIpCellClick('${cell.ip}','${cell.type}')">
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  document.getElementById('ipHeatmap').innerHTML = html;
+}
 // ── 기준점 재매핑 ──────────────────────────────────────────
 
 let remapOldImg = null;
@@ -4715,10 +5738,11 @@ async function deleteFloor(locId, floorIdx) {
 function switchTab(tab) {
   document.getElementById('mainPage').style.display = tab === 'main' ? 'block' : 'none';
   document.getElementById('cablePage').style.display = tab === 'cable' ? 'block' : 'none';
+  document.getElementById('ipPage').style.display = tab === 'ip' ? 'block' : 'none';
   document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
 
-  ['main','cable','settings'].forEach(t => {
-    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c'].forEach(id => {
+  ['main','cable','ip','settings'].forEach(t => {
+    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c', 'tab-'+t+'-ip'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', t === tab);
     });
@@ -4726,6 +5750,7 @@ function switchTab(tab) {
 
   if (tab === 'settings') { loadLocations(); loadNetworks(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
+  if (tab === 'ip') { initIpPage(); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
