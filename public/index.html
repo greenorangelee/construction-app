@@ -4034,24 +4034,47 @@ async function checkNacForIp() {
 
   try {
     const data = await api('GET', `/api/nac/node?ip=${encodeURIComponent(ip)}`);
-    const nodes = Array.isArray(data) ? data : (data.result || data.nodes || []);
+    const nodes = Array.isArray(data) ? data : (data.result || []);
     if (nodes.length) {
       const n = nodes[0];
-      const nacIp = n.ip || n.ipAddress || ip;
-      const nacMac = n.mac || n.macAddress || '';
-      const nacHost = n.hostname || n.nodeName || '';
-      const nacStatus = n.status || n.nodeStatus || '';
-      const lastSeen = n.lastAccessTime || n.lastSeen || '';
+      // 실제 NAC 응답 필드명 사용
+      const nacMac = n.NL_MAC || '';
+      const nacHost = n.NL_FQDN || '';
+      const nacUser = n.NL_AUTHUSERNAME || n.DL_AUTHUSERNAME || '';
+      const nacDept = n.NL_AUTHUSERDEPTNAME || n.DL_AUTHUSERDEPTNAME || '';
+      const nacOs = n.NL_OSNAME || '';
+      const nacStatus = n.NL_ACTIVE === 1 ? 'UP' : n.NL_ACTIVE === 0 ? 'DOWN' : '-';
+      const lastSeen = n.NL_LASTACTIVE
+        ? new Date(n.NL_LASTACTIVE).toLocaleString('ko-KR')
+        : '-';
+
       resultEl.style.background = '#f0fdf4';
       resultEl.style.borderColor = '#bbf7d0';
-      resultEl.innerHTML = `✅ NAC에서 발견됨<br>
-        MAC: <b>${nacMac || '-'}</b> · 호스트명: <b>${nacHost || '-'}</b> · 상태: <b>${nacStatus}</b><br>
-        마지막 접속: ${lastSeen || '-'}
-        <button class="tool-btn" style="margin-left:8px;font-size:11px" onclick="fillFromNac('${nacMac}','${nacHost}')">자동 입력</button>`;
+
+      const safeUser = (nacUser||'').replace(/'/g, "\'");
+      const safeDept = (nacDept||'').replace(/'/g, "\'");
+      const safeMac = (nacMac||'').replace(/'/g, "\'");
+      const safeHost = (nacHost||'').replace(/'/g, "\'");
+
+      resultEl.innerHTML = `
+        <div style="font-weight:700;color:#059669;margin-bottom:6px">✅ NAC에서 발견됨</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px">
+          <div>MAC: <b>${nacMac || '-'}</b></div>
+          <div>호스트명: <b>${nacHost || '-'}</b></div>
+          <div>사용자: <b>${nacUser || '-'}</b></div>
+          <div>부서: <b>${nacDept || '-'}</b></div>
+          <div>상태: <b style="color:${n.NL_ACTIVE===1?'#059669':'#9ca3af'}">${nacStatus}</b></div>
+          <div>마지막 접속: ${lastSeen}</div>
+          ${nacOs ? `<div style="grid-column:1/-1">OS: ${nacOs}</div>` : ''}
+        </div>
+        <button class="tool-btn" style="margin-top:8px;font-size:11px"
+          onclick="fillFromNac('${safeMac}','${safeHost}','${safeUser}','${safeDept}')">
+          ✨ 자동 입력
+        </button>`;
     } else {
       resultEl.style.background = '#fef2f2';
       resultEl.style.borderColor = '#fecaca';
-      resultEl.innerHTML = '✅ NAC에 없음 — 이 IP는 현재 미사용 상태입니다';
+      resultEl.innerHTML = '🟢 NAC에 없음 — 이 IP는 현재 미사용 상태입니다';
     }
   } catch(e) {
     resultEl.style.background = '#fef2f2';
@@ -4060,9 +4083,11 @@ async function checkNacForIp() {
   }
 }
 
-function fillFromNac(mac, hostname) {
+function fillFromNac(mac, hostname, user, dept) {
   if (mac) document.getElementById('ia-mac').value = mac;
   if (hostname) document.getElementById('ia-hostname').value = hostname;
+  if (user) document.getElementById('ia-user_name').value = user;
+  if (dept) document.getElementById('ia-dept').value = dept;
   showToast('NAC 정보가 자동 입력됐습니다');
 }
 
