@@ -643,7 +643,7 @@ app.delete('/api/ip/tag-ranges/:id', (req, res) => {
 // IP 자산 조회 시 범위 태그 자동 반영
 app.get('/api/ip/assets-with-tags', async (req, res) => {
   const { subnet_id, status, search } = req.query;
-  let sql = `SELECT a.*, t.name as tag_name, t.color as tag_color
+  let sql = `SELECT a.id, a.subnet_id, a.ip, a.mac, a.hostname, a.user_name, a.dept, a.device_type, a.os, a.status, a.tag_id, a.nac_status, a.last_seen, a.location, a.description, a.created_at, a.updated_at, t.name as tag_name, t.color as tag_color
     FROM ip_assets a LEFT JOIN ip_tags t ON a.tag_id=t.id WHERE 1=1`;
   const params = [];
   if (subnet_id) { sql += ' AND a.subnet_id=?'; params.push(subnet_id); }
