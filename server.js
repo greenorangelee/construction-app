@@ -7,12 +7,15 @@ const fs = require('fs');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 const { execSync } = require('child_process');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'construction.db');
 
 const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
+const NAC_HOST = process.env.NAC_HOST || 'https://172.16.1.11:8443';
+const NAC_API_KEY = process.env.NAC_API_KEY || '';
 if (!fs.existsSync(FLOOR_IMG_DIR)) fs.mkdirSync(FLOOR_IMG_DIR, { recursive: true });
 
 app.use(cors());
@@ -94,6 +97,58 @@ async function initDB() {
     saveDB();
   }
 
+  db.run(`CREATE TABLE IF NOT EXISTS ip_subnets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,          -- 예) 사무망, 생산망
+    network TEXT NOT NULL,       -- 예) 10.100.100.0
+    prefix INTEGER NOT NULL,     -- 예) 24
+    gateway TEXT,
+    dns TEXT,
+    vlan TEXT,
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS ip_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subnet_id INTEGER,
+    ip TEXT NOT NULL UNIQUE,
+    mac TEXT,
+    hostname TEXT,
+    user_name TEXT,
+    dept TEXT,
+    device_type TEXT,    -- PC, 서버, 프린터, AP, 기타
+    os TEXT,
+    status TEXT DEFAULT 'unused',  -- used, unused, reserved
+    nac_status TEXT,     -- NAC에서 가져온 상태
+    last_seen TEXT,      -- NAC 마지막 접속
+    location TEXT,
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  try { db.run('ALTER TABLE ip_assets ADD COLUMN nac_status TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE ip_assets ADD COLUMN last_seen TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE ip_assets ADD COLUMN tag_id INTEGER'); } catch(e) {}
+
+  db.run(`CREATE TABLE IF NOT EXISTS ip_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subnet_id INTEGER,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#3b82f6',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS ip_tag_ranges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag_id INTEGER NOT NULL,
+    subnet_id INTEGER NOT NULL,
+    ip_start TEXT NOT NULL,   -- 시작 IP
+    ip_end TEXT NOT NULL,     -- 끝 IP
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS constructions (
     id INTEGER PRIMARY KEY AUTOINCREMENT, no INTEGER, gubun TEXT, req_date TEXT,
     corp TEXT, dept TEXT, requester TEXT, work_name TEXT,
@@ -150,6 +205,18 @@ function queryAll(sql, params = []) {
 }
 
 function queryOne(sql, params = []) { return queryAll(sql, params)[0] || null; }
+
+// IP 범위 유틸
+function ipToInt(ip) {
+  return ip.split('.').reduce((acc, oct) => (acc << 8) + parseInt(oct), 0) >>> 0;
+}
+
+function isIpInRange(ip, start, end) {
+  const i = ipToInt(ip), s = ipToInt(start), e = ipToInt(end);
+  return i >= s && i <= e;
+}
+
+
 
 // DXF 좌표 기반 핀 재매핑
 function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
@@ -260,6 +327,287 @@ app.delete('/api/constructions/:id', (req, res) => {
 app.get('/api/history/:id', (req, res) => {
   const rows = queryAll('SELECT * FROM history WHERE construction_id = ? ORDER BY id DESC', [req.params.id]);
   res.json(rows.map(r => ({ ...r, diff: JSON.parse(r.diff || '[]') })));
+});
+
+
+// ── NAC API 헬퍼 ──────────────────────────────────────────
+
+function nacFetch(path) {
+  return new Promise((resolve, reject) => {
+    const sep = path.includes('?') ? '&' : '?';
+    const url = `${NAC_HOST}${path}${sep}apiKey=${NAC_API_KEY}`;
+    const agent = new https.Agent({ rejectUnauthorized: false });
+    const urlObj = new URL(url);
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 8443,
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      headers: { 'accept': 'application/json;charset=UTF-8' },
+      agent
+    };
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error('JSON parse error: ' + data.slice(0, 100))); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(5000, () => { req.destroy(); reject(new Error('NAC API timeout')); });
+    req.end();
+  });
+}
+
+// ── IP 대장 API ──────────────────────────────────────────
+
+// 서브넷 목록
+app.get('/api/ip/subnets', (req, res) => {
+  const subnets = queryAll('SELECT * FROM ip_subnets ORDER BY network');
+  res.json(subnets.map(s => ({
+    ...s,
+    total: Math.pow(2, 32 - s.prefix) - 2,
+    used: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="used"', [s.id]).cnt,
+    unused: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="unused"', [s.id]).cnt,
+    reserved: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="reserved"', [s.id]).cnt,
+  })));
+});
+
+app.post('/api/ip/subnets', (req, res) => {
+  const { name, network, prefix, gateway, dns, vlan, description } = req.body;
+  if (!name || !network || !prefix) return res.status(400).json({ error: '필수값 누락' });
+  db.run('INSERT INTO ip_subnets (name,network,prefix,gateway,dns,vlan,description) VALUES (?,?,?,?,?,?,?)',
+    [name, network, parseInt(prefix), gateway||'', dns||'', vlan||'', description||'']);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/ip/subnets/:id', (req, res) => {
+  const { name, network, prefix, gateway, dns, vlan, description } = req.body;
+  db.run('UPDATE ip_subnets SET name=?,network=?,prefix=?,gateway=?,dns=?,vlan=?,description=? WHERE id=?',
+    [name, network, parseInt(prefix), gateway||'', dns||'', vlan||'', description||'', req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+app.delete('/api/ip/subnets/:id', (req, res) => {
+  db.run('DELETE FROM ip_subnets WHERE id=?', [req.params.id]);
+  db.run('DELETE FROM ip_assets WHERE subnet_id=?', [req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+// IP 목록
+app.get('/api/ip/assets', (req, res) => {
+  const { subnet_id, status, search } = req.query;
+  let sql = 'SELECT a.*, t.name as tag_name, t.color as tag_color FROM ip_assets a LEFT JOIN ip_tags t ON a.tag_id=t.id WHERE 1=1';
+  const params = [];
+  if (subnet_id) { sql += ' AND subnet_id=?'; params.push(subnet_id); }
+  if (status && status !== '전체') { sql += ' AND status=?'; params.push(status); }
+  if (search) { sql += ' AND (ip LIKE ? OR hostname LIKE ? OR user_name LIKE ? OR dept LIKE ? OR mac LIKE ?)'; const kw = `%${search}%`; params.push(kw,kw,kw,kw,kw); }
+  sql += ' ORDER BY ip';
+  res.json(queryAll(sql, params));
+});
+
+// IP 개별 등록/수정/삭제
+app.post('/api/ip/assets', (req, res) => {
+  const { subnet_id, ip, mac, hostname, user_name, dept, device_type, os, status, location, description } = req.body;
+  const tag_id = req.body.tag_id || null;
+  if (!ip) return res.status(400).json({ error: 'IP 필수' });
+  try {
+    db.run('INSERT INTO ip_assets (subnet_id,ip,mac,hostname,user_name,dept,device_type,os,status,tag_id,location,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+      [subnet_id||null, s(ip), s(mac), s(hostname), s(user_name), s(dept), s(device_type)||'PC', s(os), status||'used', tag_id, s(location), s(description)]);
+    saveDB();
+    res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  } catch(e) { res.status(400).json({ error: 'IP 중복 또는 오류: ' + e.message }); }
+});
+
+app.put('/api/ip/assets/:id', (req, res) => {
+  const { mac, hostname, user_name, dept, device_type, os, status, tag_id, location, description } = req.body;
+  db.run('UPDATE ip_assets SET mac=?,hostname=?,user_name=?,dept=?,device_type=?,os=?,status=?,tag_id=?,location=?,description=?,updated_at=datetime("now","localtime") WHERE id=?',
+    [s(mac),s(hostname),s(user_name),s(dept),s(device_type),s(os),status||'used',tag_id||null,s(location),s(description),req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+app.delete('/api/ip/assets/:id', (req, res) => {
+  db.run('DELETE FROM ip_assets WHERE id=?', [req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+// 서브넷 전체 IP 자동 생성
+app.post('/api/ip/subnets/:id/generate', (req, res) => {
+  const subnet = queryOne('SELECT * FROM ip_subnets WHERE id=?', [req.params.id]);
+  if (!subnet) return res.status(404).json({ error: '서브넷 없음' });
+  const parts = subnet.network.split('.').map(Number);
+  const total = Math.pow(2, 32 - subnet.prefix) - 2;
+  let added = 0;
+  for (let i = 1; i <= total; i++) {
+    const ip = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3] + i}`;
+    try {
+      db.run('INSERT OR IGNORE INTO ip_assets (subnet_id,ip,status) VALUES (?,?,?)', [subnet.id, ip, 'unused']);
+      added++;
+    } catch(e) {}
+  }
+  saveDB();
+  res.json({ success: true, added });
+});
+
+// NAC 단말 조회 (IP로 검색)
+app.get('/api/nac/node', async (req, res) => {
+  const { ip } = req.query;
+  if (!ip) return res.status(400).json({ error: 'IP 필수' });
+  if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
+  try {
+    const data = await nacFetch(`/mc2/rest/nodes?page=1&pageSize=10&ipAddress=${ip}`);
+    res.json(data);
+  } catch(e) {
+    res.status(503).json({ error: 'NAC 연결 실패: ' + e.message });
+  }
+});
+
+// NAC 전체 단말 목록 (페이지)
+app.get('/api/nac/nodes', async (req, res) => {
+  const { page = 1, pageSize = 100 } = req.query;
+  if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
+  try {
+    const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=${pageSize}`);
+    res.json(data);
+  } catch(e) {
+    res.status(503).json({ error: 'NAC 연결 실패: ' + e.message });
+  }
+});
+
+// NAC 동기화 - NAC에서 단말 정보 가져와서 IP 대장 업데이트
+app.post('/api/nac/sync', async (req, res) => {
+  if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
+  try {
+    let page = 1, total = 0, synced = 0;
+    while (true) {
+      const data = await nacFetch(`/mc2/rest/nodes?page=${page}&pageSize=100`);
+      const nodes = Array.isArray(data) ? data : (data.result || data.nodes || []);
+      if (!nodes.length) break;
+      for (const node of nodes) {
+        const ip = node.ip || node.ipAddress || node.IP;
+        const mac = node.mac || node.macAddress || node.MAC;
+        const hostname = node.hostname || node.nodeName || '';
+        const lastSeen = node.lastAccessTime || node.lastSeen || '';
+        const nacStatus = node.status || node.nodeStatus || '';
+        if (!ip) continue;
+        const existing = queryOne('SELECT id FROM ip_assets WHERE ip=?', [ip]);
+        if (existing) {
+          db.run('UPDATE ip_assets SET mac=?,hostname=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
+            [mac||'', hostname, nacStatus, lastSeen, ip]);
+        } else {
+          db.run('INSERT OR IGNORE INTO ip_assets (ip,mac,hostname,nac_status,last_seen,status) VALUES (?,?,?,?,?,"used")',
+            [ip, mac||'', hostname, nacStatus, lastSeen]);
+        }
+        synced++;
+      }
+      total += nodes.length;
+      if (nodes.length < 100) break;
+      page++;
+    }
+    saveDB();
+    res.json({ success: true, total, synced });
+  } catch(e) {
+    res.status(503).json({ error: 'NAC 동기화 실패: ' + e.message });
+  }
+});
+
+// 빈 IP 추천
+app.get('/api/ip/available', (req, res) => {
+  const { subnet_id, count = 5 } = req.query;
+  let sql = 'SELECT ip FROM ip_assets WHERE status="unused"';
+  const params = [];
+  if (subnet_id) { sql += ' AND subnet_id=?'; params.push(subnet_id); }
+  sql += ' ORDER BY ip LIMIT ?';
+  params.push(parseInt(count));
+  res.json(queryAll(sql, params).map(r => r.ip));
+});
+
+
+// IP 태그 관리
+app.get('/api/ip/tags', (req, res) => {
+  const { subnet_id } = req.query;
+  let sql = 'SELECT * FROM ip_tags';
+  const params = [];
+  if (subnet_id) { sql += ' WHERE subnet_id=?'; params.push(subnet_id); }
+  res.json(queryAll(sql + ' ORDER BY id', params));
+});
+
+app.post('/api/ip/tags', (req, res) => {
+  const { subnet_id, name, color } = req.body;
+  if (!name) return res.status(400).json({ error: '이름 필수' });
+  db.run('INSERT INTO ip_tags (subnet_id,name,color) VALUES (?,?,?)', [subnet_id||null, name, color||'#3b82f6']);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/ip/tags/:id', (req, res) => {
+  const { name, color } = req.body;
+  db.run('UPDATE ip_tags SET name=?,color=? WHERE id=?', [name, color, req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+app.delete('/api/ip/tags/:id', (req, res) => {
+  db.run('UPDATE ip_assets SET tag_id=NULL WHERE tag_id=?', [req.params.id]);
+  db.run('DELETE FROM ip_tags WHERE id=?', [req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+// IP에 태그 지정
+app.put('/api/ip/assets/:id/tag', (req, res) => {
+  const { tag_id } = req.body;
+  db.run('UPDATE ip_assets SET tag_id=? WHERE id=?', [tag_id||null, req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+
+// IP 태그 범위 관리
+app.get('/api/ip/tag-ranges', (req, res) => {
+  const { subnet_id } = req.query;
+  res.json(queryAll(
+    `SELECT r.*, t.name as tag_name, t.color as tag_color
+     FROM ip_tag_ranges r JOIN ip_tags t ON r.tag_id=t.id
+     WHERE r.subnet_id=? ORDER BY r.ip_start`,
+    [subnet_id]
+  ));
+});
+
+app.post('/api/ip/tag-ranges', (req, res) => {
+  const { tag_id, subnet_id, ip_start, ip_end } = req.body;
+  if (!tag_id || !ip_start || !ip_end) return res.status(400).json({ error: '필수값 누락' });
+  db.run('INSERT INTO ip_tag_ranges (tag_id,subnet_id,ip_start,ip_end) VALUES (?,?,?,?)',
+    [tag_id, subnet_id, ip_start, ip_end]);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.delete('/api/ip/tag-ranges/:id', (req, res) => {
+  db.run('DELETE FROM ip_tag_ranges WHERE id=?', [req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+// IP 자산 조회 시 범위 태그 자동 반영
+app.get('/api/ip/assets-with-tags', async (req, res) => {
+  const { subnet_id, status, search } = req.query;
+  let sql = `SELECT a.*, t.name as tag_name, t.color as tag_color
+    FROM ip_assets a LEFT JOIN ip_tags t ON a.tag_id=t.id WHERE 1=1`;
+  const params = [];
+  if (subnet_id) { sql += ' AND a.subnet_id=?'; params.push(subnet_id); }
+  if (status && status !== '전체') { sql += ' AND a.status=?'; params.push(status); }
+  if (search) { sql += ' AND (a.ip LIKE ? OR a.hostname LIKE ? OR a.user_name LIKE ? OR a.dept LIKE ? OR a.mac LIKE ?)'; const kw='%'+search+'%'; params.push(kw,kw,kw,kw,kw); }
+  sql += ' ORDER BY a.ip';
+  let assets = queryAll(sql, params);
+
+  // 범위 태그 적용 (개별 tag_id 없는 IP에 범위 태그 적용)
+  const ranges = queryAll('SELECT r.*,t.name as tag_name,t.color as tag_color FROM ip_tag_ranges r JOIN ip_tags t ON r.tag_id=t.id WHERE r.subnet_id=?', [subnet_id]);
+  assets = assets.map(a => {
+    if (a.tag_id) return a; // 개별 태그 우선
+    const matched = ranges.find(r => isIpInRange(a.ip, r.ip_start, r.ip_end));
+    if (matched) return { ...a, tag_name: matched.tag_name, tag_color: matched.tag_color, range_tag: true };
+    return a;
+  });
+  res.json(assets);
 });
 
 // ── 망 관리 API ──────────────────────────────────────────
