@@ -434,8 +434,10 @@ app.get('/api/ip/assets', (req, res) => {
   if (subnet_id) { sql += ' AND subnet_id=?'; params.push(subnet_id); }
   if (status && status !== '전체') { sql += ' AND status=?'; params.push(status); }
   if (search) { sql += ' AND (ip LIKE ? OR hostname LIKE ? OR user_name LIKE ? OR dept LIKE ? OR mac LIKE ?)'; const kw = `%${search}%`; params.push(kw,kw,kw,kw,kw); }
-  sql += ' ORDER BY ip';
-  res.json(queryAll(sql, params));
+  const ipToInt = ip => { const p=(ip||'').split('.').map(Number); return ((p[0]||0)<<24)|((p[1]||0)<<16)|((p[2]||0)<<8)|(p[3]||0); };
+  const rows = queryAll(sql, params);
+  rows.sort((a,b) => ipToInt(a.ip) - ipToInt(b.ip));
+  res.json(rows);
 });
 
 // IP 개별 등록/수정/삭제
@@ -596,7 +598,7 @@ app.get('/api/ip/available', (req, res) => {
   let sql = 'SELECT ip FROM ip_assets WHERE status="unused"';
   const params = [];
   if (subnet_id) { sql += ' AND subnet_id=?'; params.push(subnet_id); }
-  sql += ' ORDER BY ip LIMIT ?';
+  sql += " ORDER BY CAST(SUBSTR(ip,1,INSTR(ip,'.')-1) AS INT), CAST(SUBSTR(ip,INSTR(ip,'.')+1,INSTR(ip,'.',INSTR(ip,'.')+1)-INSTR(ip,'.')-1) AS INT), CAST(SUBSTR(ip,INSTR(ip,'.',INSTR(ip,'.')+1)+1,INSTR(ip,'.',INSTR(ip,'.',INSTR(ip,'.')+1)+1)-INSTR(ip,'.',INSTR(ip,'.')+1)-1) AS INT), CAST(SUBSTR(ip,INSTR(ip,'.',INSTR(ip,'.',INSTR(ip,'.')+1)+1)+1) AS INT) LIMIT ?";
   params.push(parseInt(count));
   res.json(queryAll(sql, params).map(r => r.ip));
 });
@@ -673,7 +675,8 @@ app.get('/api/ip/assets-with-tags', async (req, res) => {
   if (subnet_id) { sql += ' AND a.subnet_id=?'; params.push(subnet_id); }
   if (status && status !== '전체') { sql += ' AND a.status=?'; params.push(status); }
   if (search) { sql += ' AND (a.ip LIKE ? OR a.hostname LIKE ? OR a.user_name LIKE ? OR a.dept LIKE ? OR a.mac LIKE ?)'; const kw='%'+search+'%'; params.push(kw,kw,kw,kw,kw); }
-  sql += ' ORDER BY a.ip';
+  const ipToIntA = ip => { const p=(ip||'').split('.').map(Number); return ((p[0]||0)<<24)|((p[1]||0)<<16)|((p[2]||0)<<8)|(p[3]||0); };
+  assets.sort((a,b) => ipToIntA(a.ip) - ipToIntA(b.ip));
   let assets = queryAll(sql, params);
 
   // 범위 태그 적용 (개별 tag_id 없는 IP에 범위 태그 적용)
