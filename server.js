@@ -676,8 +676,8 @@ app.get('/api/ip/assets-with-tags', async (req, res) => {
   if (status && status !== '전체') { sql += ' AND a.status=?'; params.push(status); }
   if (search) { sql += ' AND (a.ip LIKE ? OR a.hostname LIKE ? OR a.user_name LIKE ? OR a.dept LIKE ? OR a.mac LIKE ?)'; const kw='%'+search+'%'; params.push(kw,kw,kw,kw,kw); }
   const ipToIntA = ip => { const p=(ip||'').split('.').map(Number); return ((p[0]||0)<<24)|((p[1]||0)<<16)|((p[2]||0)<<8)|(p[3]||0); };
-  assets.sort((a,b) => ipToIntA(a.ip) - ipToIntA(b.ip));
   let assets = queryAll(sql, params);
+  assets.sort((a,b) => ipToIntA(a.ip) - ipToIntA(b.ip));
 
   // 범위 태그 적용 (개별 tag_id 없는 IP에 범위 태그 적용)
   const ranges = queryAll('SELECT r.*,t.name as tag_name,t.color as tag_color FROM ip_tag_ranges r JOIN ip_tags t ON r.tag_id=t.id WHERE r.subnet_id=?', [subnet_id]);
