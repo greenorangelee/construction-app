@@ -765,7 +765,11 @@ app.get('/api/constructions/files/:filename', (req, res) => {
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: '파일 없음' });
   const file = queryOne('SELECT original_name FROM construction_files WHERE filename=?', [req.params.filename]);
   const originalName = file?.original_name || req.params.filename;
-  res.download(filepath, originalName);
+  // RFC 5987 방식으로 한글 파일명 인코딩
+  const encodedName = encodeURIComponent(originalName).replace(/'/g, '%27');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${Buffer.from(originalName, 'utf8').toString('latin1')}"; filename*=UTF-8''${encodedName}`);
+  res.sendFile(filepath);
 });
 
 app.delete('/api/constructions/files/:id', (req, res) => {
