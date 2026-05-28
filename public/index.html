@@ -3050,9 +3050,14 @@ async function loadData() {
   const gubun = document.getElementById('filterGubun').value;
   const status = document.getElementById('filterStatus').value;
   const corp = document.getElementById('filterCorp').value;
+  const groupFilter = document.getElementById('filterGroup')?.value || '전체';
 
   const params = new URLSearchParams({ search, gubun, status, corp });
   let data = await api('GET', `/api/constructions?${params}`);
+
+  // 그룹 필터 (클라이언트 사이드)
+  if (groupFilter === 'none') data = data.filter(r => !r.group_id);
+  else if (groupFilter !== '전체') data = data.filter(r => String(r.group_id) === groupFilter);
 
   // 클라이언트 정렬
   data.sort((a, b) => {
@@ -3107,6 +3112,18 @@ async function loadData() {
   }
 
   // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
+  // allData 저장 (그룹 뷰에서 사용)
+  window.allData = data;
+  window.colVisible = {};
+  COL_DEFS.forEach(c => { window.colVisible[c.key] = isColVisible(c.key); });
+
+  // 그룹 묶어보기 모드
+  if (isGroupView) {
+    renderTableWithGroupView(data);
+    setTimeout(initColResize, 0);
+    return;
+  }
+
   setTimeout(initColResize, 0);
   tbody.innerHTML = data.map(r => `
     <tr>
@@ -4866,7 +4883,7 @@ function renderTableWithGroupView(data) {
     return;
   }
 
-  const tbody = document.querySelector('#mainTable tbody');
+  const tbody = document.getElementById('tableBody');
   if (!tbody) return;
 
   // 그룹별 분류
@@ -4940,7 +4957,7 @@ function visibleCols() {
 }
 
 function renderRow(r) {
-  const v = c => colVisible[c];
+  const v = c => window.colVisible ? window.colVisible[c] : isColVisible(c);
   return `<tr>
     <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
     ${v('no') ? `<td><code style="color:#9ca3af;font-size:11px">${r.no}</code></td>` : ''}
