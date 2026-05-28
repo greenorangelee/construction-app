@@ -3024,7 +3024,7 @@ async function loadData() {
       ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
-      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditModal(${r.id},true)" title="파일 첨부">📎</button></div></td>` : ''}
+      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
     </tr>
   `).join('');
 }
@@ -4585,6 +4585,16 @@ function formatFileSize(bytes) {
   return (bytes/1024/1024).toFixed(1) + 'MB';
 }
 
+async function openFileManageModal(constructionId, workName) {
+  currentFileConstructionId = constructionId;
+  currentFileTab = 'estimate';
+  document.getElementById('fileManageTitle').textContent = `📎 ${workName || '공사'} - 파일 관리`;
+  document.querySelectorAll('#fileManageModal .file-type-tab').forEach((t,i) => t.classList.toggle('active', i===0));
+  constructionFiles = await api('GET', `/api/constructions/${constructionId}/files`);
+  renderFileList('fileManageList');
+  openModal('fileManageModal');
+}
+
 async function openFilesModal(constructionId) {
   currentFileConstructionId = constructionId;
   // 모달이 열려있으면 파일 섹션만 표시
@@ -4603,13 +4613,15 @@ async function loadConstructionFiles() {
 
 function switchFileTab(type, btn) {
   currentFileTab = type;
-  document.querySelectorAll('.file-type-tab').forEach(t => t.classList.remove('active'));
+  btn.closest('.file-attach-header').querySelectorAll('.file-type-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  renderFileList();
+  const listEl = btn.closest('.modal') ? 'fileManageList' : 'fileList';
+  renderFileList(listEl);
 }
 
-function renderFileList() {
-  const el = document.getElementById('fileList');
+function renderFileList(listElId) {
+  const elId = listElId || (document.getElementById('fileManageList') ? 'fileManageList' : 'fileList');
+  const el = document.getElementById(elId);
   if (!el) return;
   const filtered = constructionFiles.filter(f => f.file_type === currentFileTab);
   el.innerHTML = filtered.length ? filtered.map(f => `
@@ -4617,12 +4629,12 @@ function renderFileList() {
       <span class="file-item-icon">${getFileIcon(f.original_name)}</span>
       <span class="file-item-name" onclick="downloadFile('${f.filename}','${f.original_name}')">${f.original_name}</span>
       <span class="file-item-size">${formatFileSize(f.file_size)}</span>
-      <button class="cable-item-del" onclick="deleteConstructionFile(${f.id})" title="삭제">✕</button>
+      <button class="cable-item-del" onclick="deleteConstructionFile(${f.id},'${elId}')" title="삭제">✕</button>
     </div>`).join('')
     : `<div style="font-size:12px;color:#9ca3af;padding:8px 0">등록된 ${FILE_TYPE_LABELS[currentFileTab]}이 없습니다</div>`;
 }
 
-async function uploadConstructionFiles(input) {
+async function uploadConstructionFiles(input, listElId) {
   if (!currentFileConstructionId) return;
   const files = Array.from(input.files);
   for (const file of files) {
@@ -4633,8 +4645,9 @@ async function uploadConstructionFiles(input) {
     if (!res.ok) { showToast('업로드 실패: ' + file.name); continue; }
   }
   input.value = '';
-  await loadConstructionFiles();
-  showToast(`파일 업로드 완료`);
+  constructionFiles = await api('GET', `/api/constructions/${currentFileConstructionId}/files`);
+  renderFileList(listElId || 'fileManageList');
+  showToast('파일 업로드 완료');
 }
 
 function downloadFile(filename, originalName) {
@@ -4644,10 +4657,11 @@ function downloadFile(filename, originalName) {
   a.click();
 }
 
-async function deleteConstructionFile(id) {
+async function deleteConstructionFile(id, listElId) {
   if (!confirm('이 파일을 삭제할까요?')) return;
   await api('DELETE', `/api/constructions/files/${id}`);
-  await loadConstructionFiles();
+  constructionFiles = await api('GET', `/api/constructions/${currentFileConstructionId}/files`);
+  renderFileList(listElId || 'fileManageList');
   showToast('삭제됐습니다');
 }
 
