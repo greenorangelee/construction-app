@@ -1915,42 +1915,9 @@
     }
     .file-upload-zone:hover { border-color: #c0392b; color: #c0392b; background: #fff5f5; }
 
-    /* ── 공사 그룹 ── */
-    .group-tag {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 2px 8px; border-radius: 20px;
-      font-size: 10px; font-weight: 700; color: #fff;
-      white-space: nowrap; vertical-align: middle;
-    }
-    .group-chip {
-      display: flex; align-items: center; gap: 6px;
-      padding: 4px 10px; border-radius: 20px;
-      font-size: 12px; font-weight: 600; color: #fff;
-      cursor: default;
-    }
-    .group-chip-del {
-      background: none; border: none; color: rgba(255,255,255,0.7);
-      cursor: pointer; font-size: 13px; padding: 0; line-height: 1;
-    }
-    .group-chip-del:hover { color: #fff; }
 
-    /* ── 그룹 묶어보기 ── */
-    .group-section { margin-bottom: 0; }
-    .group-section-header {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 14px; cursor: pointer;
-      background: #f9fafb; border-bottom: 1px solid #e5e7eb;
-      user-select: none;
-      position: sticky; top: 0; z-index: 1;
-    }
-    .group-section-header:hover { background: #f3f4f6; }
-    .group-section-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .group-section-name { font-size: 12px; font-weight: 700; color: #374151; flex: 1; }
-    .group-section-count { font-size: 11px; color: #9ca3af; }
-    .group-section-arrow { font-size: 11px; color: #9ca3af; transition: transform 0.2s; }
-    .group-section-arrow.collapsed { transform: rotate(-90deg); }
-    .group-section-rows.collapsed { display: none; }
-    #groupViewBtn.active { background: #fef2f2; color: #c0392b; border-color: #c0392b; }
+
+
   </style>
 </head>
 <body>
@@ -2101,13 +2068,7 @@
       <option>YHE</option>
       <option>KSMF</option>
     </select>
-    <select id="filterGroup" onchange="loadData()">
-      <option value="전체">전체 그룹</option>
-    </select>
-    <button id="groupViewBtn" class="btn btn-outline btn-sm" onclick="toggleGroupView()"
-      style="white-space:nowrap;display:flex;align-items:center;gap:4px">
-      <span id="groupViewIcon">⊞</span> 그룹 묶어보기
-    </button>
+
   </div>
 
   <!-- TABLE -->
@@ -2568,13 +2529,6 @@
   </div>
 </div>
 
-<!-- ─── 그룹 관리 모달 ─── -->
-<div class="modal-overlay" id="groupManageModal">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-head">
-      <h2>공사 그룹 관리</h2>
-      <button class="modal-close" onclick="closeModal('groupManageModal')">✕</button>
-    </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
       <div id="groupList" style="display:flex;flex-direction:column;gap:6px"></div>
       <div style="display:flex;gap:8px;align-items:center;padding-top:8px;border-top:1px solid #f3f4f6">
@@ -3050,14 +3004,8 @@ async function loadData() {
   const gubun = document.getElementById('filterGubun').value;
   const status = document.getElementById('filterStatus').value;
   const corp = document.getElementById('filterCorp').value;
-  const groupFilter = document.getElementById('filterGroup')?.value || '전체';
-
   const params = new URLSearchParams({ search, gubun, status, corp });
   let data = await api('GET', `/api/constructions?${params}`);
-
-  // 그룹 필터 (클라이언트 사이드)
-  if (groupFilter === 'none') data = data.filter(r => !r.group_id);
-  else if (groupFilter !== '전체') data = data.filter(r => String(r.group_id) === groupFilter);
 
   // 클라이언트 정렬
   data.sort((a, b) => {
@@ -3112,18 +3060,6 @@ async function loadData() {
   }
 
   // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
-  // allData 저장 (그룹 뷰에서 사용)
-  window.allData = data;
-  window.colVisible = {};
-  COL_DEFS.forEach(c => { window.colVisible[c.key] = isColVisible(c.key); });
-
-  // 그룹 묶어보기 모드
-  if (isGroupView) {
-    renderTableWithGroupView(data);
-    setTimeout(initColResize, 0);
-    return;
-  }
-
   setTimeout(initColResize, 0);
   tbody.innerHTML = data.map(r => `
     <tr>
@@ -3134,7 +3070,7 @@ async function loadData() {
       ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
       ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
       ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
-      ${v('work_name') ? `<td class="work-name" style="cursor:pointer" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span>${r.group_name ? ` <span class="group-tag" style="background:${r.group_color||'#3b82f6'}">${r.group_name}</span>` : ''}</td>` : ''}
+      ${v('work_name') ? `<td class="work-name" style="cursor:pointer;color:#c0392b" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기">${r.work_name || '-'}</td>` : ''}
       ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
@@ -4019,7 +3955,6 @@ async function initIpPage() {
 
 // rangeTagSel 자동입력 (시작 IP 입력 시 서브넷 prefix 자동 추가)
 document.addEventListener('DOMContentLoaded', () => {
-  loadGroups();
   const startInput = document.getElementById('rangeStart');
   if (startInput) {
     startInput.addEventListener('blur', () => {
@@ -4796,188 +4731,6 @@ async function deleteConstructionFile(id, listElId) {
   showToast('삭제됐습니다');
 }
 
-
-// ── 공사 그룹 관리 ──────────────────────────────────────────
-
-let allGroups = [];
-
-async function loadGroups() {
-  allGroups = await api('GET', '/api/groups');
-  renderGroupList();
-  updateGroupSelect();
-  // 필터 셀렉트도 업데이트
-  const filterSel = document.getElementById('filterGroup');
-  if (filterSel) {
-    const cur = filterSel.value;
-    filterSel.innerHTML = '<option value="전체">전체 그룹</option>' +
-      allGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('') +
-      '<option value="none">그룹 없음</option>';
-    filterSel.value = cur;
-  }
-}
-
-function renderGroupList() {
-  const el = document.getElementById('groupList');
-  if (!el) return;
-  el.innerHTML = allGroups.length ? allGroups.map(g => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f9fafb;border-radius:8px">
-      <input type="color" value="${g.color}"
-        style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:4px;padding:1px;cursor:pointer"
-        onchange="updateGroup(${g.id},'${g.name}',this.value)" />
-      <span style="flex:1;font-size:13px;font-weight:600;color:#1a1a1a">${g.name}</span>
-      <span style="font-size:11px;color:#9ca3af">${g.count}개</span>
-      <button class="cable-item-del" onclick="deleteGroup(${g.id})" style="color:#d1d5db">✕</button>
-    </div>`).join('')
-    : '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:12px">그룹이 없습니다</div>';
-}
-
-function updateGroupSelect() {
-  const sel = document.getElementById('const-group_id');
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">그룹 없음</option>' +
-    allGroups.map(g => `<option value="${g.id}" style="font-weight:600">${g.name}</option>`).join('');
-  sel.value = cur;
-}
-
-async function addGroup() {
-  const name = document.getElementById('newGroupName').value.trim();
-  const color = document.getElementById('newGroupColor').value;
-  if (!name) { alert('그룹 이름을 입력하세요'); return; }
-  await api('POST', '/api/groups', { name, color });
-  document.getElementById('newGroupName').value = '';
-  await loadGroups();
-  showToast(`'${name}' 그룹 추가됐습니다`);
-}
-
-async function updateGroup(id, name, color) {
-  await api('PUT', `/api/groups/${id}`, { name, color });
-  await loadGroups();
-}
-
-async function deleteGroup(id) {
-  const g = allGroups.find(x => x.id === id);
-  if (g?.count > 0 && !confirm(`이 그룹을 삭제하면 ${g.count}개 공사의 그룹이 해제됩니다. 계속할까요?`)) return;
-  await api('DELETE', `/api/groups/${id}`);
-  await loadGroups();
-  showToast('그룹 삭제됐습니다');
-}
-
-
-// ── 그룹 묶어보기 ──────────────────────────────────────────
-
-let isGroupView = false;
-
-function toggleGroupView() {
-  isGroupView = !isGroupView;
-  const btn = document.getElementById('groupViewBtn');
-  const icon = document.getElementById('groupViewIcon');
-  btn.classList.toggle('active', isGroupView);
-  icon.textContent = isGroupView ? '⊟' : '⊞';
-  renderTableWithGroupView(allData);
-}
-
-function renderTableWithGroupView(data) {
-  if (!isGroupView) {
-    renderTable(data);
-    return;
-  }
-
-  const tbody = document.getElementById('tableBody');
-  if (!tbody) return;
-
-  // 그룹별 분류
-  const groups = {};
-  const noGroup = [];
-  data.forEach(r => {
-    if (r.group_id) {
-      if (!groups[r.group_id]) groups[r.group_id] = { name: r.group_name, color: r.group_color, rows: [] };
-      groups[r.group_id].rows.push(r);
-    } else {
-      noGroup.push(r);
-    }
-  });
-
-  const totalCols = visibleCols().length + 1;
-
-  let html = '';
-
-  // 그룹 있는 것 먼저
-  Object.values(groups).forEach(g => {
-    const gid = 'grp_' + Math.random().toString(36).slice(2);
-    html += `
-      <tr class="group-section-header" onclick="toggleGroupSection('${gid}')">
-        <td colspan="${totalCols}" style="padding:0">
-          <div class="group-section-header">
-            <div class="group-section-dot" style="background:${g.color}"></div>
-            <span class="group-section-name">${g.name}</span>
-            <span class="group-section-count">${g.rows.length}개</span>
-            <span class="group-section-arrow" id="arrow_${gid}">▼</span>
-          </div>
-        </td>
-      </tr>
-      <tbody id="${gid}" class="group-section-rows">
-        ${g.rows.map(r => renderRow(r)).join('')}
-      </tbody>`;
-  });
-
-  // 그룹 없는 것
-  if (noGroup.length) {
-    const gid2 = 'grp_nogroup';
-    html += `
-      <tr class="group-section-header" onclick="toggleGroupSection('${gid2}')">
-        <td colspan="${totalCols}" style="padding:0">
-          <div class="group-section-header">
-            <div class="group-section-dot" style="background:#d1d5db"></div>
-            <span class="group-section-name" style="color:#9ca3af">그룹 없음</span>
-            <span class="group-section-count">${noGroup.length}개</span>
-            <span class="group-section-arrow" id="arrow_${gid2}">▼</span>
-          </div>
-        </td>
-      </tr>
-      <tbody id="${gid2}" class="group-section-rows">
-        ${noGroup.map(r => renderRow(r)).join('')}
-      </tbody>`;
-  }
-
-  tbody.innerHTML = html || `<tr><td colspan="${totalCols}"><div class="empty-state"><div class="icon">📭</div><p>데이터가 없습니다</p></div></td></tr>`;
-}
-
-function toggleGroupSection(gid) {
-  const el = document.getElementById(gid);
-  const arrow = document.getElementById('arrow_' + gid);
-  if (!el) return;
-  el.classList.toggle('collapsed');
-  if (arrow) arrow.classList.toggle('collapsed');
-}
-
-function visibleCols() {
-  return ['no','gubun','req_date','corp','dept','requester','work_name','loc','status','deadline','complete_date','purchase_doc','payment_doc','it_manager','worker','actions']
-    .filter(c => colVisible[c]);
-}
-
-function renderRow(r) {
-  const v = c => window.colVisible ? window.colVisible[c] : isColVisible(c);
-  return `<tr>
-    <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
-    ${v('no') ? `<td><code style="color:#9ca3af;font-size:11px">${r.no}</code></td>` : ''}
-    ${v('gubun') ? `<td>${gubunBadge(r.gubun)}</td>` : ''}
-    ${v('req_date') ? `<td class="col-sm">${r.req_date || '-'}</td>` : ''}
-    ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
-    ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
-    ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
-    ${v('work_name') ? `<td class="work-name" style="cursor:pointer" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span>${r.group_name && !isGroupView ? ` <span class="group-tag" style="background:${r.group_color||'#3b82f6'}">${r.group_name}</span>` : ''}</td>` : ''}
-    ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
-    ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
-    ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
-    ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-    ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
-    ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
-    ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
-    ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
-    ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
-  </tr>`;
-}
 
 // ── 기준점 재매핑 ──────────────────────────────────────────
 
