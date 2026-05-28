@@ -764,8 +764,8 @@ app.get('/api/constructions/files/:filename', (req, res) => {
   const filepath = path.join(FILES_DIR, req.params.filename);
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: '파일 없음' });
   const file = queryOne('SELECT original_name FROM construction_files WHERE filename=?', [req.params.filename]);
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file?.original_name || req.params.filename)}`);
-  res.sendFile(filepath);
+  const originalName = file?.original_name || req.params.filename;
+  res.download(filepath, originalName);
 });
 
 app.delete('/api/constructions/files/:id', (req, res) => {
