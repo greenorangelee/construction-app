@@ -2488,6 +2488,41 @@
   </div>
 </div>
 
+
+<!-- ─── 파일 관리 모달 ─── -->
+<div class="modal-overlay" id="fileManageModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h2 id="fileManageTitle">파일 관리</h2>
+      <button class="modal-close" onclick="closeModal('fileManageModal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px">
+      <div class="file-attach-section">
+        <div class="file-attach-header">
+          <span>📎 첨부파일</span>
+          <div class="file-type-tabs">
+            <button class="file-type-tab active" onclick="switchFileTab('estimate',this)">견적서</button>
+            <button class="file-type-tab" onclick="switchFileTab('transaction',this)">거래명세서</button>
+            <button class="file-type-tab" onclick="switchFileTab('layout',this)">레이아웃</button>
+            <button class="file-type-tab" onclick="switchFileTab('other',this)">기타</button>
+          </div>
+        </div>
+        <div class="file-list-area">
+          <div id="fileManageList"></div>
+          <div class="file-upload-zone" onclick="document.getElementById('fileManageInput').click()">
+            📁 클릭하여 파일 업로드 (PDF, 이미지, 문서)
+          </div>
+          <input type="file" id="fileManageInput" multiple style="display:none"
+            accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.docx,.doc,.hwp,.zip"
+            onchange="uploadConstructionFiles(this,'fileManageList')" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('fileManageModal')">닫기</button>
+    </div>
+  </div>
+</div>
 <!-- 선번 입력 모달 -->
 <div class="cable-modal" id="cableInputModal">
   <div class="cable-modal-box">
