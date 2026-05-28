@@ -14,6 +14,8 @@ const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'construction.db');
 
 const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
+const FILES_DIR = path.join(path.dirname(DB_PATH), 'construction_files');
+if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR, { recursive: true });
 const NAC_HOST = process.env.NAC_HOST || 'https://172.16.1.11:8443';
 const NAC_API_KEY = process.env.NAC_API_KEY || '';
 if (!fs.existsSync(FLOOR_IMG_DIR)) fs.mkdirSync(FLOOR_IMG_DIR, { recursive: true });
@@ -158,6 +160,15 @@ async function initDB() {
     status TEXT, deadline TEXT, complete_date TEXT,
     purchase_doc TEXT, payment_doc TEXT, related_doc TEXT,
     it_manager TEXT, worker TEXT, memo TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS construction_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    construction_id INTEGER NOT NULL,
+    file_type TEXT NOT NULL,   -- 'estimate'(견적서), 'transaction'(거래명세서), 'layout'(레이아웃), 'other'(기타)
+    original_name TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    file_size INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   saveDB();
@@ -727,6 +738,44 @@ app.delete('/api/ip/cleanup-unmatched', (req, res) => {
   }
   saveDB();
   res.json({ success: true, deleted });
+});
+
+
+// ── 공사 파일 첨부 API ──────────────────────────────────────────
+
+app.get('/api/constructions/:id/files', (req, res) => {
+  res.json(queryAll('SELECT * FROM construction_files WHERE construction_id=? ORDER BY file_type, created_at', [req.params.id]));
+});
+
+app.post('/api/constructions/:id/files', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: '파일 없음' });
+  const { file_type } = req.body;
+  const ext = path.extname(req.file.originalname);
+  const filename = `${req.params.id}_${file_type}_${Date.now()}${ext}`;
+  const dest = path.join(FILES_DIR, filename);
+  fs.writeFileSync(dest, req.file.buffer);
+  db.run('INSERT INTO construction_files (construction_id,file_type,original_name,filename,file_size) VALUES (?,?,?,?,?)',
+    [req.params.id, file_type, req.file.originalname, filename, req.file.size]);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename, original_name: req.file.originalname });
+});
+
+app.get('/api/constructions/files/:filename', (req, res) => {
+  const filepath = path.join(FILES_DIR, req.params.filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: '파일 없음' });
+  const file = queryOne('SELECT original_name FROM construction_files WHERE filename=?', [req.params.filename]);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file?.original_name || req.params.filename)}`);
+  res.sendFile(filepath);
+});
+
+app.delete('/api/constructions/files/:id', (req, res) => {
+  const file = queryOne('SELECT * FROM construction_files WHERE id=?', [req.params.id]);
+  if (!file) return res.status(404).json({ error: '파일 없음' });
+  const filepath = path.join(FILES_DIR, file.filename);
+  if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+  db.run('DELETE FROM construction_files WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
 });
 
 // ── 망 관리 API ──────────────────────────────────────────
