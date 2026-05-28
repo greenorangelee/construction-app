@@ -3015,7 +3015,7 @@ async function loadData() {
       ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
       ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
       ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
-      ${v('work_name') ? `<td class="work-name">${r.work_name || '-'}</td>` : ''}
+      ${v('work_name') ? `<td class="work-name" style="cursor:pointer;color:#c0392b" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기">${r.work_name || '-'}</td>` : ''}
       ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
@@ -3024,7 +3024,7 @@ async function loadData() {
       ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
-      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="showDetail(${r.id})">보기</button><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button></div></td>` : ''}
+      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditModal(${r.id},true)" title="파일 첨부">📎</button></div></td>` : ''}
     </tr>
   `).join('');
 }
