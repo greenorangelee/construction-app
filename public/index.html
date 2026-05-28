@@ -4781,7 +4781,9 @@ async function downloadFile(filename, originalName) {
 
 async function deleteConstructionFile(id, listElId) {
   const f = constructionFiles.find(x => x.id === id);
-  const msg = f?.shared ? '이 파일은 그룹 공유 파일입니다.\n삭제하면 같은 묶음의 모든 공사에서 사라집니다.\n계속할까요?' : '이 파일을 삭제할까요?';
+  const msg = f?.group_id
+    ? '이 파일은 같은 묶음의 모든 공사와 공유 중입니다.\n삭제하면 묶음 전체에서 사라집니다.\n계속할까요?'
+    : '이 파일을 삭제할까요?';
   if (!confirm(msg)) return;
   await api('DELETE', `/api/constructions/files/${id}`);
   constructionFiles = await api('GET', `/api/constructions/${currentFileConstructionId}/files`);
