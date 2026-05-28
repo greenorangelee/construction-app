@@ -4735,10 +4735,11 @@ function renderFileList(listElId) {
   if (!el) return;
   const filtered = constructionFiles.filter(f => f.file_type === currentFileTab);
   el.innerHTML = filtered.length ? filtered.map(f => `
-    <div class="file-item">
+    <div class="file-item" style="${f.shared ? 'background:#eff6ff;border:1px solid #bfdbfe' : ''}">
       <span class="file-item-icon">${getFileIcon(f.original_name)}</span>
       <span class="file-item-name" onclick="downloadFile('${f.filename}','${f.original_name}')">${f.original_name}</span>
       <span class="file-item-size">${formatFileSize(f.file_size)}</span>
+      ${f.shared ? `<span style="font-size:10px;color:#2563eb;white-space:nowrap;margin-right:4px">🔗 공유</span>` : ''}
       <button class="cable-item-del" onclick="deleteConstructionFile(${f.id},'${elId}')" title="삭제">✕</button>
     </div>`).join('')
     : `<div style="font-size:12px;color:#9ca3af;padding:8px 0">등록된 ${FILE_TYPE_LABELS[currentFileTab]}이 없습니다</div>`;
@@ -4779,7 +4780,9 @@ async function downloadFile(filename, originalName) {
 }
 
 async function deleteConstructionFile(id, listElId) {
-  if (!confirm('이 파일을 삭제할까요?')) return;
+  const f = constructionFiles.find(x => x.id === id);
+  const msg = f?.shared ? '이 파일은 그룹 공유 파일입니다.\n삭제하면 같은 묶음의 모든 공사에서 사라집니다.\n계속할까요?' : '이 파일을 삭제할까요?';
+  if (!confirm(msg)) return;
   await api('DELETE', `/api/constructions/files/${id}`);
   constructionFiles = await api('GET', `/api/constructions/${currentFileConstructionId}/files`);
   renderFileList(listElId || 'fileManageList');
