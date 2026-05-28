@@ -69,6 +69,7 @@ async function initDB() {
   try { db.run('ALTER TABLE cables ADD COLUMN x REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN shape TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE constructions ADD COLUMN group_id INTEGER'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN dxf_x REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN dxf_y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_minx REAL'); } catch(e) {}
@@ -162,6 +163,14 @@ async function initDB() {
     it_manager TEXT, worker TEXT, memo TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS construction_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#3b82f6',
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     construction_id INTEGER NOT NULL,
@@ -740,6 +749,34 @@ app.delete('/api/ip/cleanup-unmatched', (req, res) => {
   res.json({ success: true, deleted });
 });
 
+
+
+// ── 공사 그룹 API ──────────────────────────────────────────
+
+app.get('/api/groups', (req, res) => {
+  const groups = queryAll('SELECT g.*, COUNT(c.id) as count FROM construction_groups g LEFT JOIN constructions c ON c.group_id=g.id GROUP BY g.id ORDER BY g.name');
+  res.json(groups);
+});
+
+app.post('/api/groups', (req, res) => {
+  const { name, color, description } = req.body;
+  if (!name) return res.status(400).json({ error: '이름 필수' });
+  db.run('INSERT INTO construction_groups (name,color,description) VALUES (?,?,?)', [name, color||'#3b82f6', description||'']);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/groups/:id', (req, res) => {
+  const { name, color, description } = req.body;
+  db.run('UPDATE construction_groups SET name=?,color=?,description=? WHERE id=?', [name, color, description||'', req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+app.delete('/api/groups/:id', (req, res) => {
+  db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [req.params.id]);
+  db.run('DELETE FROM construction_groups WHERE id=?', [req.params.id]);
+  saveDB(); res.json({ success: true });
+});
 
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
 
