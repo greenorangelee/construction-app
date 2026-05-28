@@ -163,13 +163,6 @@ async function initDB() {
     it_manager TEXT, worker TEXT, memo TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
-  db.run(`CREATE TABLE IF NOT EXISTS construction_groups (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    color TEXT NOT NULL DEFAULT '#3b82f6',
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-
   db.run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     construction_id INTEGER NOT NULL,
@@ -280,13 +273,14 @@ app.get('/api/constructions', (req, res) => {
   if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
   sql += ' ORDER BY id DESC';
   const raw = queryAll(sql, params);
-  const groups = queryAll('SELECT * FROM construction_groups');
-  const groupMap = {};
-  groups.forEach(g => { groupMap[g.id] = g; });
+  // group_id별로 자동 색상 부여 (이름/색 설정 없이)
+  const GROUP_COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6'];
+  const gids = [...new Set(raw.filter(r => r.group_id).map(r => r.group_id))];
+  const gColorMap = {};
+  gids.forEach((gid, i) => { gColorMap[gid] = GROUP_COLORS[i % GROUP_COLORS.length]; });
   res.json(raw.map(r => ({
     ...r,
-    group_name: r.group_id ? (groupMap[r.group_id]?.name || '') : '',
-    group_color: r.group_id ? (groupMap[r.group_id]?.color || '') : ''
+    group_color: r.group_id ? gColorMap[r.group_id] : null
   })));
 });
 
@@ -760,34 +754,32 @@ app.delete('/api/ip/cleanup-unmatched', (req, res) => {
 
 
 
-// ── 공사 그룹 API ──────────────────────────────────────────
+// ── 공사 그룹 묶기 API ──────────────────────────────────────────
 
-app.get('/api/groups', (req, res) => {
-  const groups = queryAll('SELECT * FROM construction_groups ORDER BY name');
-  res.json(groups.map(g => ({
-    ...g,
-    count: queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [g.id]).cnt
-  })));
+// 새 group_id 발급 (MAX+1)
+app.post('/api/groups/new', (req, res) => {
+  const row = queryOne('SELECT MAX(group_id) as m FROM constructions');
+  const newGid = (row.m || 0) + 1;
+  res.json({ group_id: newGid });
 });
 
-app.post('/api/groups', (req, res) => {
-  const { name, color } = req.body;
-  if (!name) return res.status(400).json({ error: '이름 필수' });
-  db.run('INSERT INTO construction_groups (name,color) VALUES (?,?)', [name, color||'#3b82f6']);
+// 공사에 group_id 지정
+app.put('/api/constructions/:id/group', (req, res) => {
+  const { group_id } = req.body;
+  db.run('UPDATE constructions SET group_id=? WHERE id=?', [group_id || null, req.params.id]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ success: true });
 });
 
-app.put('/api/groups/:id', (req, res) => {
-  const { name, color } = req.body;
-  db.run('UPDATE construction_groups SET name=?,color=? WHERE id=?', [name, color, req.params.id]);
-  saveDB(); res.json({ success: true });
-});
-
-app.delete('/api/groups/:id', (req, res) => {
-  db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [req.params.id]);
-  db.run('DELETE FROM construction_groups WHERE id=?', [req.params.id]);
-  saveDB(); res.json({ success: true });
+// 현재 존재하는 그룹 목록 (공사 선택용)
+app.get('/api/groups/list', (req, res) => {
+  const rows = queryAll('SELECT DISTINCT group_id FROM constructions WHERE group_id IS NOT NULL ORDER BY group_id');
+  const GROUP_COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6'];
+  res.json(rows.map((r, i) => ({
+    group_id: r.group_id,
+    color: GROUP_COLORS[i % GROUP_COLORS.length],
+    members: queryAll('SELECT id, work_name FROM constructions WHERE group_id=?', [r.group_id])
+  })));
 });
 
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
