@@ -2504,13 +2504,6 @@
 
 
 
-<!-- ─── 그룹 관리 모달 ─── -->
-<div class="modal-overlay" id="groupManageModal">
-  <div class="modal" style="max-width:460px">
-    <div class="modal-head">
-      <h2>공사 그룹 관리</h2>
-      <button class="modal-close" onclick="closeModal('groupManageModal')">✕</button>
-    </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
       <div id="groupManageList" style="display:flex;flex-direction:column;gap:6px;min-height:40px"></div>
       <div style="display:flex;gap:8px;align-items:center;padding-top:10px;border-top:1px solid #f3f4f6">
@@ -2524,6 +2517,38 @@
     </div>
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal('groupManageModal')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 공사 묶기 모달 ─── -->
+<div class="modal-overlay" id="groupLinkModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <h2>공사 묶기</h2>
+      <button class="modal-close" onclick="closeModal('groupLinkModal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:13px;color:#374151;background:#f9fafb;border-radius:8px;padding:12px">
+        <b id="groupLinkBase"></b>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">묶을 공사 선택 (복수 가능)</div>
+        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명 검색..."
+          style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif;box-sizing:border-box;margin-bottom:8px"
+          oninput="renderGroupLinkList(this.value)" />
+        <div id="groupLinkList"
+          style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div id="groupLinkCurrent" style="display:none;padding-top:10px;border-top:1px solid #f3f4f6">
+        <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px">현재 같은 묶음</div>
+        <div id="groupLinkCurrentList" style="display:flex;flex-direction:column;gap:4px"></div>
+        <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="unlinkGroup()">이 공사 묶음 해제</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('groupLinkModal')">취소</button>
+      <button class="btn-primary" onclick="applyGroupLink()">묶기 적용</button>
     </div>
   </div>
 </div>
@@ -2859,17 +2884,7 @@
         </div>
       </div>
 
-      <div class="form-section">
-        <div class="form-section-title">🏷️ 그룹</div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <select id="f-group_id" style="flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:9px 12px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
-            <option value="">그룹 없음</option>
-          </select>
-          <button class="btn btn-outline btn-sm" type="button" onclick="openGroupManage()">그룹 관리</button>
-        </div>
-      </div>
-
-      <div class="form-section">
+<div class="form-section">
         <div class="form-section-title">👷 작업자</div>
         <div class="form-grid">
           <div class="form-group form-full">
@@ -3066,6 +3081,7 @@ async function loadData() {
     return 0;
   });
 
+  window.allData = data;
   document.getElementById('recordCount').textContent = `총 ${data.length}건`;
 
   const v = isColVisible;
@@ -3113,7 +3129,7 @@ async function loadData() {
       ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
       ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
       ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
-      ${v('work_name') ? `<td class="work-name" style="cursor:pointer" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span>${r.group_name ? `<span class="group-tag" style="background:${r.group_color||'#3b82f6'}">${r.group_name}</span>` : ''}</td>` : ''}
+      ${v('work_name') ? `<td class="work-name" style="cursor:pointer;border-left:${r.group_color ? '3px solid '+r.group_color : 'none'};padding-left:${r.group_color ? '7px' : '10px'}" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span></td>` : ''}
       ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
@@ -3122,7 +3138,7 @@ async function loadData() {
       ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
-      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
+      ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
     </tr>
   `).join('');
 }
@@ -3243,9 +3259,6 @@ function openNewModal() {
     }
   });
   populateLocDropdowns();
-  loadGroups();
-  const gsel = document.getElementById('f-group_id');
-  if (gsel) gsel.value = '';
   openModal('formModal');
 }
 
@@ -3257,16 +3270,12 @@ async function openEditModal(id) {
   // 위치 데이터 최신화 후 드롭다운 구성
   await loadLocations();
   populateLocDropdowns();
-  // 그룹 로드 및 선택값 세팅
-  await loadGroups();
   // 일반 필드 값 세팅
   FIELDS.forEach(f => {
     const el = document.getElementById('f-' + f);
     if (!el) return;
     el.value = r[f] || '';
   });
-  const gsel = document.getElementById('f-group_id');
-  if (gsel) gsel.value = r.group_id || '';
   // 위치 드롭다운 연쇄 업데이트 (지역 선택 → 동 목록 → 층 목록 → 값 선택)
   ['loc','demolish'].forEach(p => {
     const regionEl = document.getElementById(`f-${p}_region`);
@@ -3288,7 +3297,6 @@ async function openEditModal(id) {
 async function submitForm() {
   const data = {};
   FIELDS.forEach(f => { const el = document.getElementById('f-' + f); if (el) data[f] = el.value; });
-  data.group_id = document.getElementById('f-group_id')?.value || null;
 
   if (!data.gubun || data.gubun === '' || !data.work_name) {
     alert('구분과 공사명은 필수 입력입니다.');
@@ -6145,69 +6153,92 @@ async function showHistory(id, workName) {
 
 
 
-// ── 공사 그룹 ──────────────────────────────────────────
 
-let allGroups = [];
+// ── 공사 묶기 ──────────────────────────────────────────
 
-async function loadGroups() {
-  allGroups = await api('GET', '/api/groups');
-  // 공사 등록/수정 모달 셀렉트 업데이트
-  const sel = document.getElementById('f-group_id');
-  if (sel) {
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">그룹 없음</option>' +
-      allGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
-    if (cur) sel.value = cur;
+let groupLinkBaseId = null;
+let groupLinkSelected = new Set();
+
+async function openGroupLink(id) {
+  groupLinkBaseId = id;
+  groupLinkSelected = new Set();
+
+  const base = allData.find(r => r.id === id);
+  document.getElementById('groupLinkBase').textContent = base?.work_name || '공사';
+  document.getElementById('groupLinkSearch').value = '';
+
+  // 현재 같은 묶음 표시
+  const currentEl = document.getElementById('groupLinkCurrent');
+  const currentListEl = document.getElementById('groupLinkCurrentList');
+  if (base?.group_id) {
+    const members = allData.filter(r => r.group_id === base.group_id && r.id !== id);
+    currentEl.style.display = members.length ? 'block' : 'none';
+    currentListEl.innerHTML = members.map(m =>
+      `<div style="font-size:12px;padding:5px 10px;background:#fef2f2;border-radius:6px;color:#374151">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${base.group_color||'#6366f1'};margin-right:6px"></span>
+        ${m.work_name}
+      </div>`).join('');
+  } else {
+    currentEl.style.display = 'none';
   }
+
+  renderGroupLinkList('');
+  openModal('groupLinkModal');
 }
 
-async function openGroupManage() {
-  await loadGroups();
-  renderGroupManageList();
-  openModal('groupManageModal');
+function renderGroupLinkList(search) {
+  const el = document.getElementById('groupLinkList');
+  const base = allData.find(r => r.id === groupLinkBaseId);
+  const keyword = (search || '').toLowerCase();
+
+  const candidates = allData.filter(r =>
+    r.id !== groupLinkBaseId &&
+    (!keyword || (r.work_name || '').toLowerCase().includes(keyword))
+  );
+
+  el.innerHTML = candidates.length ? candidates.map(r => {
+    const checked = groupLinkSelected.has(r.id);
+    const sameGroup = base?.group_id && r.group_id === base.group_id;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;background:${sameGroup?'#eff6ff':checked?'#f0fdf4':'#f9fafb'};border:1px solid ${sameGroup?'#bfdbfe':checked?'#bbf7d0':'transparent'}">
+      <input type="checkbox" ${checked||sameGroup?'checked':''} ${sameGroup?'disabled':''} onchange="toggleGroupSelect(${r.id},this.checked)"
+        style="accent-color:#c0392b;width:14px;height:14px;cursor:pointer;flex-shrink:0" />
+      <span style="flex:1;font-size:12px;color:#374151">${r.work_name || '-'}</span>
+      <span style="font-size:10px;color:#9ca3af">${r.req_date||''} ${r.corp||''}</span>
+      ${sameGroup ? '<span style="font-size:10px;color:#2563eb">현재 묶음</span>' : ''}
+    </label>`;
+  }).join('') : '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px">검색 결과 없음</div>';
 }
 
-function renderGroupManageList() {
-  const el = document.getElementById('groupManageList');
-  if (!el) return;
-  el.innerHTML = allGroups.length ? allGroups.map(g => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f9fafb;border-radius:8px">
-      <input type="color" value="${g.color}"
-        style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:4px;padding:1px;cursor:pointer;flex-shrink:0"
-        onchange="updateGroupColor(${g.id},'${g.name}',this.value)" />
-      <span style="flex:1;font-size:13px;font-weight:600;color:#1a1a1a">${g.name}</span>
-      <span style="font-size:11px;color:#9ca3af">${g.count}개</span>
-      <button class="cable-item-del" onclick="deleteGroup(${g.id},'${g.name.replace(/'/g,"\'")}')">✕</button>
-    </div>`).join('')
-    : '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:12px">그룹이 없습니다</div>';
+function toggleGroupSelect(id, checked) {
+  if (checked) groupLinkSelected.add(id);
+  else groupLinkSelected.delete(id);
 }
 
-async function addGroup() {
-  const name = document.getElementById('newGroupName').value.trim();
-  const color = document.getElementById('newGroupColor').value;
-  if (!name) { alert('그룹 이름을 입력하세요'); return; }
-  await api('POST', '/api/groups', { name, color });
-  document.getElementById('newGroupName').value = '';
-  await loadGroups();
-  renderGroupManageList();
-  showToast(`'${name}' 그룹 추가됐습니다`);
+async function applyGroupLink() {
+  if (!groupLinkSelected.size) {
+    alert('묶을 공사를 선택하세요');
+    return;
+  }
+  // 새 group_id 발급
+  const { group_id } = await api('POST', '/api/groups/new');
+
+  // 기준 공사 + 선택된 공사 모두 같은 group_id 설정
+  const ids = [groupLinkBaseId, ...groupLinkSelected];
+  for (const id of ids) {
+    await api('PUT', `/api/constructions/${id}/group`, { group_id });
+  }
+
+  closeModal('groupLinkModal');
+  showToast(`${ids.length}개 공사가 묶였습니다`);
+  await loadData();
 }
 
-async function updateGroupColor(id, name, color) {
-  await api('PUT', `/api/groups/${id}`, { name, color });
-  await loadGroups();
-  renderGroupManageList();
-  loadData();
-}
-
-async function deleteGroup(id, name) {
-  const g = allGroups.find(x => x.id === id);
-  if (g?.count > 0 && !confirm(`'${name}' 그룹을 삭제하면 ${g.count}개 공사의 그룹이 해제됩니다. 계속할까요?`)) return;
-  await api('DELETE', `/api/groups/${id}`);
-  await loadGroups();
-  renderGroupManageList();
-  loadData();
-  showToast('그룹 삭제됐습니다');
+async function unlinkGroup() {
+  if (!confirm('이 공사의 묶음을 해제할까요?')) return;
+  await api('PUT', `/api/constructions/${groupLinkBaseId}/group`, { group_id: null });
+  closeModal('groupLinkModal');
+  showToast('묶음 해제됐습니다');
+  await loadData();
 }
 
 // ── COLUMN RESIZE ──────────────────────────────────────────
@@ -6277,7 +6308,6 @@ loadStats();
 loadData().then(() => initColResize());
 loadLocations();
 loadNetworks();
-loadGroups();
 </script>
 </body>
 </html>
