@@ -6189,8 +6189,7 @@ function renderGroupedTable(data, totalCols) {
       <td colspan="${totalCols + 1}" style="padding:0">
         <div class="group-section-header">
           <div class="group-section-dot" style="background:${g.color}"></div>
-          <span class="group-section-label">묶음 #${gid}</span>
-          <span class="group-section-count">${g.rows.length}개</span>
+          <span class="group-section-count" style="color:#6b7280">${g.rows.length}개</span>
           <span class="group-section-toggle" id="toggle_${sectionId}" onclick="toggleGroupSection('${sectionId}')">▼</span>
         </div>
       </td>
@@ -6205,8 +6204,7 @@ function renderGroupedTable(data, totalCols) {
       <td colspan="${totalCols + 1}" style="padding:0">
         <div class="group-section-header">
           <div class="group-section-dot" style="background:#d1d5db"></div>
-          <span class="group-section-label" style="color:#9ca3af">그룹 없음</span>
-          <span class="group-section-count">${ungrouped.length}개</span>
+          <span class="group-section-count" style="color:#9ca3af">${ungrouped.length}개</span>
           <span class="group-section-toggle" id="toggle_${sectionId}" onclick="toggleGroupSection('${sectionId}')">▼</span>
         </div>
       </td>
