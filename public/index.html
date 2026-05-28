@@ -1927,6 +1927,25 @@
       white-space: nowrap; vertical-align: middle;
       margin-left: 4px;
     }
+
+    /* ── 그룹 묶어보기 ── */
+    .group-section-header {
+      background: #f3f4f6;
+      padding: 6px 12px;
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid #e5e7eb;
+      position: sticky; top: 0; z-index: 2;
+    }
+    .group-section-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .group-section-label { color: #374151; flex: 1; }
+    .group-section-count { color: #9ca3af; font-weight: 400; }
+    .group-section-toggle { cursor: pointer; color: #9ca3af; font-size: 10px; transition: transform 0.15s; }
+    .group-section-toggle.collapsed { transform: rotate(-90deg); }
+    .group-rows-hidden { display: none; }
+    #groupViewBtn.active { background: #fef2f2; color: #c0392b; border-color: #c0392b; }
   </style>
 </head>
 <body>
@@ -2077,7 +2096,11 @@
       <option>YHE</option>
       <option>KSMF</option>
     </select>
-
+    <button id="groupViewBtn" class="btn btn-outline btn-sm"
+      onclick="toggleGroupView()"
+      style="white-space:nowrap;display:flex;align-items:center;gap:5px">
+      <span id="groupViewIcon">⊞</span> 그룹 묶어보기
+    </button>
   </div>
 
   <!-- TABLE -->
@@ -2516,7 +2539,7 @@
       </div>
       <div>
         <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">묶을 공사 선택 (복수 가능)</div>
-        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명 검색..."
+        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명, 위치, 요청자 검색..."
           style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif;box-sizing:border-box;margin-bottom:8px"
           oninput="renderGroupLinkList(this.value)" />
         <div id="groupLinkList"
@@ -3086,6 +3109,12 @@ async function loadData() {
   }
 
   // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
+  if (isGroupView) {
+    renderGroupedTable(data, totalCols);
+    setTimeout(initColResize, 0);
+    return;
+  }
+
   setTimeout(initColResize, 0);
   tbody.innerHTML = data.map(r => `
     <tr>
@@ -6121,6 +6150,108 @@ async function showHistory(id, workName) {
 
 
 
+
+// ── 그룹 묶어보기 ──────────────────────────────────────────
+
+let isGroupView = false;
+
+function toggleGroupView() {
+  isGroupView = !isGroupView;
+  const btn = document.getElementById('groupViewBtn');
+  const icon = document.getElementById('groupViewIcon');
+  btn.classList.toggle('active', isGroupView);
+  icon.textContent = isGroupView ? '⊟' : '⊞';
+  loadData();
+}
+
+function renderGroupedTable(data, totalCols) {
+  const tbody = document.getElementById('tableBody');
+
+  // 그룹 있는 것 / 없는 것 분리
+  const grouped = {};
+  const ungrouped = [];
+  data.forEach(r => {
+    if (r.group_id) {
+      if (!grouped[r.group_id]) grouped[r.group_id] = { color: r.group_color, rows: [] };
+      grouped[r.group_id].rows.push(r);
+    } else {
+      ungrouped.push(r);
+    }
+  });
+
+  const v = isColVisible;
+  let html = '';
+
+  // 그룹별 렌더
+  Object.entries(grouped).forEach(([gid, g]) => {
+    const sectionId = 'gsec_' + gid;
+    html += `<tr class="group-section-header">
+      <td colspan="${totalCols + 1}" style="padding:0">
+        <div class="group-section-header">
+          <div class="group-section-dot" style="background:${g.color}"></div>
+          <span class="group-section-label">묶음 #${gid}</span>
+          <span class="group-section-count">${g.rows.length}개</span>
+          <span class="group-section-toggle" id="toggle_${sectionId}" onclick="toggleGroupSection('${sectionId}')">▼</span>
+        </div>
+      </td>
+    </tr>`;
+    html += g.rows.map(r => `<tr class="group-row-${sectionId}">${renderRowCells(r, v)}</tr>`).join('');
+  });
+
+  // 그룹 없는 것
+  if (ungrouped.length) {
+    const sectionId = 'gsec_none';
+    html += `<tr class="group-section-header">
+      <td colspan="${totalCols + 1}" style="padding:0">
+        <div class="group-section-header">
+          <div class="group-section-dot" style="background:#d1d5db"></div>
+          <span class="group-section-label" style="color:#9ca3af">그룹 없음</span>
+          <span class="group-section-count">${ungrouped.length}개</span>
+          <span class="group-section-toggle" id="toggle_${sectionId}" onclick="toggleGroupSection('${sectionId}')">▼</span>
+        </div>
+      </td>
+    </tr>`;
+    html += ungrouped.map(r => `<tr class="group-row-${sectionId}">${renderRowCells(r, v)}</tr>`).join('');
+  }
+
+  tbody.innerHTML = html || `<tr><td colspan="${totalCols + 1}"><div class="empty-state"><div class="icon">📭</div><p>검색 결과가 없습니다</p></div></td></tr>`;
+}
+
+function toggleGroupSection(sectionId) {
+  const rows = document.querySelectorAll(`.group-row-${sectionId}`);
+  const toggle = document.getElementById('toggle_' + sectionId);
+  const isHidden = rows.length && rows[0].style.display === 'none';
+  rows.forEach(r => r.style.display = isHidden ? '' : 'none');
+  if (toggle) {
+    toggle.textContent = isHidden ? '▼' : '▶';
+  }
+}
+
+function renderRowCells(r, v) {
+  return `
+    <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
+    ${v('no') ? `<td><code style="color:#9ca3af;font-size:11px">${r.no}</code></td>` : ''}
+    ${v('gubun') ? `<td>${gubunBadge(r.gubun)}</td>` : ''}
+    ${v('req_date') ? `<td class="col-sm">${r.req_date || '-'}</td>` : ''}
+    ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
+    ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
+    ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
+    ${v('work_name') ? `<td class="work-name" style="cursor:pointer;border-left:${r.group_color ? '3px solid '+r.group_color : 'none'};padding-left:${r.group_color ? '7px' : '10px'}" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span></td>` : ''}
+    ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
+    ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
+    ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
+    ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
+    ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
+    ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+    ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
+    ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
+    ${v('actions') ? `<td><div style="display:flex;gap:4px">
+      <button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button>
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button>
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button>
+    </div></td>` : ''}`;
+}
+
 // ── 공사 묶기 ──────────────────────────────────────────
 
 let groupLinkBaseId = null;
@@ -6160,7 +6291,7 @@ function renderGroupLinkList(search) {
 
   const candidates = allData.filter(r =>
     r.id !== groupLinkBaseId &&
-    (!keyword || (r.work_name || '').toLowerCase().includes(keyword))
+    (!keyword || (r.work_name || '').toLowerCase().includes(keyword) || (r.requester || '').toLowerCase().includes(keyword) || (r.loc_region || '').toLowerCase().includes(keyword) || (r.loc_dong || '').toLowerCase().includes(keyword) || (r.loc_floor || '').toLowerCase().includes(keyword) || (r.loc_detail || '').toLowerCase().includes(keyword))
   );
 
   el.innerHTML = candidates.length ? candidates.map(r => {
