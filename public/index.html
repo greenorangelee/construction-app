@@ -4685,11 +4685,22 @@ async function uploadConstructionFiles(input, listElId) {
   showToast('파일 업로드 완료');
 }
 
-function downloadFile(filename, originalName) {
-  const a = document.createElement('a');
-  a.href = `/api/constructions/files/${filename}`;
-  a.download = originalName;
-  a.click();
+async function downloadFile(filename, originalName) {
+  try {
+    const res = await fetch(`/api/constructions/files/${filename}`);
+    if (!res.ok) { showToast('다운로드 실패'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = originalName; // 브라우저가 한글 그대로 사용
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('다운로드 오류: ' + e.message);
+  }
 }
 
 async function deleteConstructionFile(id, listElId) {
