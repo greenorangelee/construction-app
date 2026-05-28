@@ -69,6 +69,7 @@ async function initDB() {
   try { db.run('ALTER TABLE cables ADD COLUMN x REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN shape TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE constructions ADD COLUMN group_id INTEGER'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN dxf_x REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN dxf_y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_minx REAL'); } catch(e) {}
@@ -162,6 +163,13 @@ async function initDB() {
     it_manager TEXT, worker TEXT, memo TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS construction_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#3b82f6',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     construction_id INTEGER NOT NULL,
@@ -271,7 +279,15 @@ app.get('/api/constructions', (req, res) => {
   if (status && status !== '전체') { sql += ' AND status = ?'; params.push(status); }
   if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
   sql += ' ORDER BY id DESC';
-  res.json(queryAll(sql, params));
+  const raw = queryAll(sql, params);
+  const groups = queryAll('SELECT * FROM construction_groups');
+  const groupMap = {};
+  groups.forEach(g => { groupMap[g.id] = g; });
+  res.json(raw.map(r => ({
+    ...r,
+    group_name: r.group_id ? (groupMap[r.group_id]?.name || '') : '',
+    group_color: r.group_id ? (groupMap[r.group_id]?.color || '') : ''
+  })));
 });
 
 app.get('/api/stats', (req, res) => {
@@ -313,13 +329,14 @@ app.put('/api/constructions/:id', (req, res) => {
   try {
     const d = req.body;
     const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
-    db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=? WHERE id=?`,
+    const gid = d.group_id ? parseInt(d.group_id) : null;
+    db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,group_id=? WHERE id=?`,
       [s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
        s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
        s(d.status),s(d.deadline),s(d.complete_date),
-       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo),req.params.id]);
+       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo),gid,req.params.id]);
     const diff = diffRecords(before, d);
     if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
     saveDB();
@@ -741,6 +758,37 @@ app.delete('/api/ip/cleanup-unmatched', (req, res) => {
 });
 
 
+
+
+// ── 공사 그룹 API ──────────────────────────────────────────
+
+app.get('/api/groups', (req, res) => {
+  const groups = queryAll('SELECT * FROM construction_groups ORDER BY name');
+  res.json(groups.map(g => ({
+    ...g,
+    count: queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [g.id]).cnt
+  })));
+});
+
+app.post('/api/groups', (req, res) => {
+  const { name, color } = req.body;
+  if (!name) return res.status(400).json({ error: '이름 필수' });
+  db.run('INSERT INTO construction_groups (name,color) VALUES (?,?)', [name, color||'#3b82f6']);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/groups/:id', (req, res) => {
+  const { name, color } = req.body;
+  db.run('UPDATE construction_groups SET name=?,color=? WHERE id=?', [name, color, req.params.id]);
+  saveDB(); res.json({ success: true });
+});
+
+app.delete('/api/groups/:id', (req, res) => {
+  db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [req.params.id]);
+  db.run('DELETE FROM construction_groups WHERE id=?', [req.params.id]);
+  saveDB(); res.json({ success: true });
+});
 
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
 
