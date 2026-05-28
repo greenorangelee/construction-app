@@ -750,14 +750,16 @@ app.get('/api/constructions/:id/files', (req, res) => {
 app.post('/api/constructions/:id/files', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일 없음' });
   const { file_type } = req.body;
-  const ext = path.extname(req.file.originalname);
+  // multer는 파일명을 latin1으로 받으므로 utf8로 변환
+  const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+  const ext = path.extname(originalName);
   const filename = `${req.params.id}_${file_type}_${Date.now()}${ext}`;
   const dest = path.join(FILES_DIR, filename);
   fs.writeFileSync(dest, req.file.buffer);
   db.run('INSERT INTO construction_files (construction_id,file_type,original_name,filename,file_size) VALUES (?,?,?,?,?)',
-    [req.params.id, file_type, req.file.originalname, filename, req.file.size]);
+    [req.params.id, file_type, originalName, filename, req.file.size]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename, original_name: req.file.originalname });
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename, original_name: originalName });
 });
 
 app.get('/api/constructions/files/:filename', (req, res) => {
