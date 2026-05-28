@@ -70,6 +70,7 @@ async function initDB() {
   try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN shape TEXT'); } catch(e) {}
   try { db.run('ALTER TABLE constructions ADD COLUMN group_id INTEGER'); } catch(e) {}
+  try { db.run('ALTER TABLE construction_files ADD COLUMN group_id INTEGER'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN dxf_x REAL'); } catch(e) {}
   try { db.run('ALTER TABLE cables ADD COLUMN dxf_y REAL'); } catch(e) {}
   try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_minx REAL'); } catch(e) {}
@@ -785,7 +786,30 @@ app.get('/api/groups/list', (req, res) => {
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
 
 app.get('/api/constructions/:id/files', (req, res) => {
-  res.json(queryAll('SELECT * FROM construction_files WHERE construction_id=? ORDER BY file_type, created_at', [req.params.id]));
+  const constr = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
+  const gid = constr?.group_id;
+
+  // 내 파일
+  const myFiles = queryAll('SELECT *, 0 as shared FROM construction_files WHERE construction_id=? ORDER BY file_type, created_at', [req.params.id]);
+
+  // 같은 그룹의 다른 공사 파일 (group_id 있을 때만)
+  let sharedFiles = [];
+  if (gid) {
+    sharedFiles = queryAll(
+      `SELECT f.*, 1 as shared, c.work_name as from_work_name
+       FROM construction_files f
+       JOIN constructions c ON f.construction_id = c.id
+       WHERE c.group_id=? AND f.construction_id!=? AND f.group_id IS NOT NULL
+       ORDER BY f.file_type, f.created_at`,
+      [gid, req.params.id]
+    );
+  }
+
+  // 중복 제거 (같은 file_type + filename)
+  const seen = new Set(myFiles.map(f => f.filename));
+  const deduped = sharedFiles.filter(f => !seen.has(f.filename));
+
+  res.json([...myFiles, ...deduped]);
 });
 
 app.post('/api/constructions/:id/files', upload.single('file'), (req, res) => {
@@ -797,8 +821,9 @@ app.post('/api/constructions/:id/files', upload.single('file'), (req, res) => {
   const filename = `${req.params.id}_${file_type}_${Date.now()}${ext}`;
   const dest = path.join(FILES_DIR, filename);
   fs.writeFileSync(dest, req.file.buffer);
-  db.run('INSERT INTO construction_files (construction_id,file_type,original_name,filename,file_size) VALUES (?,?,?,?,?)',
-    [req.params.id, file_type, originalName, filename, req.file.size]);
+  const constr = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
+  db.run('INSERT INTO construction_files (construction_id,file_type,original_name,filename,file_size,group_id) VALUES (?,?,?,?,?,?)',
+    [req.params.id, file_type, originalName, filename, req.file.size, constr?.group_id || null]);
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename, original_name: originalName });
 });
