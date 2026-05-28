@@ -1918,6 +1918,15 @@
 
 
 
+
+    /* ── 공사 그룹 태그 ── */
+    .group-tag {
+      display: inline-flex; align-items: center;
+      padding: 1px 7px; border-radius: 20px;
+      font-size: 10px; font-weight: 700; color: #fff;
+      white-space: nowrap; vertical-align: middle;
+      margin-left: 4px;
+    }
   </style>
 </head>
 <body>
@@ -2494,6 +2503,30 @@
 </div>
 
 
+
+<!-- ─── 그룹 관리 모달 ─── -->
+<div class="modal-overlay" id="groupManageModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-head">
+      <h2>공사 그룹 관리</h2>
+      <button class="modal-close" onclick="closeModal('groupManageModal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div id="groupManageList" style="display:flex;flex-direction:column;gap:6px;min-height:40px"></div>
+      <div style="display:flex;gap:8px;align-items:center;padding-top:10px;border-top:1px solid #f3f4f6">
+        <input type="text" id="newGroupName" placeholder="그룹 이름 (예: ABC외주 2024-03)"
+          style="flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif"
+          onkeydown="if(event.key==='Enter') addGroup()" />
+        <input type="color" id="newGroupColor" value="#3b82f6"
+          style="width:36px;height:32px;border:1px solid #e5e7eb;border-radius:6px;padding:2px;cursor:pointer" />
+        <button class="btn-red-sm" onclick="addGroup()">+ 추가</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('groupManageModal')">닫기</button>
+    </div>
+  </div>
+</div>
 <!-- ─── 파일 관리 모달 ─── -->
 <div class="modal-overlay" id="fileManageModal">
   <div class="modal" style="max-width:560px">
@@ -2827,6 +2860,16 @@
       </div>
 
       <div class="form-section">
+        <div class="form-section-title">🏷️ 그룹</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <select id="f-group_id" style="flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:9px 12px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+            <option value="">그룹 없음</option>
+          </select>
+          <button class="btn btn-outline btn-sm" type="button" onclick="openGroupManage()">그룹 관리</button>
+        </div>
+      </div>
+
+      <div class="form-section">
         <div class="form-section-title">👷 작업자</div>
         <div class="form-grid">
           <div class="form-group form-full">
@@ -3070,7 +3113,7 @@ async function loadData() {
       ${v('corp') ? `<td class="col-sm">${r.corp || '-'}</td>` : ''}
       ${v('dept') ? `<td class="col-md">${r.dept || '-'}</td>` : ''}
       ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
-      ${v('work_name') ? `<td class="work-name" style="cursor:pointer;color:#c0392b" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기">${r.work_name || '-'}</td>` : ''}
+      ${v('work_name') ? `<td class="work-name" style="cursor:pointer" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span>${r.group_name ? `<span class="group-tag" style="background:${r.group_color||'#3b82f6'}">${r.group_name}</span>` : ''}</td>` : ''}
       ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
@@ -3200,6 +3243,9 @@ function openNewModal() {
     }
   });
   populateLocDropdowns();
+  loadGroups();
+  const gsel = document.getElementById('f-group_id');
+  if (gsel) gsel.value = '';
   openModal('formModal');
 }
 
@@ -3211,12 +3257,16 @@ async function openEditModal(id) {
   // 위치 데이터 최신화 후 드롭다운 구성
   await loadLocations();
   populateLocDropdowns();
+  // 그룹 로드 및 선택값 세팅
+  await loadGroups();
   // 일반 필드 값 세팅
   FIELDS.forEach(f => {
     const el = document.getElementById('f-' + f);
     if (!el) return;
     el.value = r[f] || '';
   });
+  const gsel = document.getElementById('f-group_id');
+  if (gsel) gsel.value = r.group_id || '';
   // 위치 드롭다운 연쇄 업데이트 (지역 선택 → 동 목록 → 층 목록 → 값 선택)
   ['loc','demolish'].forEach(p => {
     const regionEl = document.getElementById(`f-${p}_region`);
@@ -3238,6 +3288,7 @@ async function openEditModal(id) {
 async function submitForm() {
   const data = {};
   FIELDS.forEach(f => { const el = document.getElementById('f-' + f); if (el) data[f] = el.value; });
+  data.group_id = document.getElementById('f-group_id')?.value || null;
 
   if (!data.gubun || data.gubun === '' || !data.work_name) {
     alert('구분과 공사명은 필수 입력입니다.');
@@ -6093,6 +6144,72 @@ async function showHistory(id, workName) {
 }
 
 
+
+// ── 공사 그룹 ──────────────────────────────────────────
+
+let allGroups = [];
+
+async function loadGroups() {
+  allGroups = await api('GET', '/api/groups');
+  // 공사 등록/수정 모달 셀렉트 업데이트
+  const sel = document.getElementById('f-group_id');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">그룹 없음</option>' +
+      allGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+    if (cur) sel.value = cur;
+  }
+}
+
+async function openGroupManage() {
+  await loadGroups();
+  renderGroupManageList();
+  openModal('groupManageModal');
+}
+
+function renderGroupManageList() {
+  const el = document.getElementById('groupManageList');
+  if (!el) return;
+  el.innerHTML = allGroups.length ? allGroups.map(g => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f9fafb;border-radius:8px">
+      <input type="color" value="${g.color}"
+        style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:4px;padding:1px;cursor:pointer;flex-shrink:0"
+        onchange="updateGroupColor(${g.id},'${g.name}',this.value)" />
+      <span style="flex:1;font-size:13px;font-weight:600;color:#1a1a1a">${g.name}</span>
+      <span style="font-size:11px;color:#9ca3af">${g.count}개</span>
+      <button class="cable-item-del" onclick="deleteGroup(${g.id},'${g.name.replace(/'/g,"\'")}')">✕</button>
+    </div>`).join('')
+    : '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:12px">그룹이 없습니다</div>';
+}
+
+async function addGroup() {
+  const name = document.getElementById('newGroupName').value.trim();
+  const color = document.getElementById('newGroupColor').value;
+  if (!name) { alert('그룹 이름을 입력하세요'); return; }
+  await api('POST', '/api/groups', { name, color });
+  document.getElementById('newGroupName').value = '';
+  await loadGroups();
+  renderGroupManageList();
+  showToast(`'${name}' 그룹 추가됐습니다`);
+}
+
+async function updateGroupColor(id, name, color) {
+  await api('PUT', `/api/groups/${id}`, { name, color });
+  await loadGroups();
+  renderGroupManageList();
+  loadData();
+}
+
+async function deleteGroup(id, name) {
+  const g = allGroups.find(x => x.id === id);
+  if (g?.count > 0 && !confirm(`'${name}' 그룹을 삭제하면 ${g.count}개 공사의 그룹이 해제됩니다. 계속할까요?`)) return;
+  await api('DELETE', `/api/groups/${id}`);
+  await loadGroups();
+  renderGroupManageList();
+  loadData();
+  showToast('그룹 삭제됐습니다');
+}
+
 // ── COLUMN RESIZE ──────────────────────────────────────────
 
 function initColResize() {
@@ -6160,6 +6277,7 @@ loadStats();
 loadData().then(() => initColResize());
 loadLocations();
 loadNetworks();
+loadGroups();
 </script>
 </body>
 </html>
