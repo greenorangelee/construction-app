@@ -5,9 +5,13 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const upload = multer({ storage: multer.memoryStorage() });
 const { execSync } = require('child_process');
 const https = require('https');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ksm-nw-secret-2024-xkf92mz';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +28,30 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── 인증 미들웨어 ──────────────────────────────────────────
+function authMiddleware(req, res, next) {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: '로그인이 필요합니다' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch(e) {
+    return res.status(401).json({ error: '세션이 만료됐습니다. 다시 로그인하세요' });
+  }
+}
+
+function requireWrite(req, res, next) {
+  if (!['write','admin'].includes(req.user?.role))
+    return res.status(403).json({ error: '쓰기 권한이 없습니다' });
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin')
+    return res.status(403).json({ error: '관리자 권한이 필요합니다' });
+  next();
+}
+
 let db;
 
 async function initDB() {
@@ -32,6 +60,24 @@ async function initDB() {
     db = new SQL.Database(fs.readFileSync(DB_PATH));
   } else {
     db = new SQL.Database();
+  }
+
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'read',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  const userCount = queryOne('SELECT COUNT(*) as cnt FROM users');
+  if (userCount.cnt === 0) {
+    const hash = bcrypt.hashSync('zpdldptmdpa2@', 10);
+    db.run("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)",
+      ['ksm00', hash, '관리자', 'admin']);
+    saveDB();
   }
 
   db.run(`CREATE TABLE IF NOT EXISTS history (
@@ -258,7 +304,7 @@ function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
 
 // ── 공사 이력 API ──────────────────────────────────────────
 
-app.get('/api/constructions', (req, res) => {
+app.get('/api/constructions', authMiddleware, (req, res) => {
   const { search, gubun, status, corp } = req.query;
   let sql = 'SELECT * FROM constructions WHERE 1=1';
   const params = [];
@@ -285,7 +331,69 @@ app.get('/api/constructions', (req, res) => {
   })));
 });
 
-app.get('/api/stats', (req, res) => {
+// ── 인증 API ──────────────────────────────────────────
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: '아이디와 비밀번호를 입력하세요' });
+  const user = queryOne('SELECT * FROM users WHERE username=?', [username]);
+  if (!user || !bcrypt.compareSync(password, user.password))
+    return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다' });
+  const token = jwt.sign({ id: user.id, username: user.username, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+  res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  res.json(req.user);
+});
+
+// ── 사용자 관리 API (관리자 전용) ──────────────────────────────────────────
+app.get('/api/users', authMiddleware, requireAdmin, (req, res) => {
+  const users = queryAll('SELECT id, username, name, role, created_at, updated_at FROM users ORDER BY id');
+  res.json(users);
+});
+
+app.post('/api/users', authMiddleware, requireAdmin, (req, res) => {
+  const { username, password, name, role } = req.body;
+  if (!username || !password || !name || !role) return res.status(400).json({ error: '모든 필드를 입력하세요' });
+  if (!['read','write','admin'].includes(role)) return res.status(400).json({ error: '올바른 권한을 선택하세요' });
+  const exists = queryOne('SELECT id FROM users WHERE username=?', [username]);
+  if (exists) return res.status(409).json({ error: '이미 존재하는 아이디입니다' });
+  const hash = bcrypt.hashSync(password, 10);
+  db.run('INSERT INTO users (username, password, name, role) VALUES (?,?,?,?)', [username, hash, name, role]);
+  const newUser = queryOne('SELECT id, username, name, role, created_at FROM users WHERE username=?', [username]);
+  saveDB();
+  res.json(newUser);
+});
+
+app.put('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
+  const { name, role, password } = req.body;
+  if (!name || !role) return res.status(400).json({ error: '이름과 권한은 필수입니다' });
+  if (!['read','write','admin'].includes(role)) return res.status(400).json({ error: '올바른 권한을 선택하세요' });
+  // 마지막 관리자 보호
+  if (role !== 'admin') {
+    const adminCount = queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
+    if (adminCount.cnt === 0) return res.status(400).json({ error: '관리자 계정이 최소 1개는 있어야 합니다' });
+  }
+  if (password) {
+    const hash = bcrypt.hashSync(password, 10);
+    db.run("UPDATE users SET name=?, role=?, password=?, updated_at=datetime('now','localtime') WHERE id=?", [name, role, hash, req.params.id]);
+  } else {
+    db.run("UPDATE users SET name=?, role=?, updated_at=datetime('now','localtime') WHERE id=?", [name, role, req.params.id]);
+  }
+  saveDB();
+  res.json({ success: true });
+});
+
+app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
+  if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: '자신의 계정은 삭제할 수 없습니다' });
+  const adminCount = queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
+  if (adminCount.cnt === 0) return res.status(400).json({ error: '관리자 계정이 최소 1개는 있어야 합니다' });
+  db.run('DELETE FROM users WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+
   const g = q => queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`).cnt;
   res.json({
     total: g('1=1'), done: g("status='완료'"), inprogress: g("status='진행중'"), holding: g("status='Holding'"),
@@ -295,13 +403,13 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
-app.get('/api/constructions/:id', (req, res) => {
+app.get('/api/constructions/:id', authMiddleware, (req, res) => {
   const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
 });
 
-app.post('/api/constructions', (req, res) => {
+app.post('/api/constructions', authMiddleware, requireWrite, (req, res) => {
   try {
     const d = req.body;
     const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
@@ -320,7 +428,7 @@ app.post('/api/constructions', (req, res) => {
   } catch(e) { console.error('POST error:', e); res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/constructions/:id', (req, res) => {
+app.put('/api/constructions/:id', authMiddleware, requireWrite, (req, res) => {
   try {
     const d = req.body;
     const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
@@ -339,7 +447,7 @@ app.put('/api/constructions/:id', (req, res) => {
   } catch(e) { console.error('PUT error:', e); res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/constructions/:id', (req, res) => {
+app.delete('/api/constructions/:id', authMiddleware, requireWrite, (req, res) => {
   const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
   if (row) {
     const groupId = row.group_id;
@@ -357,7 +465,7 @@ app.delete('/api/constructions/:id', (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/history/:id', (req, res) => {
+app.get('/api/history/:id', authMiddleware, (req, res) => {
   const rows = queryAll('SELECT * FROM history WHERE construction_id = ? ORDER BY id DESC', [req.params.id]);
   res.json(rows.map(r => ({ ...r, diff: JSON.parse(r.diff || '[]') })));
 });
@@ -426,7 +534,7 @@ async function nacFetchAuto(endpoint) {
 // ── IP 대장 API ──────────────────────────────────────────
 
 // 서브넷 목록
-app.get('/api/ip/subnets', (req, res) => {
+app.get('/api/ip/subnets', authMiddleware, (req, res) => {
   const subnets = queryAll('SELECT * FROM ip_subnets ORDER BY network');
   res.json(subnets.map(s => ({
     ...s,
@@ -437,7 +545,7 @@ app.get('/api/ip/subnets', (req, res) => {
   })));
 });
 
-app.post('/api/ip/subnets', (req, res) => {
+app.post('/api/ip/subnets', authMiddleware, requireWrite, (req, res) => {
   const { name, network, prefix, gateway, dns, vlan, description } = req.body;
   if (!name || !network || !prefix) return res.status(400).json({ error: '필수값 누락' });
   db.run('INSERT INTO ip_subnets (name,network,prefix,gateway,dns,vlan,description) VALUES (?,?,?,?,?,?,?)',
@@ -446,21 +554,21 @@ app.post('/api/ip/subnets', (req, res) => {
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
-app.put('/api/ip/subnets/:id', (req, res) => {
+app.put('/api/ip/subnets/:id', authMiddleware, requireWrite, (req, res) => {
   const { name, network, prefix, gateway, dns, vlan, description } = req.body;
   db.run('UPDATE ip_subnets SET name=?,network=?,prefix=?,gateway=?,dns=?,vlan=?,description=? WHERE id=?',
     [name, network, parseInt(prefix), gateway||'', dns||'', vlan||'', description||'', req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/ip/subnets/:id', (req, res) => {
+app.delete('/api/ip/subnets/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('DELETE FROM ip_subnets WHERE id=?', [req.params.id]);
   db.run('DELETE FROM ip_assets WHERE subnet_id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // IP 목록
-app.get('/api/ip/assets', (req, res) => {
+app.get('/api/ip/assets', authMiddleware, (req, res) => {
   const { subnet_id, status, search } = req.query;
   let sql = 'SELECT a.*, t.name as tag_name, t.color as tag_color FROM ip_assets a LEFT JOIN ip_tags t ON a.tag_id=t.id WHERE 1=1';
   const params = [];
@@ -474,7 +582,7 @@ app.get('/api/ip/assets', (req, res) => {
 });
 
 // IP 개별 등록/수정/삭제
-app.post('/api/ip/assets', (req, res) => {
+app.post('/api/ip/assets', authMiddleware, requireWrite, (req, res) => {
   const { subnet_id, ip, mac, hostname, user_name, dept, device_type, os, status, location, description } = req.body;
   const tag_id = req.body.tag_id || null;
   if (!ip) return res.status(400).json({ error: 'IP 필수' });
@@ -486,20 +594,20 @@ app.post('/api/ip/assets', (req, res) => {
   } catch(e) { res.status(400).json({ error: 'IP 중복 또는 오류: ' + e.message }); }
 });
 
-app.put('/api/ip/assets/:id', (req, res) => {
+app.put('/api/ip/assets/:id', authMiddleware, requireWrite, (req, res) => {
   const { mac, hostname, user_name, dept, device_type, os, status, tag_id, location, description } = req.body;
   db.run('UPDATE ip_assets SET mac=?,hostname=?,user_name=?,dept=?,device_type=?,os=?,status=?,tag_id=?,location=?,description=?,updated_at=datetime("now","localtime") WHERE id=?',
     [s(mac),s(hostname),s(user_name),s(dept),s(device_type),s(os),status||'used',tag_id||null,s(location),s(description),req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/ip/assets/:id', (req, res) => {
+app.delete('/api/ip/assets/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('DELETE FROM ip_assets WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // 서브넷 전체 IP 자동 생성
-app.post('/api/ip/subnets/:id/generate', (req, res) => {
+app.post('/api/ip/subnets/:id/generate', authMiddleware, requireWrite, (req, res) => {
   const subnet = queryOne('SELECT * FROM ip_subnets WHERE id=?', [req.params.id]);
   if (!subnet) return res.status(404).json({ error: '서브넷 없음' });
   const parts = subnet.network.split('.').map(Number);
@@ -518,7 +626,7 @@ app.post('/api/ip/subnets/:id/generate', (req, res) => {
 
 
 // NAC API 디버그 - 실제 응답 확인용
-app.get('/api/nac/debug', async (req, res) => {
+app.get('/api/nac/debug', authMiddleware, async (req, res) => {
   const results = {};
   const testPaths = [
     '/mc2/rest/nodes?page=1&pageSize=1&view=node',
@@ -537,7 +645,7 @@ app.get('/api/nac/debug', async (req, res) => {
 });
 
 // NAC 단말 조회 (IP로 검색)
-app.get('/api/nac/node', async (req, res) => {
+app.get('/api/nac/node', authMiddleware, async (req, res) => {
   const { ip } = req.query;
   if (!ip) return res.status(400).json({ error: 'IP 필수' });
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
@@ -550,7 +658,7 @@ app.get('/api/nac/node', async (req, res) => {
 });
 
 // NAC 전체 단말 목록 (페이지)
-app.get('/api/nac/nodes', async (req, res) => {
+app.get('/api/nac/nodes', authMiddleware, async (req, res) => {
   const { page = 1, pageSize = 100 } = req.query;
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
   try {
@@ -562,7 +670,7 @@ app.get('/api/nac/nodes', async (req, res) => {
 });
 
 // NAC 동기화 - NAC에서 단말 정보 가져와서 IP 대장 업데이트
-app.post('/api/nac/sync', async (req, res) => {
+app.post('/api/nac/sync', authMiddleware, requireWrite, async (req, res) => {
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
   try {
     // 등록된 서브넷 목록
@@ -626,7 +734,7 @@ app.post('/api/nac/sync', async (req, res) => {
 });
 
 // 빈 IP 추천
-app.get('/api/ip/available', (req, res) => {
+app.get('/api/ip/available', authMiddleware, (req, res) => {
   const { subnet_id, count = 5 } = req.query;
   let sql = 'SELECT ip FROM ip_assets WHERE status="unused"';
   const params = [];
@@ -638,7 +746,7 @@ app.get('/api/ip/available', (req, res) => {
 
 
 // IP 태그 관리
-app.get('/api/ip/tags', (req, res) => {
+app.get('/api/ip/tags', authMiddleware, (req, res) => {
   const { subnet_id } = req.query;
   let sql = 'SELECT * FROM ip_tags';
   const params = [];
@@ -646,7 +754,7 @@ app.get('/api/ip/tags', (req, res) => {
   res.json(queryAll(sql + ' ORDER BY id', params));
 });
 
-app.post('/api/ip/tags', (req, res) => {
+app.post('/api/ip/tags', authMiddleware, requireWrite, (req, res) => {
   const { subnet_id, name, color } = req.body;
   if (!name) return res.status(400).json({ error: '이름 필수' });
   db.run('INSERT INTO ip_tags (subnet_id,name,color) VALUES (?,?,?)', [subnet_id||null, name, color||'#3b82f6']);
@@ -654,20 +762,20 @@ app.post('/api/ip/tags', (req, res) => {
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
-app.put('/api/ip/tags/:id', (req, res) => {
+app.put('/api/ip/tags/:id', authMiddleware, requireWrite, (req, res) => {
   const { name, color } = req.body;
   db.run('UPDATE ip_tags SET name=?,color=? WHERE id=?', [name, color, req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/ip/tags/:id', (req, res) => {
+app.delete('/api/ip/tags/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('UPDATE ip_assets SET tag_id=NULL WHERE tag_id=?', [req.params.id]);
   db.run('DELETE FROM ip_tags WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // IP에 태그 지정
-app.put('/api/ip/assets/:id/tag', (req, res) => {
+app.put('/api/ip/assets/:id/tag', authMiddleware, requireWrite, (req, res) => {
   const { tag_id } = req.body;
   db.run('UPDATE ip_assets SET tag_id=? WHERE id=?', [tag_id||null, req.params.id]);
   saveDB(); res.json({ success: true });
@@ -675,7 +783,7 @@ app.put('/api/ip/assets/:id/tag', (req, res) => {
 
 
 // IP 태그 범위 관리
-app.get('/api/ip/tag-ranges', (req, res) => {
+app.get('/api/ip/tag-ranges', authMiddleware, (req, res) => {
   const { subnet_id } = req.query;
   res.json(queryAll(
     `SELECT r.*, t.name as tag_name, t.color as tag_color
@@ -685,7 +793,7 @@ app.get('/api/ip/tag-ranges', (req, res) => {
   ));
 });
 
-app.post('/api/ip/tag-ranges', (req, res) => {
+app.post('/api/ip/tag-ranges', authMiddleware, requireWrite, (req, res) => {
   const { tag_id, subnet_id, ip_start, ip_end } = req.body;
   if (!tag_id || !ip_start || !ip_end) return res.status(400).json({ error: '필수값 누락' });
   db.run('INSERT INTO ip_tag_ranges (tag_id,subnet_id,ip_start,ip_end) VALUES (?,?,?,?)',
@@ -694,13 +802,13 @@ app.post('/api/ip/tag-ranges', (req, res) => {
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
-app.delete('/api/ip/tag-ranges/:id', (req, res) => {
+app.delete('/api/ip/tag-ranges/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('DELETE FROM ip_tag_ranges WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // IP 자산 조회 시 범위 태그 자동 반영
-app.get('/api/ip/assets-with-tags', async (req, res) => {
+app.get('/api/ip/assets-with-tags', authMiddleware, async (req, res) => {
   const { subnet_id, status, search } = req.query;
   let sql = `SELECT a.id, a.subnet_id, a.ip, a.mac, a.hostname, a.user_name, a.dept, a.device_type, a.os, a.status, a.tag_id, a.nac_status, a.last_seen, a.location, a.description, a.created_at, a.updated_at, t.name as tag_name, t.color as tag_color
     FROM ip_assets a LEFT JOIN ip_tags t ON a.tag_id=t.id WHERE 1=1`;
@@ -725,7 +833,7 @@ app.get('/api/ip/assets-with-tags', async (req, res) => {
 
 
 // subnet_id null인 IP 자산을 서브넷 대역 기준으로 재매핑
-app.post('/api/ip/remap-subnets', (req, res) => {
+app.post('/api/ip/remap-subnets', authMiddleware, requireWrite, (req, res) => {
   const subnets = queryAll('SELECT * FROM ip_subnets');
   const assets = queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
   let updated = 0;
@@ -750,7 +858,7 @@ app.post('/api/ip/remap-subnets', (req, res) => {
 
 
 // 서브넷에 속하지 않는 IP 자산 삭제
-app.delete('/api/ip/cleanup-unmatched', (req, res) => {
+app.delete('/api/ip/cleanup-unmatched', authMiddleware, requireWrite, (req, res) => {
   const subnets = queryAll('SELECT * FROM ip_subnets');
   const assets = queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
   let deleted = 0;
@@ -768,14 +876,14 @@ app.delete('/api/ip/cleanup-unmatched', (req, res) => {
 // ── 공사 그룹 묶기 API ──────────────────────────────────────────
 
 // 새 group_id 발급 (MAX+1)
-app.post('/api/groups/new', (req, res) => {
+app.post('/api/groups/new', authMiddleware, requireWrite, (req, res) => {
   const row = queryOne('SELECT MAX(group_id) as m FROM constructions');
   const newGid = (row.m || 0) + 1;
   res.json({ group_id: newGid });
 });
 
 // 공사에 group_id 지정
-app.put('/api/constructions/:id/group', (req, res) => {
+app.put('/api/constructions/:id/group', authMiddleware, requireWrite, (req, res) => {
   const { group_id } = req.body;
   const oldRow = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
   const oldGid = oldRow?.group_id;
@@ -795,7 +903,7 @@ app.put('/api/constructions/:id/group', (req, res) => {
 });
 
 // 현재 존재하는 그룹 목록 (공사 선택용)
-app.get('/api/groups/list', (req, res) => {
+app.get('/api/groups/list', authMiddleware, (req, res) => {
   const rows = queryAll('SELECT DISTINCT group_id FROM constructions WHERE group_id IS NOT NULL ORDER BY group_id');
   const GROUP_COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6'];
   res.json(rows.map((r, i) => ({
@@ -807,7 +915,7 @@ app.get('/api/groups/list', (req, res) => {
 
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
 
-app.get('/api/constructions/:id/files', (req, res) => {
+app.get('/api/constructions/:id/files', authMiddleware, (req, res) => {
   const constr = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
   const gid = constr?.group_id;
 
@@ -834,7 +942,7 @@ app.get('/api/constructions/:id/files', (req, res) => {
   res.json([...myFiles, ...deduped]);
 });
 
-app.post('/api/constructions/:id/files', upload.single('file'), (req, res) => {
+app.post('/api/constructions/:id/files', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일 없음' });
   const { file_type } = req.body;
   // multer는 파일명을 latin1으로 받으므로 utf8로 변환
@@ -850,7 +958,7 @@ app.post('/api/constructions/:id/files', upload.single('file'), (req, res) => {
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename, original_name: originalName });
 });
 
-app.get('/api/constructions/files/:filename', (req, res) => {
+app.get('/api/constructions/files/:filename', authMiddleware, (req, res) => {
   const filepath = path.join(FILES_DIR, req.params.filename);
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: '파일 없음' });
   const file = queryOne('SELECT original_name FROM construction_files WHERE filename=?', [req.params.filename]);
@@ -862,7 +970,7 @@ app.get('/api/constructions/files/:filename', (req, res) => {
   res.sendFile(filepath);
 });
 
-app.delete('/api/constructions/files/:id', (req, res) => {
+app.delete('/api/constructions/files/:id', authMiddleware, requireWrite, (req, res) => {
   const file = queryOne('SELECT * FROM construction_files WHERE id=?', [req.params.id]);
   if (!file) return res.status(404).json({ error: '파일 없음' });
   const filepath = path.join(FILES_DIR, file.filename);
@@ -874,9 +982,9 @@ app.delete('/api/constructions/files/:id', (req, res) => {
 
 // ── 망 관리 API ──────────────────────────────────────────
 
-app.get('/api/networks', (req, res) => res.json(queryAll('SELECT * FROM networks ORDER BY id')));
+app.get('/api/networks', authMiddleware, (req, res) => res.json(queryAll('SELECT * FROM networks ORDER BY id')));
 
-app.post('/api/networks', (req, res) => {
+app.post('/api/networks', authMiddleware, requireWrite, (req, res) => {
   const { name, color, shape } = req.body;
   if (!name || !color) return res.status(400).json({ error: '필수값 누락' });
   db.run('INSERT INTO networks (name, color, shape) VALUES (?,?,?)', [name.trim().toUpperCase(), color, shape||'circle']);
@@ -884,20 +992,20 @@ app.post('/api/networks', (req, res) => {
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
-app.put('/api/networks/:id', (req, res) => {
+app.put('/api/networks/:id', authMiddleware, requireWrite, (req, res) => {
   const { name, color, shape } = req.body;
   db.run('UPDATE networks SET name=?,color=?,shape=? WHERE id=?', [name.trim().toUpperCase(), color, shape||'circle', req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/networks/:id', (req, res) => {
+app.delete('/api/networks/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('DELETE FROM networks WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // ── 선번 관리 API ──────────────────────────────────────────
 
-app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
+app.post('/api/floorplan/upload', upload.single('image'), authMiddleware, requireWrite, (req, res) => {
   try {
     const { region, dong, floor } = req.body;
     if (!req.file) return res.status(400).json({ error: '파일 없음' });
@@ -1006,12 +1114,12 @@ app.post('/api/floorplan/upload', upload.single('image'), (req, res) => {
   } catch(e) { console.error('Upload error:', e); res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/floorplan', (req, res) => {
+app.get('/api/floorplan', authMiddleware, (req, res) => {
   const { region, dong, floor } = req.query;
   res.json(queryOne('SELECT * FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]) || null);
 });
 
-app.get('/api/floorplan/image/:filename', (req, res) => {
+app.get('/api/floorplan/image/:filename', authMiddleware, (req, res) => {
   const filepath = path.join(FLOOR_IMG_DIR, req.params.filename);
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: '없음' });
   res.sendFile(filepath);
@@ -1019,7 +1127,7 @@ app.get('/api/floorplan/image/:filename', (req, res) => {
 
 
 // 재매핑 후 신 도면을 실제 위치에 저장
-app.post('/api/floorplan/remap-finalize', (req, res) => {
+app.post('/api/floorplan/remap-finalize', authMiddleware, requireWrite, (req, res) => {
   try {
     const { tmpId, region, dong, floor } = req.body;
     const tmpFp = queryOne('SELECT * FROM floorplans WHERE id=?', [tmpId]);
@@ -1040,11 +1148,11 @@ app.post('/api/floorplan/remap-finalize', (req, res) => {
   }
 });
 
-app.get('/api/cables', (req, res) => {
+app.get('/api/cables', authMiddleware, (req, res) => {
   res.json(queryAll('SELECT * FROM cables WHERE floorplan_id=? ORDER BY id DESC', [req.query.floorplan_id]));
 });
 
-app.post('/api/cables', (req, res) => {
+app.post('/api/cables', authMiddleware, requireWrite, (req, res) => {
   const { floorplan_id, cable_no, construction_no, x, y, color, shape, memo } = req.body;
 
   // DXF 좌표 역산 (픽셀 비율 → DXF 실좌표)
@@ -1063,7 +1171,7 @@ app.post('/api/cables', (req, res) => {
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
-app.put('/api/cables/:id', (req, res) => {
+app.put('/api/cables/:id', authMiddleware, requireWrite, (req, res) => {
   const { cable_no, construction_no, color, shape, memo, x, y } = req.body;
   if (x !== undefined && y !== undefined) {
     db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=?,x=?,y=? WHERE id=?',
@@ -1075,36 +1183,36 @@ app.put('/api/cables/:id', (req, res) => {
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/cables/:id', (req, res) => {
+app.delete('/api/cables/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('DELETE FROM cables WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // ── 위치 관리 API ──────────────────────────────────────────
 
-app.get('/api/locations', (req, res) => res.json(queryAll('SELECT * FROM locations ORDER BY region, dong')));
+app.get('/api/locations', authMiddleware, (req, res) => res.json(queryAll('SELECT * FROM locations ORDER BY region, dong')));
 
-app.post('/api/locations', (req, res) => {
+app.post('/api/locations', authMiddleware, requireWrite, (req, res) => {
   const { region, dong, floors } = req.body;
   if (!region || !dong || !floors) return res.status(400).json({ error: '필수값 누락' });
   db.run('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)', [region.trim(), dong.trim(), JSON.stringify(floors)]);
   saveDB(); res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
-app.put('/api/locations/:id', (req, res) => {
+app.put('/api/locations/:id', authMiddleware, requireWrite, (req, res) => {
   const { region, dong, floors } = req.body;
   db.run('UPDATE locations SET region=?,dong=?,floors=? WHERE id=?', [region.trim(), dong.trim(), JSON.stringify(floors), req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/locations/:id', (req, res) => {
+app.delete('/api/locations/:id', authMiddleware, requireWrite, (req, res) => {
   db.run('DELETE FROM locations WHERE id = ?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // ── 엑셀 ──────────────────────────────────────────
 
-app.get('/api/template', (req, res) => {
+app.get('/api/template', authMiddleware, (req, res) => {
   const h1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
   const h2 = ['','','','','부서','이름','','지역','동','층','상세위치','지역','동','층','상세위치','상태','기한일','작업 완료일','구매품의서','지출품의서','연관품의서','','',''];
   const ex = ['','자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설','대곶','HO','3F','서버실','','','','','완료','26.03.10','26.03.09','경영-구품-26-0001','경영-지품-26-0001','','이준성','김준기, 이준성','특이사항 없음'];
@@ -1118,7 +1226,7 @@ app.get('/api/template', (req, res) => {
   res.send(buf);
 });
 
-app.post('/api/import', upload.single('file'), (req, res) => {
+app.post('/api/import', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
   try {
     const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -1199,7 +1307,7 @@ app.post('/api/import', upload.single('file'), (req, res) => {
   } catch(e) { res.status(500).json({ error: '파일 처리 중 오류: ' + e.message }); }
 });
 
-app.get('/api/export', (req, res) => {
+app.get('/api/export', authMiddleware, (req, res) => {
   const rows = queryAll('SELECT * FROM constructions ORDER BY no ASC');
   const now = new Date();
   const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
