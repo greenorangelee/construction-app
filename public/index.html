@@ -2005,6 +2005,11 @@
 
 <div id="mainPage" style="display:none">
 <header class="header">
+  <div class="header-left">
+    <div class="logo">KSM</div>
+    <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+    <nav class="header-nav">
+      <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">공사 이력</button>
       <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
       <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip">🖥️ IP 대장</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
@@ -2031,12 +2036,12 @@
     <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#ffffff'">
       <span>+</span> 새 공사 등록
     </button>
-  </div>
     <div class="header-user">
       <span class="header-user-name" id="headerUserName"></span>
       <span class="header-user-role" id="headerUserRole"></span>
       <button class="logout-btn" onclick="doLogout()">로그아웃</button>
     </div>
+  </div>
 </header>
 
 <div class="container">
@@ -2246,11 +2251,11 @@
       <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="nacSync()">
         🔄 NAC 동기화
       </button>
-    </div>
     <div class="header-user">
       <span class="header-user-name" id="headerUserName"></span>
       <span class="header-user-role" id="headerUserRole"></span>
       <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+    </div>
     </div>
   </header>
   <div class="container">
@@ -2460,11 +2465,11 @@
       <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()">
         <span>+</span> 새 공사 등록
       </button>
-    </div>
     <div class="header-user">
       <span class="header-user-name" id="headerUserName"></span>
       <span class="header-user-role" id="headerUserRole"></span>
       <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+    </div>
     </div>
   </header>
   <div class="container">
@@ -2712,11 +2717,11 @@
       <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openNewModal()" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#ffffff'">
         <span>+</span> 새 공사 등록
       </button>
-    </div>
     <div class="header-user">
       <span class="header-user-name" id="headerUserName"></span>
       <span class="header-user-role" id="headerUserRole"></span>
       <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+    </div>
     </div>
   </header>
   <div class="container">
