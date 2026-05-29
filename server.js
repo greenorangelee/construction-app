@@ -342,13 +342,14 @@ app.put('/api/constructions/:id', (req, res) => {
 app.delete('/api/constructions/:id', (req, res) => {
   const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
   if (row) {
+    const groupId = row.group_id;
     recordHistory(req.params.id, 'delete', null, [{ field: 'work_name', label: '공사명', before: row.work_name, after: '' }]);
     db.run('DELETE FROM constructions WHERE id = ?', [req.params.id]);
     // 삭제 후 같은 그룹에 1개만 남으면 자동 해제
-    if (row.group_id) {
-      const remaining = queryAll('SELECT id FROM constructions WHERE group_id=?', [row.group_id]);
-      if (remaining.length === 1) {
-        db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [row.group_id]);
+    if (groupId) {
+      const cnt = queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [groupId]);
+      if (cnt && cnt.cnt === 1) {
+        db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [groupId]);
       }
     }
   }
@@ -783,8 +784,8 @@ app.put('/api/constructions/:id/group', (req, res) => {
 
   // 이전 그룹에서 빠졌을 때 남은 멤버가 1명이면 자동 해제
   if (oldGid && oldGid !== group_id) {
-    const remaining = queryAll('SELECT id FROM constructions WHERE group_id=?', [oldGid]);
-    if (remaining.length === 1) {
+    const cnt = queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [oldGid]);
+    if (cnt && cnt.cnt === 1) {
       db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [oldGid]);
     }
   }
