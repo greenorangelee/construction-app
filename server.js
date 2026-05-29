@@ -1103,13 +1103,13 @@ app.post('/api/import', upload.single('file'), (req, res) => {
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
     if (rows.length < 2) return res.json({ success: true, inserted: 0, updated: 0 });
 
-    const dataRows = rows.slice(2).filter(r => r.some(c => c !== undefined && c !== '') && r[1]);
+    const dataRows = rows.slice(2).filter(r => r.some(c => c !== undefined && c !== '') && (r[1] || r[6]));
     const g = (row, i) => (row[i] !== undefined && row[i] !== null) ? String(row[i]).trim().replace(/^\t+/, '') : '';
 
     let inserted = 0, updated = 0;
 
     for (const row of dataRows) {
-      if (!g(row, 1)) continue;
+      if (!g(row, 1) && !g(row, 6)) continue;
 
       const no = g(row, 0) ? parseInt(g(row, 0)) : null;
       const fields = {
