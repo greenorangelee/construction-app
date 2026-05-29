@@ -396,6 +396,8 @@
     .badge-outsource { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
     .badge-payment { background: #ecfeff; color: #0891b2; border: 1px solid #a5f3fc; }
     .badge-purchase { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .badge-temp { background: #fdf4ff; color: #a21caf; border: 1px solid #f0abfc; }
+    .badge-received { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
 
     /* ── MODAL ── */
     .modal-overlay {
@@ -2039,6 +2041,14 @@
           <div class="stat-label">구매</div>
           <div class="stat-value" id="s-purchase">-</div>
         </div>
+        <div class="stat-card" style="--card-color:#a21caf" onclick="filterByGubun('임시포설')" title="임시포설만 보기">
+          <div class="stat-label">임시포설</div>
+          <div class="stat-value" id="s-temp">-</div>
+        </div>
+        <div class="stat-card" style="--card-color:#15803d" onclick="filterByGubun('접수')" title="접수만 보기">
+          <div class="stat-label">접수</div>
+          <div class="stat-value" id="s-received">-</div>
+        </div>
       </div>
     </div>
 
@@ -2081,6 +2091,8 @@
       <option>외주공사</option>
       <option>지급</option>
       <option>구매</option>
+      <option>임시포설</option>
+      <option>접수</option>
     </select>
     <select id="filterStatus" onchange="loadData()">
       <option value="전체">전체 상태</option>
@@ -2766,6 +2778,8 @@
               <option>외주공사</option>
               <option>지급</option>
               <option>구매</option>
+              <option>임시포설</option>
+              <option>접수</option>
             </select>
           </div>
           <div class="form-group">
@@ -2986,6 +3000,8 @@ async function loadStats() {
   document.getElementById('s-outsource').textContent = s.outsource;
   document.getElementById('s-payment').textContent = s.payment;
   document.getElementById('s-purchase').textContent = s.purchase;
+  document.getElementById('s-temp').textContent = s.temp ?? 0;
+  document.getElementById('s-received').textContent = s.received ?? 0;
   document.getElementById('s-corp-ksm').textContent = s.corp_ksm;
   document.getElementById('s-corp-fksm').textContent = s.corp_fksm;
   document.getElementById('s-corp-ksmc').textContent = s.corp_ksmc;
@@ -3006,7 +3022,7 @@ function updateActiveCards() {
   });
 
   // 구분 카드
-  const gubunMap = { '자체공사': 's-self', '외주공사': 's-outsource', '지급': 's-payment', '구매': 's-purchase' };
+  const gubunMap = { '자체공사': 's-self', '외주공사': 's-outsource', '지급': 's-payment', '구매': 's-purchase', '임시포설': 's-temp', '접수': 's-received' };
   Object.entries(gubunMap).forEach(([val, id]) => {
     const card = document.getElementById(id)?.closest('.stat-card');
     if (card) card.classList.toggle('active', gubun === val);
@@ -3163,7 +3179,7 @@ async function loadData() {
 }
 
 function gubunBadge(v) {
-  const map = { '자체공사': 'self', '외주공사': 'outsource', '지급': 'payment', '구매': 'purchase' };
+  const map = { '자체공사': 'self', '외주공사': 'outsource', '지급': 'payment', '구매': 'purchase', '임시포설': 'temp', '접수': 'received' };
   return `<span class="badge badge-${map[v] || 'self'}">${v || '-'}</span>`;
 }
 
