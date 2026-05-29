@@ -3681,7 +3681,11 @@ async function importExcel(input) {
     const res = await fetch('/api/import', { method: 'POST', body: formData });
     const data = await res.json();
     if (data.success) {
-      showToast(`✓ ${data.count}건 가져오기 완료`);
+      const parts = [];
+      if (data.inserted > 0) parts.push(`신규 ${data.inserted}건`);
+      if (data.updated > 0) parts.push(`업데이트 ${data.updated}건`);
+      const msg = parts.length ? parts.join(', ') + ' 완료' : '변경 없음';
+      showToast(`✓ ${msg}`);
       loadData();
       loadStats();
     } else {
