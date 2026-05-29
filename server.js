@@ -1101,17 +1101,79 @@ app.post('/api/import', upload.single('file'), (req, res) => {
     const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-    if (rows.length < 2) return res.json({ success: true, count: 0 });
+    if (rows.length < 2) return res.json({ success: true, inserted: 0, updated: 0 });
+
     const dataRows = rows.slice(2).filter(r => r.some(c => c !== undefined && c !== '') && r[1]);
-    const g = (row, i) => (row[i] !== undefined && row[i] !== null) ? String(row[i]).trim() : '';
-    let count = 0, lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
+    const g = (row, i) => (row[i] !== undefined && row[i] !== null) ? String(row[i]).trim().replace(/^\t+/, '') : '';
+
+    let inserted = 0, updated = 0;
+
     for (const row of dataRows) {
-      if (!g(row,1)) continue; lastNo++;
-      db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [lastNo,g(row,1),g(row,2),g(row,3),g(row,4),g(row,5),g(row,6),g(row,7),g(row,8),g(row,9),g(row,10),g(row,11),g(row,12),g(row,13),g(row,14),'','','','',g(row,15),g(row,16),g(row,17),g(row,18),g(row,19),g(row,20),g(row,21),g(row,22),g(row,23)]);
-      count++;
+      if (!g(row, 1)) continue;
+
+      const no = g(row, 0) ? parseInt(g(row, 0)) : null;
+      const fields = {
+        gubun:          g(row, 1),
+        req_date:       g(row, 2),
+        corp:           g(row, 3),
+        dept:           g(row, 4),
+        requester:      g(row, 5),
+        work_name:      g(row, 6),
+        loc_region:     g(row, 7),
+        loc_dong:       g(row, 8),
+        loc_floor:      g(row, 9),
+        loc_detail:     g(row, 10),
+        demolish_region: g(row, 11),
+        demolish_dong:  g(row, 12),
+        demolish_floor: g(row, 13),
+        demolish_detail: g(row, 14),
+        status:         g(row, 15),
+        deadline:       g(row, 16),
+        complete_date:  g(row, 17),
+        purchase_doc:   g(row, 18),
+        payment_doc:    g(row, 19),
+        related_doc:    g(row, 20),
+        it_manager:     g(row, 21),
+        worker:         g(row, 22),
+        memo:           g(row, 23),
+      };
+
+      // No. 값이 있으면 기존 레코드 존재 여부 확인 후 upsert
+      if (no) {
+        const existing = queryOne('SELECT id FROM constructions WHERE no = ?', [no]);
+        if (existing) {
+          // 기존 레코드 업데이트
+          const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
+          db.run(`UPDATE constructions SET ${sets} WHERE no = ?`, [...Object.values(fields), no]);
+          updated++;
+        } else {
+          // 신규 삽입 (no 포함)
+          const cols = ['no', ...Object.keys(fields)].join(', ');
+          const placeholders = Array(Object.keys(fields).length + 1).fill('?').join(', ');
+          db.run(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [no, ...Object.values(fields)]);
+          inserted++;
+        }
+      } else {
+        // No. 없는 행 → 공사명으로 중복 체크
+        const existing = fields.work_name
+          ? queryOne('SELECT id FROM constructions WHERE work_name = ? AND req_date = ?', [fields.work_name, fields.req_date])
+          : null;
+        if (existing) {
+          const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
+          db.run(`UPDATE constructions SET ${sets} WHERE id = ?`, [...Object.values(fields), existing.id]);
+          updated++;
+        } else {
+          const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0) + 1;
+          const cols = ['no', ...Object.keys(fields)].join(', ');
+          const placeholders = Array(Object.keys(fields).length + 1).fill('?').join(', ');
+          db.run(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [lastNo, ...Object.values(fields)]);
+          inserted++;
+        }
+      }
     }
-    saveDB(); res.json({ success: true, count });
+
+    saveDB();
+    res.json({ success: true, inserted, updated, count: inserted + updated });
   } catch(e) { res.status(500).json({ error: '파일 처리 중 오류: ' + e.message }); }
 });
 
