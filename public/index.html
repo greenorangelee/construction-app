@@ -6347,8 +6347,14 @@ async function applyGroupLink() {
     alert('묶을 공사를 선택하세요');
     return;
   }
-  // 새 group_id 발급
-  const { group_id } = await api('POST', '/api/groups/new');
+
+  const base = allData.find(r => r.id === groupLinkBaseId);
+  // 기준 공사에 기존 group_id가 있으면 재사용, 없으면 새로 발급
+  let group_id = base?.group_id;
+  if (!group_id) {
+    const res = await api('POST', '/api/groups/new');
+    group_id = res.group_id;
+  }
 
   // 기준 공사 + 선택된 공사 모두 같은 group_id 설정
   const ids = [groupLinkBaseId, ...groupLinkSelected];
