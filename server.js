@@ -394,6 +394,7 @@ app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
 });
 
 
+app.get('/api/stats', authMiddleware, (req, res) => {
   const g = q => queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`).cnt;
   res.json({
     total: g('1=1'), done: g("status='완료'"), inprogress: g("status='진행중'"), holding: g("status='Holding'"),
