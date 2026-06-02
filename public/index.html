@@ -5097,7 +5097,7 @@ function renderFileList(listElId) {
   const el = document.getElementById(elId);
   if (!el) return;
   const filtered = constructionFiles.filter(f => f.file_type === currentFileTab);
-  const isPreviewable = name => /\.(png|jpg|jpeg|gif|webp|pdf)$/i.test(name);
+  const isPreviewable = name => /\.(png|jpg|jpeg|gif|webp)$/i.test(name);
   el.innerHTML = filtered.length ? filtered.map(f => `
     <div class="file-item" style="${f.shared ? 'background:#eff6ff;border:1px solid #bfdbfe' : ''}">
       <span class="file-item-icon">${getFileIcon(f.original_name)}</span>
@@ -5111,18 +5111,6 @@ function renderFileList(listElId) {
 
 async function previewFile(filename, originalName) {
   try {
-    const isPdf = /\.pdf$/i.test(originalName);
-
-    // PDF는 새 탭으로 열기
-    if (isPdf) {
-      const res = await fetch(`/api/constructions/files/${filename}`, { headers: { 'Authorization': 'Bearer ' + getToken() } });
-      if (!res.ok) { showToast('파일을 불러올 수 없습니다'); return; }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      return;
-    }
-
     const res = await fetch(`/api/constructions/files/${filename}`, { headers: { 'Authorization': 'Bearer ' + getToken() } });
     if (!res.ok) { showToast('파일을 불러올 수 없습니다'); return; }
     const blob = await res.blob();
