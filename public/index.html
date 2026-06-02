@@ -626,10 +626,78 @@
 
     /* ── RESPONSIVE ── */
     @media (max-width: 768px) {
-      .container { padding: 16px; }
-      .header { padding: 0 16px; }
-      .form-grid, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr 1fr; }
+      /* ── 기본 레이아웃 ── */
+      .container { padding: 12px; }
+
+      /* ── 헤더 ── */
+      .header { padding: 0 12px; height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+      .header-left { flex: 1; gap: 8px; min-width: 0; }
+      .header-title { display: none; }
+      .header-nav { gap: 2px; }
+      .nav-tab { padding: 6px 8px; font-size: 11px; }
+      .header-actions { width: 100%; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+      .header-user { gap: 6px; }
+      .header-user-name { font-size: 12px; }
+      .logout-btn { font-size: 11px; padding: 4px 8px; }
+
+      /* ── 통계 카드 ── */
+      .stats-area { grid-template-columns: 1fr; grid-template-rows: auto; gap: 8px; margin-bottom: 14px; }
+      .stat-total { grid-column: 1; grid-row: auto; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 10px 16px; }
+      .stat-total .stat-value { font-size: 28px; }
+      .stats-group { grid-column: 1; flex-wrap: wrap; }
+      .stats-group-label { writing-mode: horizontal-tb; padding: 6px 12px; min-width: unset; width: 100%; border-right: none; border-bottom: 1px solid var(--border); justify-content: flex-start; }
+      .stats-cards { flex-wrap: wrap; }
+      .stat-card { flex: 1 1 calc(33% - 1px); min-width: 60px; padding: 8px 10px; }
+      .stat-value { font-size: 18px; }
+      .stat-label { font-size: 9px; }
+
+      /* ── 필터바 ── */
+      .filter-bar { flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+      .filter-bar input { min-width: unset; width: 100%; }
+      .filter-bar select { flex: 1; min-width: 80px; font-size: 12px; }
+      #groupViewBtn { font-size: 12px; padding: 6px 10px; }
+
+      /* ── 테이블 ── */
+      .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+      table { min-width: 700px; }
+      th, td { padding: 8px 8px; font-size: 12px; }
+      td.col-sm, td.col-md, td.col-doc { max-width: unset; }
+
+      /* ── 모달 ── */
+      .modal-overlay { align-items: flex-end; padding: 0; }
+      .modal { border-radius: 16px 16px 0 0; max-height: 90vh; overflow-y: auto; width: 100%; max-width: 100% !important; transform: translateY(100%); }
+      .modal-overlay.open .modal { transform: translateY(0); }
+      .modal-body { padding: 16px; }
+      .modal-head { padding: 16px 16px 12px; }
+      .modal-footer { padding: 12px 16px; }
+
+      /* ── 폼 그리드 ── */
+      .form-grid, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; gap: 10px; }
       .detail-grid { grid-template-columns: 1fr; }
+
+      /* ── 설정 페이지 ── */
+      .settings-panel { padding: 14px; }
+      .settings-panel-head { flex-wrap: wrap; gap: 8px; }
+
+      /* ── 로그인 ── */
+      .login-box { width: calc(100% - 40px); padding: 36px 24px; }
+
+      /* ── 파일 모달 ── */
+      .file-tab-bar { gap: 4px; }
+      .file-tab { padding: 6px 10px; font-size: 12px; }
+
+      /* ── 유저 테이블 ── */
+      .user-table th, .user-table td { padding: 8px 10px; font-size: 12px; }
+    }
+
+    @media (max-width: 480px) {
+      .nav-tab { padding: 5px 6px; font-size: 10px; }
+      .logo { font-size: 15px; }
+      .stat-card { flex: 1 1 calc(50% - 1px); }
+      .filter-bar select { font-size: 11px; }
+      th, td { font-size: 11px; padding: 7px 6px; }
+      .btn { font-size: 12px; padding: 7px 12px; }
     }
 
     /* ── DATEPICKER ── */
