@@ -686,7 +686,11 @@
       .settings-header h2 { font-size: 14px; }
       .settings-add-form { flex-wrap: wrap; gap: 6px; }
       .settings-add-form input { flex: 1; min-width: 0; }
-      .dong-card-head { flex-wrap: wrap; gap: 6px; }
+      .dong-card-head { flex-wrap: nowrap; gap: 6px; overflow: hidden; }
+      .dong-card-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+      .dong-card-head > div { flex-shrink: 0; }
+      .floor-tags { gap: 6px; }
+      .floor-tag-del, .floor-tag, .floor-tag-add { font-size: 12px; padding: 4px 10px; }
 
       /* ── 로그인 ── */
       .login-box { width: calc(100% - 40px); padding: 36px 24px; }
@@ -6395,9 +6399,9 @@ function renderDongList() {
   document.getElementById('dongList').innerHTML = locs.map(loc => {
     const floors = JSON.parse(loc.floors || '[]');
     return `<div class="dong-card">
-      <div class="dong-card-head" id="dong-head-${loc.id}">
-        <span class="dong-card-name" id="dong-name-${loc.id}">🏢 ${loc.dong}</span>
-        <div style="display:flex;gap:6px;align-items:center">
+      <div class="dong-card-head" id="dong-head-${loc.id}" style="display:flex;align-items:center;justify-content:space-between;overflow:hidden">
+        <span class="dong-card-name" id="dong-name-${loc.id}" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🏢 ${loc.dong}</span>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
           <span style="font-size:11px;color:#9ca3af">${floors.length}개 층</span>
           <button onclick="startEditDong(${loc.id}, '${loc.dong.replace(/'/g, "\'")}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:2px 6px;border-radius:4px;transition:all 0.15s" onmouseover="this.style.color='#c0392b'" onmouseout="this.style.color='#9ca3af'" title="동 이름 수정">✏️</button>
           <button onclick="deleteDong(${loc.id})" style="background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px" title="동 삭제">✕</button>
