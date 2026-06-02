@@ -679,7 +679,10 @@
       /* ── 설정 페이지 ── */
       .settings-panel { padding: 14px; }
       .settings-panel-head { flex-wrap: wrap; gap: 8px; }
-      .settings-grid { grid-template-columns: 1fr; gap: 12px; }
+      .settings-grid { grid-template-columns: 1fr !important; gap: 12px; }
+      #settingsLocationGrid { flex-direction: column !important; }
+      #settingsLocationGrid > div:first-child { width: 100% !important; }
+      #dongPanel { min-width: 0 !important; }
       .region-list { max-height: 260px; }
       .dong-list { max-height: none; padding: 12px; gap: 8px; }
       .settings-header { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 12px; }
@@ -2809,34 +2812,36 @@
       <h2>⚙️ 위치 설정</h2>
       <span style="font-size:12px;color:#9ca3af">지역·동·층을 미리 설정하면 공사 등록 시 드롭다운으로 선택할 수 있습니다</span>
     </div>
-    <div class="settings-grid">
-      <!-- 왼쪽: 지역 목록 -->
-      <div>
-        <div class="settings-panel">
-          <div class="settings-panel-head">
-            <span>지역</span>
-            <span id="regionCount" style="font-size:11px;color:#9ca3af"></span>
-          </div>
-          <div class="region-list" id="regionList"></div>
-          <div class="settings-add-form">
-            <input type="text" id="newRegionInput" placeholder="새 지역 이름 (예: 대곶)" />
-            <button class="btn-red-sm" onclick="addRegion()">+ 추가</button>
+    <div style="display:flex;flex-direction:column;gap:16px;align-items:stretch;">
+      <div style="display:flex;gap:16px;align-items:start" id="settingsLocationGrid">
+        <!-- 왼쪽: 지역 목록 -->
+        <div style="width:300px;flex-shrink:0">
+          <div class="settings-panel">
+            <div class="settings-panel-head">
+              <span>지역</span>
+              <span id="regionCount" style="font-size:11px;color:#9ca3af"></span>
+            </div>
+            <div class="region-list" id="regionList"></div>
+            <div class="settings-add-form">
+              <input type="text" id="newRegionInput" placeholder="새 지역 이름 (예: 대곶)" />
+              <button class="btn-red-sm" onclick="addRegion()">+ 추가</button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 오른쪽: 선택된 지역의 동·층 -->
-      <div class="settings-panel" id="dongPanel">
-        <div class="settings-panel-head">
-          <span id="dongPanelTitle">지역을 선택하세요</span>
-          <button class="btn-red-sm" id="deleteRegionBtn" style="display:none;background:#ef4444;font-size:11px;padding:4px 10px" onclick="deleteRegion()">지역 삭제</button>
-        </div>
-        <div class="dong-list" id="dongList">
-          <div style="text-align:center;padding:40px;color:#9ca3af;font-size:13px">← 왼쪽에서 지역을 선택하세요</div>
-        </div>
-        <div class="settings-add-form" id="dongAddForm" style="display:none">
-          <input type="text" id="newDongInput" placeholder="새 동 이름 (예: HO동)" />
-          <button class="btn-red-sm" onclick="addDong()">+ 동 추가</button>
+        <!-- 오른쪽: 선택된 지역의 동·층 -->
+        <div class="settings-panel" id="dongPanel" style="flex:1;min-width:0">
+          <div class="settings-panel-head">
+            <span id="dongPanelTitle">지역을 선택하세요</span>
+            <button class="btn-red-sm" id="deleteRegionBtn" style="display:none;background:#ef4444;font-size:11px;padding:4px 10px" onclick="deleteRegion()">지역 삭제</button>
+          </div>
+          <div class="dong-list" id="dongList">
+            <div style="text-align:center;padding:40px;color:#9ca3af;font-size:13px">← 왼쪽에서 지역을 선택하세요</div>
+          </div>
+          <div class="settings-add-form" id="dongAddForm" style="display:none">
+            <input type="text" id="newDongInput" placeholder="새 동 이름 (예: HO동)" />
+            <button class="btn-red-sm" onclick="addDong()">+ 동 추가</button>
+          </div>
         </div>
       </div>
     </div>
