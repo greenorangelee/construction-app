@@ -5111,34 +5111,43 @@ function renderFileList(listElId) {
 
 async function previewFile(filename, originalName) {
   try {
+    const isPdf = /\.pdf$/i.test(originalName);
+
+    // PDF는 새 탭으로 열기
+    if (isPdf) {
+      const res = await fetch(`/api/constructions/files/${filename}`, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+      if (!res.ok) { showToast('파일을 불러올 수 없습니다'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      return;
+    }
+
     const res = await fetch(`/api/constructions/files/${filename}`, { headers: { 'Authorization': 'Bearer ' + getToken() } });
     if (!res.ok) { showToast('파일을 불러올 수 없습니다'); return; }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const isPdf = /\.pdf$/i.test(originalName);
 
-    // 모달 생성
+    // 이미지 오버레이
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
-    overlay.onclick = e => { if (e.target === overlay) { URL.revokeObjectURL(url); overlay.remove(); } };
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;cursor:zoom-out';
+    overlay.onclick = e => { if (e.target === overlay || e.target === img) { URL.revokeObjectURL(url); overlay.remove(); } };
 
     const toolbar = document.createElement('div');
     toolbar.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:10px;width:100%;max-width:900px';
     toolbar.innerHTML = `
       <span style="color:#fff;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${originalName}</span>
       <button onclick="downloadFile('${filename}','${originalName}')" style="padding:6px 14px;background:#fff;color:#1a1a1a;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">⬇ 다운로드</button>
-      <button onclick="URL.revokeObjectURL('${url}');this.closest('div[style*=fixed]').remove()" style="padding:6px 12px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;font-size:12px;cursor:pointer">✕ 닫기</button>
     `;
 
-    const viewer = document.createElement(isPdf ? 'iframe' : 'img');
-    viewer.src = url;
-    viewer.style.cssText = isPdf
-      ? 'width:100%;max-width:900px;height:80vh;border:none;border-radius:8px;background:#fff'
-      : 'max-width:90vw;max-height:80vh;border-radius:8px;object-fit:contain;background:#fff';
-    if (!isPdf) viewer.alt = originalName;
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = originalName;
+    img.style.cssText = 'max-width:90vw;max-height:82vh;border-radius:8px;object-fit:contain;cursor:default';
+    img.onclick = e => e.stopPropagation();
 
     overlay.appendChild(toolbar);
-    overlay.appendChild(viewer);
+    overlay.appendChild(img);
     document.body.appendChild(overlay);
   } catch(e) {
     showToast('미리보기 오류: ' + e.message);
