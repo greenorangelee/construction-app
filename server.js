@@ -311,7 +311,7 @@ app.get('/api/constructions', authMiddleware, (req, res) => {
   if (search) {
     const keywords = search.trim().split(/\s+/).filter(Boolean);
     for (const kw of keywords) {
-      sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ? OR purchase_doc LIKE ? OR payment_doc LIKE ? OR related_doc LIKE ?)';
+      sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ? OR TRIM(purchase_doc) LIKE ? OR TRIM(payment_doc) LIKE ? OR TRIM(related_doc) LIKE ?)';
       params.push(`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`);
     }
   }
