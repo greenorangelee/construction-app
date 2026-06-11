@@ -2742,7 +2742,7 @@
             📁 클릭하여 파일 업로드 (PDF, 이미지, 문서)
           </div>
           <input type="file" id="fileManageInput" multiple style="display:none"
-            accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.docx,.doc,.hwp,.zip"
+            accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.docx,.doc,.hwp,.zip,.ppt,.pptx"
             onchange="uploadConstructionFiles(this,'fileManageList')" />
         </div>
       </div>
@@ -5128,7 +5128,7 @@ const FILE_TYPE_LABELS = {
 };
 const FILE_ICONS = {
   pdf: '📄', jpg: '🖼️', jpeg: '🖼️', png: '🖼️',
-  xlsx: '📊', xls: '📊', docx: '📝', doc: '📝', hwp: '📝', zip: '📦'
+  xlsx: '📊', xls: '📊', docx: '📝', doc: '📝', hwp: '📝', zip: '📦', ppt: '📑', pptx: '📑'
 };
 
 function getFileIcon(filename) {
