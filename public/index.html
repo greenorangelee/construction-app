@@ -3764,9 +3764,21 @@ async function submitForm() {
 
 // ── EXCEL ──────────────────────────────────────────
 
-function exportExcel() {
-  window.location.href = '/api/export';
-  showToast('엑셀 파일 다운로드 중...');
+async function exportExcel() {
+  try {
+    showToast('엑셀 파일 다운로드 중...');
+    const res = await fetch('/api/export', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    if (!res.ok) { showToast('내보내기 실패'); return; }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename\*=UTF-8''(.+)/);
+    const filename = match ? decodeURIComponent(match[1]) : '네트워크공사이력.xlsx';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch(e) { showToast('내보내기 오류: ' + e.message); }
 }
 
 // ── MODAL HELPERS ──────────────────────────────────────────
@@ -4083,9 +4095,18 @@ async function deleteSelected() {
 
 // ── IMPORT / TEMPLATE ──────────────────────────────────────────
 
-function downloadTemplate() {
-  window.location.href = '/api/template';
-  showToast('양식 파일 다운로드 중...');
+async function downloadTemplate() {
+  try {
+    showToast('양식 파일 다운로드 중...');
+    const res = await fetch('/api/template', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    if (!res.ok) { showToast('다운로드 실패'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = '공사이력_입력양식.xlsx';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch(e) { showToast('다운로드 오류: ' + e.message); }
 }
 
 async function importExcel(input) {
