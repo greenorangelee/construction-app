@@ -1353,6 +1353,79 @@ app.get('/api/export', authMiddleware, (req, res) => {
 
 // ── 네트워크 장비 관리 API ──────────────────────────────────────────
 
+app.get('/api/net-devices/export', authMiddleware, (req, res) => {
+  const rows = queryAll('SELECT * FROM net_devices ORDER BY id');
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
+
+  const header = ['No.','장비명','위치','망','IP 주소','제조사','모델','시리얼 번호','MAC 주소','입고일','인터페이스','SNMP Community','SNMP Port','설명','등록일'];
+  const data = [header, ...rows.map((r, i) => {
+    // 인터페이스 요약
+    let ifaceSummary = '';
+    try {
+      const ifaces = JSON.parse(r.interfaces || '[]');
+      ifaceSummary = ifaces.map(f => `${f.count}x${f.portType}(${f.speed})`).join(', ');
+    } catch(e) {}
+    return [
+      i + 1,
+      r.name,
+      r.location,
+      r.network_type,
+      r.ip,
+      r.vendor,
+      r.model,
+      r.serial,
+      r.mac,
+      r.purchase_date,
+      ifaceSummary,
+      r.snmp_community,
+      r.snmp_port,
+      r.description,
+      (r.created_at || '').substring(0, 10),
+    ];
+  })];
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // 컬럼 너비
+  ws['!cols'] = [
+    { wch: 5  },  // No.
+    { wch: 28 },  // 장비명
+    { wch: 18 },  // 위치
+    { wch: 10 },  // 망
+    { wch: 16 },  // IP
+    { wch: 12 },  // 제조사
+    { wch: 16 },  // 모델
+    { wch: 20 },  // 시리얼
+    { wch: 20 },  // MAC
+    { wch: 12 },  // 입고일
+    { wch: 30 },  // 인터페이스
+    { wch: 14 },  // SNMP Community
+    { wch: 10 },  // SNMP Port
+    { wch: 24 },  // 설명
+    { wch: 12 },  // 등록일
+  ];
+
+  // 헤더 행 스타일
+  const headerRange = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
+    const cell = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[cell]) continue;
+    ws[cell].s = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: 'C0392B' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+    };
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, '네트워크장비');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${dateStr}_네트워크장비목록.xlsx`)}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
 app.get('/api/net-devices', authMiddleware, (req, res) => {
   res.json(queryAll('SELECT * FROM net_devices ORDER BY id'));
 });
