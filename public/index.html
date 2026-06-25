@@ -2815,18 +2815,19 @@
       </div>
 
       <!-- 검색 바 -->
-      <div style="padding:12px 0 4px;display:flex;gap:8px;align-items:center">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:#fafafa;display:flex;gap:8px;align-items:center">
         <div style="position:relative;flex:1;max-width:420px">
           <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;pointer-events:none">🔍</span>
           <input type="text" id="devSearchInput"
             placeholder="장비명, IP, 위치, 제조사, 모델, 시리얼 검색..."
             oninput="onDevSearch()"
-            style="width:100%;padding:8px 12px 8px 32px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;transition:border-color .15s"
-            onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#d1d5db'">
+            style="width:100%;padding:7px 12px 7px 32px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;outline:none;background:#fff;transition:border-color .15s;color:#1e293b"
+            onfocus="this.style.borderColor='#c0392b';this.style.boxShadow='0 0 0 2px #c0392b22'"
+            onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
         </div>
         <span id="devSearchCount" style="font-size:12px;color:#9ca3af;white-space:nowrap"></span>
         <button id="devSearchClearBtn" onclick="clearDevSearch()"
-          style="display:none;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;color:#6b7280;cursor:pointer">
+          style="display:none;padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;background:#fff;font-size:12px;color:#6b7280;cursor:pointer">
           ✕ 초기화
         </button>
       </div>
