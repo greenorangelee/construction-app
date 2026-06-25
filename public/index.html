@@ -2971,6 +2971,10 @@
             <input type="text" id="df-mac" placeholder="예) AA:BB:CC:DD:EE:FF">
           </div>
         </div>
+        <div class="form-group">
+          <label>입고일</label>
+          <input type="date" id="df-purchase-date">
+        </div>
       </div>
 
       <!-- ── 탭3: 인터페이스 ── -->
@@ -7494,10 +7498,11 @@ function openDeviceModal(id) {
   document.getElementById('df-description').value = d ? (d.description||'') : '';
 
   // 장비 정보 탭
-  document.getElementById('df-vendor').value = d ? (d.vendor||'') : '';
-  document.getElementById('df-model').value  = d ? (d.model||'') : '';
-  document.getElementById('df-serial').value = d ? (d.serial||'') : '';
-  document.getElementById('df-mac').value    = d ? (d.mac||'') : '';
+  document.getElementById('df-vendor').value        = d ? (d.vendor||'') : '';
+  document.getElementById('df-model').value         = d ? (d.model||'') : '';
+  document.getElementById('df-serial').value        = d ? (d.serial||'') : '';
+  document.getElementById('df-mac').value           = d ? (d.mac||'') : '';
+  document.getElementById('df-purchase-date').value = d ? (d.purchase_date||'') : '';
 
   // 인터페이스 탭
   try { ifaceRows = d && d.interfaces ? JSON.parse(d.interfaces) : []; }
@@ -7585,6 +7590,7 @@ async function saveDevice() {
     serial:        document.getElementById('df-serial').value.trim(),
     mac:           document.getElementById('df-mac').value.trim(),
     interfaces:    ifaceRows,
+    purchase_date: document.getElementById('df-purchase-date').value,
     description:   document.getElementById('df-description').value.trim(),
   };
 
@@ -7629,89 +7635,82 @@ function showDeviceDetail(id) {
 
 function buildDetailHtml(d) {
   const NET_COLOR = {'사무망':'#3b82f6','현장망':'#16a34a','장비망':'#f59e0b','전화망':'#8b5cf6'};
-  const nc = NET_COLOR[d.network_type] || '#6b7280';
-  const netBadge = d.network_type
-    ? `<span style="background:${nc}18;color:${nc};padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${escHtml(d.network_type)}</span>` : '';
+  const NET_CODE  = {'사무망':'O','현장망':'F','장비망':'E','전화망':'V'};
+  const nc = NET_COLOR[d.network_type] || '#64748b';
+  const code = NET_CODE[d.network_type] || '';
 
-  // 기본 정보
-  const basicRows = [
-    ['위치',   d.location],
-    ['망',     d.network_type],
-    ['IP',     d.ip],
-    ['설명',   d.description],
-  ].filter(([,v]) => v).map(([k,v]) => `
-    <tr>
-      <td style="width:72px;padding:9px 14px;font-size:12px;color:#6b7280;font-weight:600;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap;vertical-align:top">${k}</td>
-      <td style="padding:9px 14px;font-size:13px;color:#111;border-bottom:1px solid #f3f4f6;word-break:break-all">${escHtml(v)}</td>
-    </tr>`).join('');
+  // 헤더 배지
+  const netChip = d.network_type
+    ? `<span style="background:rgba(255,255,255,0.22);color:#fff;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px">${escHtml(d.network_type)}${code?' ('+code+')':''}</span>` : '';
+  const ipChip = d.ip
+    ? `<span style="background:rgba(255,255,255,0.15);color:#fff;padding:3px 10px;border-radius:20px;font-size:12px;font-family:monospace">${escHtml(d.ip)}</span>` : '';
 
-  // 장비 정보
-  const hwRows = [
+  // 공통 행 렌더러
+  const mkRows = (pairs) => pairs
+    .filter(([,v]) => v)
+    .map(([k,v], i, arr) => `
+      <div style="display:flex;align-items:baseline;gap:0;border-bottom:${i<arr.length-1?'1px solid #f1f5f9':'none'}">
+        <div style="width:80px;flex-shrink:0;padding:11px 0 11px 18px;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:.4px;text-transform:uppercase">${k}</div>
+        <div style="flex:1;padding:11px 18px 11px 12px;font-size:13px;color:#1e293b;font-weight:500;word-break:break-all;line-height:1.4">${escHtml(v)}</div>
+      </div>`).join('');
+
+  const basicRows = mkRows([
+    ['위치', d.location],
+    ['IP',   d.ip],
+    ['설명', d.description],
+  ]);
+
+  const hwRows = mkRows([
     ['제조사', d.vendor],
     ['모델',   d.model],
-    ['시리얼', d.serial],
-    ['MAC',    d.mac],
-  ].filter(([,v]) => v).map(([k,v]) => `
-    <tr>
-      <td style="width:72px;padding:9px 14px;font-size:12px;color:#6b7280;font-weight:600;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap">${k}</td>
-      <td style="padding:9px 14px;font-size:13px;color:#111;border-bottom:1px solid #f3f4f6;word-break:break-all">${escHtml(v)}</td>
-    </tr>`).join('');
+    ['S/N',   d.serial],
+    ['MAC',   d.mac],
+    ['입고일', d.purchase_date],
+  ]);
 
-  // 인터페이스
-  let ifaceHtml = '';
+  // 인터페이스 카드
+  let ifaceCards = '';
   try {
     const ifaces = JSON.parse(d.interfaces || '[]');
     if (ifaces.length) {
-      ifaceHtml = `
-        <div style="font-size:11px;font-weight:700;color:#6b7280;padding:10px 14px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;letter-spacing:.5px">인터페이스</div>
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="background:#f3f4f6">
-              <th style="padding:7px 14px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;border-bottom:1px solid #e5e7eb">포트 수</th>
-              <th style="padding:7px 14px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;border-bottom:1px solid #e5e7eb">종류</th>
-              <th style="padding:7px 14px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;border-bottom:1px solid #e5e7eb">속도</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${ifaces.map(i => `
-              <tr>
-                <td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #f3f4f6">${i.count}포트</td>
-                <td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #f3f4f6">${escHtml(i.portType)}</td>
-                <td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #f3f4f6">${escHtml(i.speed)}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>`;
+      const SPEED_COLOR = {'100M':'#64748b','1G':'#3b82f6','2.5G':'#8b5cf6','5G':'#8b5cf6','10G':'#f59e0b','25G':'#ef4444','40G':'#ef4444','100G':'#dc2626'};
+      ifaceCards = `
+        <div style="padding:14px 18px 6px;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:.5px">인터페이스</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 14px">
+          ${ifaces.map(i => {
+            const sc = SPEED_COLOR[i.speed] || '#64748b';
+            return `<div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+              <span style="background:${sc};color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap">${escHtml(i.speed)}</span>
+              <span style="font-size:12px;font-weight:600;color:#334155">${escHtml(i.portType)}</span>
+              <span style="font-size:12px;color:#64748b">×${i.count}</span>
+            </div>`;
+          }).join('')}
+        </div>`;
     }
-  } catch(e) {}
+  } catch(e2) {}
+
+  const section = (title, rows) => rows ? `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:10px">
+      <div style="padding:9px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase">${title}</div>
+      ${rows}
+    </div>` : '';
+
+  const ifaceSection = ifaceCards ? `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:10px">
+      ${ifaceCards}
+    </div>` : '';
 
   return `
-    <!-- 헤더 -->
-    <div style="background:#c0392b;color:#fff;padding:16px 20px;margin:-24px -28px 0;border-radius:0">
-      <div style="font-size:17px;font-weight:700;word-break:break-all">${escHtml(d.name)}</div>
-      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
-        ${netBadge}
-        ${d.ip ? `<span style="font-size:12px;opacity:.85">${escHtml(d.ip)}</span>` : ''}
-      </div>
+    <div style="background:linear-gradient(135deg,#c0392b 0%,#96281b 100%);color:#fff;padding:20px 22px 18px;margin:-24px -28px 16px;border-radius:0">
+      <div style="font-size:18px;font-weight:800;word-break:break-all;letter-spacing:-.3px;line-height:1.3">${escHtml(d.name)}</div>
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${netChip}${ipChip}</div>
     </div>
 
-    <!-- 기본 정보 -->
-    ${basicRows ? `
-    <div style="margin-top:16px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <div style="font-size:11px;font-weight:700;color:#6b7280;padding:10px 14px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;letter-spacing:.5px">기본 정보</div>
-      <table style="width:100%;border-collapse:collapse"><tbody>${basicRows}</tbody></table>
-    </div>` : ''}
+    ${section('기본 정보', basicRows)}
+    ${section('장비 정보', hwRows)}
+    ${ifaceSection}
 
-    <!-- 장비 정보 -->
-    ${hwRows ? `
-    <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-      <div style="font-size:11px;font-weight:700;color:#6b7280;padding:10px 14px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;letter-spacing:.5px">장비 정보</div>
-      <table style="width:100%;border-collapse:collapse"><tbody>${hwRows}</tbody></table>
-    </div>` : ''}
-
-    <!-- 인터페이스 -->
-    ${ifaceHtml ? `<div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">${ifaceHtml}</div>` : ''}
-
-    <div style="margin-top:12px;font-size:11px;color:#9ca3af;text-align:right">
+    <div style="font-size:11px;color:#94a3b8;text-align:right;padding-top:4px;padding-bottom:2px">
       등록일: ${(d.created_at||'').substring(0,10)}
     </div>`;
 }
