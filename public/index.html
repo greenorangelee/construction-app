@@ -2819,6 +2819,7 @@
               <th style="width:40px">No.</th>
               <th>위치</th>
               <th>장비명</th>
+              <th>망</th>
               <th>IP 주소</th>
               <th>설명</th>
               <th>등록일</th>
@@ -2826,7 +2827,7 @@
             </tr>
           </thead>
           <tbody id="devicesTableBody">
-            <tr><td colspan="7" style="text-align:center;padding:32px;color:#999">장비가 없습니다.</td></tr>
+            <tr><td colspan="8" style="text-align:center;padding:32px;color:#999">장비가 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2836,21 +2837,79 @@
 
 <!-- 장비 등록/수정 모달 -->
 <div id="deviceFormModal" class="modal-overlay">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:500px">
     <div class="modal-head">
       <h2 id="deviceFormTitle">장비 등록</h2>
       <button class="modal-close" onclick="closeDeviceModal()">✕</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
       <input type="hidden" id="df-id">
-      <div class="form-group">
-        <label>장비명 <span style="color:red">*</span></label>
-        <input type="text" id="df-name" placeholder="예) 본관 1층 스위치">
+
+      <!-- 위치 선택 (3단계) -->
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">위치 <span style="color:red">*</span></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div class="form-group" style="margin:0">
+            <label style="font-size:11px;color:#9ca3af">지역</label>
+            <select id="df-region" onchange="onDfRegionChange()">
+              <option value="">지역 선택</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:11px;color:#9ca3af">동</label>
+            <select id="df-dong" onchange="onDfDongChange()">
+              <option value="">동 선택</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:11px;color:#9ca3af">층</label>
+            <select id="df-floor" onchange="updateDeviceName()">
+              <option value="">층 선택</option>
+            </select>
+          </div>
+        </div>
       </div>
+
+      <!-- 사용 망 -->
+      <div class="form-group">
+        <label>사용 망 <span style="color:red">*</span></label>
+        <select id="df-network-type" onchange="onDfNetworkTypeChange()">
+          <option value="">망 선택</option>
+          <option value="사무망">사무망</option>
+          <option value="현장망">현장망</option>
+          <option value="장비망">장비망</option>
+          <option value="전화망">전화망</option>
+          <option value="기타">기타 (직접 입력)</option>
+        </select>
+      </div>
+      <div class="form-group" id="df-network-custom-wrap" style="display:none;margin-top:-8px">
+        <label style="font-size:11px;color:#9ca3af">기타 망 이름</label>
+        <input type="text" id="df-network-custom" placeholder="망 이름 직접 입력" oninput="updateDeviceName()">
+      </div>
+
+      <!-- 장비명 (자동 생성 + 수동 조정) -->
+      <div class="form-group">
+        <label>장비명 <span style="color:red">*</span>
+          <span style="font-weight:400;font-size:11px;color:#9ca3af;margin-left:6px">위치·망 선택 시 자동 생성</span>
+        </label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="df-name-prefix" style="flex:1;background:#f9fafb;color:#374151" readonly placeholder="위치_망_">
+          <span style="color:#9ca3af;font-size:13px;flex-shrink:0">+</span>
+          <input type="number" id="df-name-num" min="1" max="99" value="1" style="width:64px;text-align:center" oninput="updateDeviceName()">
+        </div>
+        <input type="hidden" id="df-name">
+        <div id="df-name-preview" style="margin-top:6px;font-size:12px;color:#6b7280">
+          장비명: <strong id="df-name-preview-text" style="color:#374151">-</strong>
+        </div>
+      </div>
+
+      <!-- IP -->
       <div class="form-group">
         <label>IP 주소 <span style="color:red">*</span></label>
         <input type="text" id="df-ip" placeholder="예) 10.100.100.10">
       </div>
+
+      <!-- SNMP -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label>SNMP Community</label>
@@ -2861,10 +2920,8 @@
           <input type="number" id="df-port" value="161" placeholder="161">
         </div>
       </div>
-      <div class="form-group">
-        <label>위치</label>
-        <input type="text" id="df-location" placeholder="예) 본관 1층 MDF실">
-      </div>
+
+      <!-- 설명 -->
       <div class="form-group">
         <label>설명</label>
         <input type="text" id="df-description" placeholder="장비 설명">
@@ -7098,7 +7155,7 @@ function renderDevicesTable() {
   const tbody = document.getElementById('devicesTableBody');
   const canWrite = currentUser && (currentUser.role === 'write' || currentUser.role === 'admin');
   if (!devicesData.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
     return;
   }
 
@@ -7117,22 +7174,29 @@ function renderDevicesTable() {
     return a.localeCompare(b, 'ko');
   });
 
+  const NET_COLORS = { '사무망':'#3b82f6', '현장망':'#16a34a', '장비망':'#f59e0b', '전화망':'#8b5cf6' };
+
   let globalNo = 1;
   let html = '';
   sortedLocs.forEach(loc => {
     const devices = groups[loc];
     html += `
       <tr style="background:#f1f5f9">
-        <td colspan="7" style="padding:8px 14px;font-size:12px;font-weight:700;color:#475569;letter-spacing:0.3px">
+        <td colspan="8" style="padding:8px 14px;font-size:12px;font-weight:700;color:#475569;letter-spacing:0.3px">
           📍 ${escHtml(loc)} <span style="font-weight:400;color:#94a3b8;margin-left:6px">${devices.length}대</span>
         </td>
       </tr>`;
     devices.forEach(d => {
+      const netColor = NET_COLORS[d.network_type] || '#6b7280';
+      const netBadge = d.network_type
+        ? `<span style="background:${netColor}18;color:${netColor};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">${escHtml(d.network_type)}</span>`
+        : '<span style="color:#d1d5db;font-size:12px">-</span>';
       html += `
         <tr>
           <td style="text-align:center;color:#9ca3af;font-size:12px">${globalNo++}</td>
           <td style="font-size:12px;color:#6b7280">${escHtml(d.location||'-')}</td>
           <td><strong style="font-size:13px">${escHtml(d.name)}</strong></td>
+          <td>${netBadge}</td>
           <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${escHtml(d.ip)}</code></td>
           <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${escHtml(d.description||'-')}</td>
           <td style="font-size:11px;color:#9ca3af;white-space:nowrap">${(d.created_at||'').substring(0,10)}</td>
@@ -7150,16 +7214,128 @@ function renderDevicesTable() {
   tbody.innerHTML = html;
 }
 
+// 위치 드랍다운 연동
+function populateDfRegions() {
+  const sel = document.getElementById('df-region');
+  const cur = sel.value;
+  const regions = [...new Set(allLocations.map(l => l.region))].sort((a,b) => a.localeCompare(b,'ko'));
+  sel.innerHTML = '<option value="">지역 선택</option>' +
+    regions.map(r => `<option value="${r}" ${r===cur?'selected':''}>${r}</option>`).join('');
+}
+
+function onDfRegionChange() {
+  const region = document.getElementById('df-region').value;
+  const dongSel = document.getElementById('df-dong');
+  const floorSel = document.getElementById('df-floor');
+  const locs = allLocations.filter(l => l.region === region);
+  dongSel.innerHTML = '<option value="">동 선택</option>' +
+    locs.map(l => `<option value="${l.dong}">${l.dong}</option>`).join('');
+  floorSel.innerHTML = '<option value="">층 선택</option>';
+  updateDeviceName();
+}
+
+function onDfDongChange() {
+  const region = document.getElementById('df-region').value;
+  const dong = document.getElementById('df-dong').value;
+  const floorSel = document.getElementById('df-floor');
+  const loc = allLocations.find(l => l.region === region && l.dong === dong);
+  const floors = loc ? JSON.parse(loc.floors || '[]') : [];
+  floorSel.innerHTML = '<option value="">층 선택</option>' +
+    floors.map(f => `<option value="${f}">${f}</option>`).join('');
+  updateDeviceName();
+}
+
+function onDfNetworkTypeChange() {
+  const val = document.getElementById('df-network-type').value;
+  const customWrap = document.getElementById('df-network-custom-wrap');
+  customWrap.style.display = val === '기타' ? '' : 'none';
+  if (val !== '기타') document.getElementById('df-network-custom').value = '';
+  updateDeviceName();
+}
+
+function updateDeviceName() {
+  const region  = document.getElementById('df-region').value;
+  const dong    = document.getElementById('df-dong').value;
+  const floor   = document.getElementById('df-floor').value;
+  const netType = document.getElementById('df-network-type').value;
+  const netCustom = document.getElementById('df-network-custom').value.trim();
+  const num     = String(parseInt(document.getElementById('df-name-num').value)||1).padStart(2,'0');
+
+  const netLabel = netType === '기타' ? (netCustom || '기타') : netType;
+  const locParts = [region, dong, floor].filter(Boolean);
+  const locStr   = locParts.join(' ');
+
+  let prefix = '';
+  if (locStr && netLabel) prefix = `${locStr}_${netLabel}_`;
+  else if (locStr)        prefix = `${locStr}_`;
+  else if (netLabel)      prefix = `${netLabel}_`;
+
+  document.getElementById('df-name-prefix').value = prefix;
+  const fullName = prefix ? `${prefix}${num}` : '';
+  document.getElementById('df-name').value = fullName;
+  document.getElementById('df-name-preview-text').textContent = fullName || '-';
+}
+
 function openDeviceModal(id) {
   const d = id ? devicesData.find(x => x.id === id) : null;
   document.getElementById('deviceFormTitle').textContent = d ? '장비 수정' : '장비 등록';
   document.getElementById('df-id').value = d ? d.id : '';
-  document.getElementById('df-name').value = d ? d.name : '';
   document.getElementById('df-ip').value = d ? d.ip : '';
   document.getElementById('df-community').value = d ? d.snmp_community : 'public';
   document.getElementById('df-port').value = d ? d.snmp_port : '161';
-  document.getElementById('df-location').value = d ? (d.location||'') : '';
   document.getElementById('df-description').value = d ? (d.description||'') : '';
+
+  // 위치 드랍다운 초기화
+  if (!allLocations.length) loadLocations().then(populateDfRegions);
+  else populateDfRegions();
+
+  if (d) {
+    // 수정 모드: 기존 장비명에서 역파싱
+    // location 컬럼 값 → 지역/동/층 역매핑
+    const locStr = d.location || '';
+    const parts = locStr.split(' ');  // "지역 동 층" 형태로 저장
+    const [savedRegion='', savedDong='', savedFloor=''] = parts;
+
+    document.getElementById('df-region').value = savedRegion;
+    onDfRegionChange();
+    document.getElementById('df-dong').value = savedDong;
+    onDfDongChange();
+    document.getElementById('df-floor').value = savedFloor;
+
+    // 망 타입 파싱 (장비명에서 추출: 지역 동 층_망_번호)
+    const KNOWN_NETS = ['사무망','현장망','장비망','전화망'];
+    const savedNet = d.network_type || '';
+    if (KNOWN_NETS.includes(savedNet)) {
+      document.getElementById('df-network-type').value = savedNet;
+      document.getElementById('df-network-custom-wrap').style.display = 'none';
+    } else if (savedNet) {
+      document.getElementById('df-network-type').value = '기타';
+      document.getElementById('df-network-custom').value = savedNet;
+      document.getElementById('df-network-custom-wrap').style.display = '';
+    } else {
+      document.getElementById('df-network-type').value = '';
+    }
+
+    // 번호 파싱: 장비명 끝의 숫자
+    const nameMatch = d.name.match(/(\d+)$/);
+    document.getElementById('df-name-num').value = nameMatch ? parseInt(nameMatch[1]) : 1;
+    document.getElementById('df-name').value = d.name;
+    document.getElementById('df-name-prefix').value = d.name.replace(/\d+$/, '');
+    document.getElementById('df-name-preview-text').textContent = d.name;
+  } else {
+    // 신규
+    document.getElementById('df-region').value = '';
+    document.getElementById('df-dong').innerHTML = '<option value="">동 선택</option>';
+    document.getElementById('df-floor').innerHTML = '<option value="">층 선택</option>';
+    document.getElementById('df-network-type').value = '';
+    document.getElementById('df-network-custom-wrap').style.display = 'none';
+    document.getElementById('df-network-custom').value = '';
+    document.getElementById('df-name-num').value = '1';
+    document.getElementById('df-name').value = '';
+    document.getElementById('df-name-prefix').value = '';
+    document.getElementById('df-name-preview-text').textContent = '-';
+  }
+
   openModal('deviceFormModal');
 }
 
@@ -7169,15 +7345,31 @@ function closeDeviceModal() {
 
 async function saveDevice() {
   const id = document.getElementById('df-id').value;
+
+  // 장비명 최종 확정
+  updateDeviceName();
+  const name = document.getElementById('df-name').value.trim();
+  if (!name) return alert('위치와 망을 선택하거나 장비명을 확인해주세요.');
+
+  const region = document.getElementById('df-region').value;
+  const dong   = document.getElementById('df-dong').value;
+  const floor  = document.getElementById('df-floor').value;
+  const locStr = [region, dong, floor].filter(Boolean).join(' ');
+
+  const netType   = document.getElementById('df-network-type').value;
+  const netCustom = document.getElementById('df-network-custom').value.trim();
+  const networkType = netType === '기타' ? (netCustom || '기타') : netType;
+
   const body = {
-    name: document.getElementById('df-name').value.trim(),
+    name,
     ip: document.getElementById('df-ip').value.trim(),
     snmp_community: document.getElementById('df-community').value.trim() || 'public',
     snmp_port: parseInt(document.getElementById('df-port').value) || 161,
-    location: document.getElementById('df-location').value.trim(),
+    location: locStr,
+    network_type: networkType,
     description: document.getElementById('df-description').value.trim(),
   };
-  if (!body.name || !body.ip) return alert('장비명과 IP는 필수입니다.');
+  if (!body.ip) return alert('IP 주소는 필수입니다.');
   try {
     const url = id ? `/api/net-devices/${id}` : '/api/net-devices';
     const method = id ? 'PUT' : 'POST';
