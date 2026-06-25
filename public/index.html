@@ -7348,8 +7348,8 @@ function isBetaEnabled() {
 
 function applyBetaState(enabled) {
   // 탭 버튼 표시/숨김 (모든 헤더의 탭)
-  ['tab-cable','tab-cable-s','tab-cable-c','tab-cable-ip',
-   'tab-ip','tab-ip-s','tab-ip-c','tab-ip-ip'].forEach(id => {
+  ['tab-cable','tab-cable-s','tab-cable-c','tab-cable-ip','tab-cable-d',
+   'tab-ip','tab-ip-s','tab-ip-c','tab-ip-ip','tab-ip-d'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = enabled ? '' : 'none';
   });
