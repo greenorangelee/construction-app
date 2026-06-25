@@ -1,5 +1,6 @@
 const express = require('express');
 const initSqlJs = require('sql.js');
+const snmp = require('net-snmp');
 const XLSX = require('xlsx');
 const cors = require('cors');
 const path = require('path');
@@ -217,6 +218,16 @@ async function initDB() {
     original_name TEXT NOT NULL,
     filename TEXT NOT NULL,
     file_size INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS net_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    snmp_community TEXT NOT NULL DEFAULT 'public',
+    snmp_port INTEGER NOT NULL DEFAULT 161,
+    location TEXT DEFAULT '',
+    description TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   saveDB();
@@ -1323,6 +1334,174 @@ app.get('/api/export', authMiddleware, (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${dateStr}_네트워크공사이력.xlsx`)}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
+});
+
+// ── 네트워크 장비 관리 API ──────────────────────────────────────────
+
+app.get('/api/net-devices', authMiddleware, (req, res) => {
+  res.json(queryAll('SELECT * FROM net_devices ORDER BY id'));
+});
+
+app.post('/api/net-devices', authMiddleware, requireWrite, (req, res) => {
+  const { name, ip, snmp_community, snmp_port, location, description } = req.body;
+  if (!name || !ip) return res.status(400).json({ error: '장비명과 IP는 필수입니다' });
+  db.run(
+    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,description) VALUES (?,?,?,?,?,?)',
+    [name.trim(), ip.trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', description||'']
+  );
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
+  const { name, ip, snmp_community, snmp_port, location, description } = req.body;
+  if (!name || !ip) return res.status(400).json({ error: '장비명과 IP는 필수입니다' });
+  db.run(
+    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,description=? WHERE id=?',
+    [name.trim(), ip.trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', description||'', req.params.id]
+  );
+  saveDB();
+  res.json({ success: true });
+});
+
+app.delete('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
+  db.run('DELETE FROM net_devices WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+// SNMP 조회 API
+app.get('/api/net-devices/:id/snmp', authMiddleware, (req, res) => {
+  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
+  if (!device) return res.status(404).json({ error: '장비를 찾을 수 없습니다' });
+
+  const session = snmp.createSession(device.ip, device.snmp_community, {
+    port: device.snmp_port,
+    retries: 1,
+    timeout: 5000,
+    version: snmp.Version2c,
+  });
+
+  const result = {
+    device: { id: device.id, name: device.name, ip: device.ip },
+    system: {},
+    interfaces: [],
+    error: null,
+  };
+
+  // OIDs
+  const SYS_DESCR  = '1.3.6.1.2.1.1.1.0';
+  const SYS_UPTIME = '1.3.6.1.2.1.1.3.0';
+  const SYS_NAME   = '1.3.6.1.2.1.1.5.0';
+
+  // ifTable OID bases
+  const IF_DESCR_BASE  = '1.3.6.1.2.1.2.2.1.2';
+  const IF_OPER_BASE   = '1.3.6.1.2.1.2.2.1.8';
+  const IF_ADMIN_BASE  = '1.3.6.1.2.1.2.2.1.7';
+  const IF_SPEED_BASE  = '1.3.6.1.2.1.2.2.1.5';
+  const IF_IN_BASE     = '1.3.6.1.2.1.2.2.1.10';
+  const IF_OUT_BASE    = '1.3.6.1.2.1.2.2.1.16';
+
+  function uptimeToString(ticks) {
+    const totalSec = Math.floor(ticks / 100);
+    const days  = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
+    const mins  = Math.floor((totalSec % 3600) / 60);
+    const secs  = totalSec % 60;
+    return `${days}일 ${hours}시간 ${mins}분 ${secs}초`;
+  }
+
+  // 1단계: 시스템 정보 GET
+  session.get([SYS_DESCR, SYS_UPTIME, SYS_NAME], (err, varbinds) => {
+    if (err) {
+      session.close();
+      return res.status(200).json({ ...result, error: `SNMP 연결 실패: ${err.message}` });
+    }
+    if (!snmp.isVarbindError(varbinds[0])) result.system.sysDescr  = varbinds[0].value.toString();
+    if (!snmp.isVarbindError(varbinds[1])) result.system.sysUptime = uptimeToString(varbinds[1].value);
+    if (!snmp.isVarbindError(varbinds[2])) result.system.sysName   = varbinds[2].value.toString();
+
+    // 2단계: ifDescr 테이블 walk → 인덱스 수집
+    const ifMap = {}; // index → {descr, operStatus, adminStatus, speed, inOctets, outOctets}
+
+    session.subtree(IF_DESCR_BASE, 20, (vb) => {
+      if (!snmp.isVarbindError(vb)) {
+        const idx = vb.oid.split('.').pop();
+        if (!ifMap[idx]) ifMap[idx] = {};
+        ifMap[idx].descr = vb.value.toString();
+      }
+    }, (err2) => {
+      if (err2) {
+        session.close();
+        return res.json({ ...result, error: `인터페이스 조회 실패: ${err2.message}` });
+      }
+
+      const indices = Object.keys(ifMap);
+      if (indices.length === 0) {
+        session.close();
+        return res.json(result);
+      }
+
+      // 3단계: 각 인터페이스의 OperStatus / AdminStatus / Speed / Octets GET
+      const oids = [];
+      indices.forEach(idx => {
+        oids.push(`${IF_OPER_BASE}.${idx}`);
+        oids.push(`${IF_ADMIN_BASE}.${idx}`);
+        oids.push(`${IF_SPEED_BASE}.${idx}`);
+        oids.push(`${IF_IN_BASE}.${idx}`);
+        oids.push(`${IF_OUT_BASE}.${idx}`);
+      });
+
+      // net-snmp GET는 한번에 최대 ~60 OID 처리 가능; 분할
+      const chunkSize = 50;
+      const chunks = [];
+      for (let i = 0; i < oids.length; i += chunkSize) chunks.push(oids.slice(i, i + chunkSize));
+
+      let chunkIdx = 0;
+      function processChunk() {
+        if (chunkIdx >= chunks.length) {
+          // 최종 결과 조립
+          const STATUS_MAP = { 1: 'up', 2: 'down', 3: 'testing', 4: 'unknown', 5: 'dormant', 6: 'notPresent', 7: 'lowerLayerDown' };
+          indices.forEach(idx => {
+            const iface = ifMap[idx];
+            result.interfaces.push({
+              index: parseInt(idx),
+              descr: iface.descr || '',
+              operStatus: STATUS_MAP[iface.operStatus] || String(iface.operStatus || ''),
+              adminStatus: STATUS_MAP[iface.adminStatus] || String(iface.adminStatus || ''),
+              speedMbps: iface.speed ? Math.round(iface.speed / 1000000) : 0,
+              inOctets: iface.inOctets || 0,
+              outOctets: iface.outOctets || 0,
+            });
+          });
+          result.interfaces.sort((a, b) => a.index - b.index);
+          session.close();
+          return res.json(result);
+        }
+
+        session.get(chunks[chunkIdx], (err3, vbs) => {
+          if (!err3) {
+            vbs.forEach(vb => {
+              if (snmp.isVarbindError(vb)) return;
+              const parts = vb.oid.split('.');
+              const idx = parts.pop();
+              const base = parts.join('.');
+              if (!ifMap[idx]) ifMap[idx] = {};
+              const val = typeof vb.value === 'object' ? vb.value.toNumber ? vb.value.toNumber() : parseInt(vb.value.toString()) : vb.value;
+              if (base === IF_OPER_BASE)  ifMap[idx].operStatus  = val;
+              if (base === IF_ADMIN_BASE) ifMap[idx].adminStatus = val;
+              if (base === IF_SPEED_BASE) ifMap[idx].speed       = val;
+              if (base === IF_IN_BASE)    ifMap[idx].inOctets    = val;
+              if (base === IF_OUT_BASE)   ifMap[idx].outOctets   = val;
+            });
+          }
+          chunkIdx++;
+          processChunk();
+        });
+      }
+      processChunk();
+    });
+  });
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
