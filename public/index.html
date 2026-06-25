@@ -7261,14 +7261,16 @@ function updateDeviceName() {
   const netCustom = document.getElementById('df-network-custom').value.trim();
   const num     = String(parseInt(document.getElementById('df-name-num').value)||1).padStart(2,'0');
 
-  const netLabel = netType === '기타' ? (netCustom || '기타') : netType;
+  const NET_CODE = { '사무망':'O', '현장망':'F', '장비망':'E', '전화망':'V' };
+  const netCode = NET_CODE[netType] || (netType === '기타' ? (netCustom || '기타') : '');
+
   const locParts = [region, dong, floor].filter(Boolean);
-  const locStr   = locParts.join(' ');
+  const locStr = locParts.join('_');
 
   let prefix = '';
-  if (locStr && netLabel) prefix = `${locStr}_${netLabel}_`;
-  else if (locStr)        prefix = `${locStr}_`;
-  else if (netLabel)      prefix = `${netLabel}_`;
+  if (locStr && netCode) prefix = `${locStr}_${netCode}_`;
+  else if (locStr)       prefix = `${locStr}_`;
+  else if (netCode)      prefix = `${netCode}_`;
 
   document.getElementById('df-name-prefix').value = prefix;
   const fullName = prefix ? `${prefix}${num}` : '';
@@ -7293,7 +7295,7 @@ function openDeviceModal(id) {
     // 수정 모드: 기존 장비명에서 역파싱
     // location 컬럼 값 → 지역/동/층 역매핑
     const locStr = d.location || '';
-    const parts = locStr.split(' ');  // "지역 동 층" 형태로 저장
+    const parts = locStr.split('_');  // "지역_동_층" 형태로 저장
     const [savedRegion='', savedDong='', savedFloor=''] = parts;
 
     document.getElementById('df-region').value = savedRegion;
@@ -7354,7 +7356,7 @@ async function saveDevice() {
   const region = document.getElementById('df-region').value;
   const dong   = document.getElementById('df-dong').value;
   const floor  = document.getElementById('df-floor').value;
-  const locStr = [region, dong, floor].filter(Boolean).join(' ');
+  const locStr = [region, dong, floor].filter(Boolean).join('_');
 
   const netType   = document.getElementById('df-network-type').value;
   const netCustom = document.getElementById('df-network-custom').value.trim();
