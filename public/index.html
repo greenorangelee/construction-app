@@ -2814,21 +2814,41 @@
         </div>
       </div>
 
-      <!-- 검색 바 -->
-      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:#fafafa;display:flex;gap:8px;align-items:center">
-        <div style="position:relative;flex:1;max-width:420px">
-          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;pointer-events:none">🔍</span>
+      <!-- 검색 + 필터 바 -->
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:#fafafa;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <!-- 텍스트 검색 -->
+        <div style="position:relative;min-width:200px;flex:1;max-width:340px">
+          <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none">🔍</span>
           <input type="text" id="devSearchInput"
-            placeholder="장비명, IP, 위치, 제조사, 모델, 시리얼 검색..."
-            oninput="onDevSearch()"
-            style="width:100%;padding:7px 12px 7px 32px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;outline:none;background:#fff;transition:border-color .15s;color:#1e293b"
-            onfocus="this.style.borderColor='#c0392b';this.style.boxShadow='0 0 0 2px #c0392b22'"
-            onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+            placeholder="장비명, IP, 모델, 시리얼..."
+            oninput="onDevFilter()"
+            style="width:100%;padding:6px 10px 6px 28px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;outline:none;background:#fff;color:#1e293b"
+            onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#d1d5db'">
         </div>
-        <span id="devSearchCount" style="font-size:12px;color:#9ca3af;white-space:nowrap"></span>
-        <button id="devSearchClearBtn" onclick="clearDevSearch()"
-          style="display:none;padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;background:#fff;font-size:12px;color:#6b7280;cursor:pointer">
-          ✕ 초기화
+        <!-- 위치 필터 -->
+        <select id="devFilterLocation" onchange="onDevFilter()"
+          style="padding:6px 28px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
+          <option value="">전체 위치</option>
+        </select>
+        <!-- 망 필터 -->
+        <select id="devFilterNetwork" onchange="onDevFilter()"
+          style="padding:6px 28px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
+          <option value="">전체 망</option>
+          <option value="사무망">사무망</option>
+          <option value="현장망">현장망</option>
+          <option value="장비망">장비망</option>
+          <option value="전화망">전화망</option>
+        </select>
+        <!-- 제조사 필터 -->
+        <select id="devFilterVendor" onchange="onDevFilter()"
+          style="padding:6px 28px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
+          <option value="">전체 제조사</option>
+        </select>
+        <!-- 결과 수 + 초기화 -->
+        <span id="devSearchCount" style="font-size:12px;color:#9ca3af;white-space:nowrap;margin-left:2px"></span>
+        <button id="devSearchClearBtn" onclick="clearDevFilter()"
+          style="display:none;padding:5px 10px;border:1px solid #fca5a5;border-radius:7px;background:#fef2f2;font-size:12px;color:#ef4444;cursor:pointer;white-space:nowrap">
+          ✕ 필터 초기화
         </button>
       </div>
 
@@ -6891,7 +6911,7 @@ function switchTab(tab) {
   if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
-  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
+  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={location:'',network:'',vendor:''}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -7331,22 +7351,66 @@ function exportDevicesExcel() {
 // ── 장비 검색 ──────────────────────────────────────────
 
 let devSearchQuery = '';
+let devFilters = { location: '', network: '', vendor: '' };
 
-function onDevSearch() {
-  const q = document.getElementById('devSearchInput').value.trim();
-  devSearchQuery = q;
-  document.getElementById('devSearchClearBtn').style.display = q ? '' : 'none';
+// 필터 드랍다운 옵션 채우기 (데이터 로드 후 호출)
+function populateDevFilters() {
+  // 위치 (지역 기준)
+  const locations = [...new Set(devicesData.map(d => d.location).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+  const locSel = document.getElementById('devFilterLocation');
+  const curLoc = locSel.value;
+  locSel.innerHTML = '<option value="">전체 위치</option>' +
+    locations.map(l => `<option value="${escHtml(l)}" ${l===curLoc?'selected':''}>${escHtml(l)}</option>`).join('');
+
+  // 제조사
+  const vendors = [...new Set(devicesData.map(d => d.vendor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+  const venSel = document.getElementById('devFilterVendor');
+  const curVen = venSel.value;
+  venSel.innerHTML = '<option value="">전체 제조사</option>' +
+    vendors.map(v => `<option value="${escHtml(v)}" ${v===curVen?'selected':''}>${escHtml(v)}</option>`).join('');
+}
+
+function onDevFilter() {
+  devSearchQuery      = document.getElementById('devSearchInput').value.trim();
+  devFilters.location = document.getElementById('devFilterLocation').value;
+  devFilters.network  = document.getElementById('devFilterNetwork').value;
+  devFilters.vendor   = document.getElementById('devFilterVendor').value;
+
+  const hasFilter = devSearchQuery || devFilters.location || devFilters.network || devFilters.vendor;
+  document.getElementById('devSearchClearBtn').style.display = hasFilter ? '' : 'none';
+
+  // 활성 필터 시각 표시
+  ['devFilterLocation','devFilterNetwork','devFilterVendor'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const active = !!el.value;
+    el.style.borderColor    = active ? '#c0392b' : '#d1d5db';
+    el.style.background     = active ? '#fff9f9' : '#fff';
+    el.style.color          = active ? '#c0392b' : '#374151';
+    el.style.fontWeight     = active ? '600'     : '400';
+  });
+
   renderDevicesTable();
 }
 
-function clearDevSearch() {
-  document.getElementById('devSearchInput').value = '';
+// 기존 onDevSearch 호환 유지
+function onDevSearch() { onDevFilter(); }
+
+function clearDevFilter() {
+  document.getElementById('devSearchInput').value    = '';
+  document.getElementById('devFilterLocation').value = '';
+  document.getElementById('devFilterNetwork').value  = '';
+  document.getElementById('devFilterVendor').value   = '';
   devSearchQuery = '';
+  devFilters = { location: '', network: '', vendor: '' };
   document.getElementById('devSearchClearBtn').style.display = 'none';
   document.getElementById('devSearchCount').textContent = '';
   renderDevicesTable();
   document.getElementById('devSearchInput').focus();
 }
+
+// 기존 clearDevSearch 호환 유지
+function clearDevSearch() { clearDevFilter(); }
 
 function matchesSearch(d, q) {
   if (!q) return true;
@@ -7355,6 +7419,13 @@ function matchesSearch(d, q) {
     d.name, d.location, d.location_detail, d.network_type,
     d.ip, d.vendor, d.model, d.serial, d.mac, d.description,
   ].some(v => v && v.toLowerCase().includes(lower));
+}
+
+function matchesFilters(d) {
+  if (devFilters.location && d.location !== devFilters.location) return false;
+  if (devFilters.network  && d.network_type !== devFilters.network) return false;
+  if (devFilters.vendor   && d.vendor !== devFilters.vendor) return false;
+  return true;
 }
 
 // 검색어 하이라이트
@@ -7371,6 +7442,7 @@ async function loadDevices() {
     const res = await fetch('/api/net-devices', { headers: { 'Authorization': 'Bearer ' + getToken() } });
     if (!res.ok) throw new Error('조회 실패');
     devicesData = await res.json();
+    populateDevFilters();
     renderDevicesTable();
   } catch(e) {
     document.getElementById('devicesTableBody').innerHTML =
@@ -7384,7 +7456,7 @@ function renderDevicesTable() {
   const q = devSearchQuery;
 
   // 검색 필터 적용
-  const filtered = devicesData.filter(d => matchesSearch(d, q));
+  const filtered = devicesData.filter(d => matchesSearch(d, q) && matchesFilters(d));
 
   // 검색 결과 카운트 표시
   const countEl = document.getElementById('devSearchCount');
