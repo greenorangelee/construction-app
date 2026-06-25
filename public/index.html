@@ -2095,6 +2095,7 @@
       <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">공사 이력</button>
       <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
       <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip">🖥️ IP 대장</button>
+      <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices">🔌 네트워크 장비</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -2327,6 +2328,7 @@
         <button class="nav-tab" onclick="switchTab('main')" id="tab-main-ip">공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-ip">🗺️ 선번 관리</button>
         <button class="nav-tab active" onclick="switchTab('ip')" id="tab-ip-ip">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-ip">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
@@ -2538,6 +2540,7 @@
         <button class="nav-tab" onclick="switchTab('main')" id="tab-main-c">공사 이력</button>
         <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-c">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-c">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -2780,6 +2783,115 @@
     </div>
   </div>
 </div>
+<!-- ─── 네트워크 장비 페이지 ─── -->
+<div id="devicesPage" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-d">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-d">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-d">🖥️ IP 대장</button>
+        <button class="nav-tab active" onclick="switchTab('devices')" id="tab-devices-d">🔌 네트워크 장비</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <span id="devUserBadge" class="user-badge"></span>
+      <button class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)" onclick="doLogout()">로그아웃</button>
+    </div>
+  </header>
+
+  <div class="main-content" style="padding:24px">
+    <div class="table-wrapper">
+      <div class="table-header">
+        <h2>🔌 네트워크 장비 관리</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="devAddBtn" onclick="openDeviceModal()">+ 장비 등록</button>
+        </div>
+      </div>
+
+      <div class="table-wrap scroll-table">
+        <table id="devicesTable">
+          <thead>
+            <tr>
+              <th style="width:40px">No.</th>
+              <th>장비명</th>
+              <th>IP 주소</th>
+              <th>SNMP Community</th>
+              <th>Port</th>
+              <th>위치</th>
+              <th>설명</th>
+              <th>등록일</th>
+              <th style="width:140px">작업</th>
+            </tr>
+          </thead>
+          <tbody id="devicesTableBody">
+            <tr><td colspan="9" style="text-align:center;padding:32px;color:#999">장비가 없습니다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 장비 등록/수정 모달 -->
+<div id="deviceFormModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeDeviceModal()">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <h3 id="deviceFormTitle">장비 등록</h3>
+      <button class="modal-close" onclick="closeDeviceModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+      <input type="hidden" id="df-id">
+      <div>
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">장비명 <span style="color:red">*</span></label>
+        <input type="text" id="df-name" class="form-input" placeholder="예) 본관 1층 스위치">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">IP 주소 <span style="color:red">*</span></label>
+        <input type="text" id="df-ip" class="form-input" placeholder="예) 10.100.100.10">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">SNMP Community</label>
+          <input type="text" id="df-community" class="form-input" value="public" placeholder="public">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">포트</label>
+          <input type="number" id="df-port" class="form-input" value="161" placeholder="161">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">위치</label>
+        <input type="text" id="df-location" class="form-input" placeholder="예) 본관 1층 MDF실">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">설명</label>
+        <input type="text" id="df-description" class="form-input" placeholder="장비 설명">
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid #eee">
+      <button class="btn" onclick="closeDeviceModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveDevice()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- SNMP 조회 결과 모달 -->
+<div id="snmpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeSnmpModal()">
+  <div class="modal-box" style="max-width:780px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 id="snmpModalTitle">SNMP 조회 결과</h3>
+      <button class="modal-close" onclick="closeSnmpModal()">✕</button>
+    </div>
+    <div id="snmpModalBody" class="modal-body" style="padding:20px;overflow-y:auto;flex:1">
+      <div style="text-align:center;padding:32px;color:#999">불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
 <!-- ─── 설정 페이지 ─── -->
 <div id="settingsPage">
   <header class="header">
@@ -2790,6 +2902,7 @@
         <button class="nav-tab" onclick="switchTab('main')" id="tab-main-s">공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-s">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-s">🔌 네트워크 장비</button>
         <button class="nav-tab active" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -6547,10 +6660,11 @@ function switchTab(tab) {
   document.getElementById('mainPage').style.display = tab === 'main' ? 'block' : 'none';
   document.getElementById('cablePage').style.display = tab === 'cable' ? 'block' : 'none';
   document.getElementById('ipPage').style.display = tab === 'ip' ? 'block' : 'none';
+  document.getElementById('devicesPage').style.display = tab === 'devices' ? 'block' : 'none';
   document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
 
-  ['main','cable','ip','settings'].forEach(t => {
-    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c', 'tab-'+t+'-ip'].forEach(id => {
+  ['main','cable','ip','devices','settings'].forEach(t => {
+    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c', 'tab-'+t+'-ip', 'tab-'+t+'-d'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', t === tab);
     });
@@ -6559,6 +6673,7 @@ function switchTab(tab) {
   if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
+  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -6956,6 +7071,242 @@ function resetColWidths() {
 
 initColVisibility();
 checkAuth();
+
+// ── 네트워크 장비 관리 ──────────────────────────────────────────
+
+let devicesData = [];
+
+function updateDeviceUIByRole() {
+  const canWrite = currentUser && (currentUser.role === 'write' || currentUser.role === 'admin');
+  const addBtn = document.getElementById('devAddBtn');
+  if (addBtn) addBtn.style.display = canWrite ? '' : 'none';
+  const badge = document.getElementById('devUserBadge');
+  if (badge && currentUser) badge.textContent = currentUser.username;
+}
+
+async function loadDevices() {
+  try {
+    const res = await fetch('/api/net-devices', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    if (!res.ok) throw new Error('조회 실패');
+    devicesData = await res.json();
+    renderDevicesTable();
+  } catch(e) {
+    document.getElementById('devicesTableBody').innerHTML =
+      `<tr><td colspan="9" style="text-align:center;padding:32px;color:#c00">장비 목록 로드 실패: ${e.message}</td></tr>`;
+  }
+}
+
+function renderDevicesTable() {
+  const tbody = document.getElementById('devicesTableBody');
+  const canWrite = currentUser && (currentUser.role === 'write' || currentUser.role === 'admin');
+  if (!devicesData.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = devicesData.map((d, i) => `
+    <tr>
+      <td style="text-align:center;color:#999">${i+1}</td>
+      <td><strong>${escHtml(d.name)}</strong></td>
+      <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${escHtml(d.ip)}</code></td>
+      <td style="color:#6b7280;font-size:12px">${escHtml(d.snmp_community)}</td>
+      <td style="text-align:center;color:#6b7280;font-size:12px">${d.snmp_port}</td>
+      <td style="font-size:13px">${escHtml(d.location||'-')}</td>
+      <td style="font-size:12px;color:#6b7280;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${escHtml(d.description||'-')}</td>
+      <td style="font-size:11px;color:#9ca3af">${(d.created_at||'').substring(0,10)}</td>
+      <td style="text-align:center">
+        <button class="btn btn-sm" onclick="runSnmp(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;margin-right:4px;background:#3b82f6;color:#fff;border:none">📡 SNMP</button>
+        ${canWrite ? `
+        <button class="btn btn-sm" onclick="openDeviceModal(${d.id})" style="font-size:11px;padding:3px 8px;margin-right:4px">수정</button>
+        <button class="btn btn-sm" onclick="deleteDevice(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;background:#ef4444;color:#fff;border:none">삭제</button>
+        ` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openDeviceModal(id) {
+  const d = id ? devicesData.find(x => x.id === id) : null;
+  document.getElementById('deviceFormTitle').textContent = d ? '장비 수정' : '장비 등록';
+  document.getElementById('df-id').value = d ? d.id : '';
+  document.getElementById('df-name').value = d ? d.name : '';
+  document.getElementById('df-ip').value = d ? d.ip : '';
+  document.getElementById('df-community').value = d ? d.snmp_community : 'public';
+  document.getElementById('df-port').value = d ? d.snmp_port : '161';
+  document.getElementById('df-location').value = d ? (d.location||'') : '';
+  document.getElementById('df-description').value = d ? (d.description||'') : '';
+  document.getElementById('deviceFormModal').style.display = 'flex';
+}
+
+function closeDeviceModal() {
+  document.getElementById('deviceFormModal').style.display = 'none';
+}
+
+async function saveDevice() {
+  const id = document.getElementById('df-id').value;
+  const body = {
+    name: document.getElementById('df-name').value.trim(),
+    ip: document.getElementById('df-ip').value.trim(),
+    snmp_community: document.getElementById('df-community').value.trim() || 'public',
+    snmp_port: parseInt(document.getElementById('df-port').value) || 161,
+    location: document.getElementById('df-location').value.trim(),
+    description: document.getElementById('df-description').value.trim(),
+  };
+  if (!body.name || !body.ip) return alert('장비명과 IP는 필수입니다.');
+  try {
+    const url = id ? `/api/net-devices/${id}` : '/api/net-devices';
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error||'저장 실패'); }
+    closeDeviceModal();
+    loadDevices();
+  } catch(e) { alert('저장 실패: ' + e.message); }
+}
+
+async function deleteDevice(id, name) {
+  if (!confirm(`"${name}" 장비를 삭제하시겠습니까?`)) return;
+  try {
+    const res = await fetch(`/api/net-devices/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+    });
+    if (!res.ok) throw new Error('삭제 실패');
+    loadDevices();
+  } catch(e) { alert('삭제 실패: ' + e.message); }
+}
+
+// ── SNMP 조회 ──────────────────────────────────────────
+
+async function runSnmp(id, name) {
+  document.getElementById('snmpModalTitle').textContent = `📡 SNMP 조회 — ${name}`;
+  document.getElementById('snmpModalBody').innerHTML = `
+    <div style="text-align:center;padding:40px;color:#666">
+      <div style="font-size:28px;margin-bottom:12px">📡</div>
+      <div>SNMP 조회 중...</div>
+    </div>`;
+  document.getElementById('snmpModal').style.display = 'flex';
+  try {
+    const res = await fetch(`/api/net-devices/${id}/snmp`, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    const data = await res.json();
+    renderSnmpResult(data);
+  } catch(e) {
+    document.getElementById('snmpModalBody').innerHTML =
+      `<div style="color:#c00;padding:20px">조회 실패: ${e.message}</div>`;
+  }
+}
+
+function closeSnmpModal() {
+  document.getElementById('snmpModal').style.display = 'none';
+}
+
+function renderSnmpResult(data) {
+  const body = document.getElementById('snmpModalBody');
+  if (data.error) {
+    body.innerHTML = `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;color:#991b1b;display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">⚠️</span>
+        <div><strong>조회 실패</strong><br><span style="font-size:13px">${escHtml(data.error)}</span></div>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:#9ca3af;padding:8px 12px;background:#f9fafb;border-radius:6px">
+        💡 SNMP Community 문자열, IP 주소, 방화벽 설정(UDP 161)을 확인하세요.
+      </div>`;
+    return;
+  }
+
+  const sys = data.system || {};
+  let html = `
+    <!-- 시스템 정보 -->
+    <div style="margin-bottom:20px">
+      <div style="font-weight:600;font-size:13px;color:#374151;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e5e7eb">
+        🖥️ 시스템 정보
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="background:#f9fafb">
+          <td style="padding:8px 12px;font-weight:600;color:#6b7280;width:140px;border-bottom:1px solid #e5e7eb">장비명 (sysName)</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(sys.sysName||'-')}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb">가동 시간</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(sys.sysUptime||'-')}</td>
+        </tr>
+        <tr style="background:#f9fafb">
+          <td style="padding:8px 12px;font-weight:600;color:#6b7280;vertical-align:top">시스템 설명</td>
+          <td style="padding:8px 12px;font-size:12px;color:#374151;word-break:break-all">${escHtml(sys.sysDescr||'-')}</td>
+        </tr>
+      </table>
+    </div>`;
+
+  // 인터페이스 목록
+  const ifaces = data.interfaces || [];
+  if (ifaces.length > 0) {
+    const upCount   = ifaces.filter(i => i.operStatus === 'up').length;
+    const downCount = ifaces.filter(i => i.operStatus === 'down').length;
+
+    html += `
+      <div>
+        <div style="font-weight:600;font-size:13px;color:#374151;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
+          <span>🔌 인터페이스 상태</span>
+          <span style="font-size:12px;font-weight:400;color:#6b7280">
+            전체 ${ifaces.length}개 &nbsp;·&nbsp;
+            <span style="color:#16a34a">▲ UP ${upCount}</span> &nbsp;
+            <span style="color:#dc2626">▼ DOWN ${downCount}</span>
+          </span>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:#f3f4f6">
+                <th style="padding:7px 10px;text-align:left;color:#6b7280;font-weight:600;white-space:nowrap">Idx</th>
+                <th style="padding:7px 10px;text-align:left;color:#6b7280;font-weight:600">인터페이스</th>
+                <th style="padding:7px 10px;text-align:center;color:#6b7280;font-weight:600">운영상태</th>
+                <th style="padding:7px 10px;text-align:center;color:#6b7280;font-weight:600">관리상태</th>
+                <th style="padding:7px 10px;text-align:right;color:#6b7280;font-weight:600">속도</th>
+                <th style="padding:7px 10px;text-align:right;color:#6b7280;font-weight:600">In (Octets)</th>
+                <th style="padding:7px 10px;text-align:right;color:#6b7280;font-weight:600">Out (Octets)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ifaces.map((iface, idx) => {
+                const isUp = iface.operStatus === 'up';
+                const statusColor = isUp ? '#16a34a' : (iface.operStatus === 'down' ? '#dc2626' : '#f59e0b');
+                const statusBg = isUp ? '#f0fdf4' : (iface.operStatus === 'down' ? '#fef2f2' : '#fffbeb');
+                const statusIcon = isUp ? '▲' : (iface.operStatus === 'down' ? '▼' : '◉');
+                return `
+                  <tr style="border-bottom:1px solid #f3f4f6;${idx%2===1?'background:#fafafa':''}">
+                    <td style="padding:7px 10px;color:#9ca3af;text-align:center">${iface.index}</td>
+                    <td style="padding:7px 10px;font-weight:500">${escHtml(iface.descr||'-')}</td>
+                    <td style="padding:7px 10px;text-align:center">
+                      <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">
+                        ${statusIcon} ${iface.operStatus||'-'}
+                      </span>
+                    </td>
+                    <td style="padding:7px 10px;text-align:center;color:#6b7280">${iface.adminStatus||'-'}</td>
+                    <td style="padding:7px 10px;text-align:right;color:#374151">${iface.speedMbps > 0 ? iface.speedMbps.toLocaleString()+' Mbps' : '-'}</td>
+                    <td style="padding:7px 10px;text-align:right;color:#6b7280;font-family:monospace">${iface.inOctets.toLocaleString()}</td>
+                    <td style="padding:7px 10px;text-align:right;color:#6b7280;font-family:monospace">${iface.outOctets.toLocaleString()}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } else {
+    html += `<div style="color:#9ca3af;font-size:13px;padding:12px">인터페이스 정보를 가져올 수 없었습니다.</div>`;
+  }
+
+  html += `<div style="margin-top:12px;font-size:11px;color:#9ca3af;text-align:right">조회 시각: ${new Date().toLocaleString('ko-KR')}</div>`;
+  body.innerHTML = html;
+}
+
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 </script>
 </body>
