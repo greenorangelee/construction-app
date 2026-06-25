@@ -1384,84 +1384,130 @@ app.delete('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
   res.json({ success: true });
 });
 
-// QR 코드 생성 API
-app.get('/api/net-devices/:id/qr', authMiddleware, async (req, res) => {
-  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
-  if (!device) return res.status(404).json({ error: '장비를 찾을 수 없습니다' });
-
-  // 인터페이스 요약 (예: 24xRJ45(1G), 4xSFP+(10G))
+// 장비 정보 텍스트 빌더 (공통)
+function buildDeviceInfoLines(device) {
   let ifaceSummary = '';
   try {
     const ifaces = JSON.parse(device.interfaces || '[]');
     ifaceSummary = ifaces.map(i => `${i.count}x${i.portType}(${i.speed})`).join(', ');
   } catch(e) {}
-
-  // QR 데이터: 파이프 구분 텍스트 (오프라인 카메라 앱에서 바로 읽힘)
-  const lines = [
+  return [
     `장비명: ${device.name}`,
     `위치: ${device.location || '-'}`,
     `망: ${device.network_type || '-'}`,
-    device.ip            ? `IP: ${device.ip}`          : null,
-    device.vendor        ? `제조사: ${device.vendor}`   : null,
-    device.model         ? `모델: ${device.model}`      : null,
-    device.serial        ? `S/N: ${device.serial}`      : null,
-    device.mac           ? `MAC: ${device.mac}`         : null,
-    ifaceSummary         ? `포트: ${ifaceSummary}`       : null,
-    device.description   ? `설명: ${device.description}`: null,
+    device.ip          ? `IP: ${device.ip}`           : null,
+    device.vendor      ? `제조사: ${device.vendor}`    : null,
+    device.model       ? `모델: ${device.model}`       : null,
+    device.serial      ? `S/N: ${device.serial}`       : null,
+    device.mac         ? `MAC: ${device.mac}`          : null,
+    ifaceSummary       ? `포트: ${ifaceSummary}`        : null,
+    device.description ? `설명: ${device.description}` : null,
   ].filter(Boolean);
+}
 
-  const qrText = lines.join('\n');
+// QR 코드 생성 API
+// query: mode=offline|url, baseUrl=http://...  (url 모드 시)
+app.get('/api/net-devices/:id/qr', authMiddleware, async (req, res) => {
+  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
+  if (!device) return res.status(404).json({ error: '장비를 찾을 수 없습니다' });
+
+  const mode    = req.query.mode || 'offline';
+  const baseUrl = (req.query.baseUrl || '').replace(/\/$/, '');
+  const lines   = buildDeviceInfoLines(device);
+  const qrText  = lines.join('\n');
+
+  // QR에 실제 인코딩할 콘텐츠
+  let qrContent;
+  if (mode === 'url') {
+    qrContent = baseUrl
+      ? `${baseUrl}/device/${device.id}`
+      : `http://localhost:3000/device/${device.id}`;
+  } else {
+    // data URI → 브라우저에서 인터넷 없이 텍스트 파일로 열림
+    qrContent = 'data:text/plain;charset=utf-8,' + encodeURIComponent(qrText);
+  }
 
   try {
-    const dataUrl = await QRCode.toDataURL(qrText, {
-      errorCorrectionLevel: 'M',
+    const qrDataUrl = await QRCode.toDataURL(qrContent, {
+      errorCorrectionLevel: mode === 'url' ? 'M' : 'L',  // offline은 L로 QR 단순화
       width: 300,
       margin: 2,
       color: { dark: '#000000', light: '#ffffff' },
     });
-    res.json({ qrDataUrl: dataUrl, qrText, device });
+    res.json({ qrDataUrl, qrText, qrContent, mode, device });
   } catch(e) {
     res.status(500).json({ error: 'QR 생성 실패: ' + e.message });
   }
 });
 
-// QR 일괄 생성 (여러 장비 한꺼번에)
+// QR 일괄 생성
 app.post('/api/net-devices/qr-batch', authMiddleware, async (req, res) => {
-  const { ids } = req.body;
+  const { ids, mode, baseUrl } = req.body;
   if (!ids || !ids.length) return res.status(400).json({ error: 'ids 필요' });
 
+  const cleanBase = (baseUrl || '').replace(/\/$/, '');
   const results = [];
   for (const id of ids) {
     const device = queryOne('SELECT * FROM net_devices WHERE id=?', [id]);
     if (!device) continue;
+    const lines = buildDeviceInfoLines(device);
+    const qrText = lines.join('\n');
 
-    let ifaceSummary = '';
-    try {
-      const ifaces = JSON.parse(device.interfaces || '[]');
-      ifaceSummary = ifaces.map(i => `${i.count}x${i.portType}(${i.speed})`).join(', ');
-    } catch(e) {}
-
-    const lines = [
-      `장비명: ${device.name}`,
-      `위치: ${device.location || '-'}`,
-      `망: ${device.network_type || '-'}`,
-      device.ip          ? `IP: ${device.ip}`          : null,
-      device.vendor      ? `제조사: ${device.vendor}`   : null,
-      device.model       ? `모델: ${device.model}`      : null,
-      device.serial      ? `S/N: ${device.serial}`      : null,
-      device.mac         ? `MAC: ${device.mac}`         : null,
-      ifaceSummary       ? `포트: ${ifaceSummary}`       : null,
-      device.description ? `설명: ${device.description}`: null,
-    ].filter(Boolean);
+    let qrContent;
+    if (mode === 'url') {
+      qrContent = cleanBase ? `${cleanBase}/device/${device.id}` : `http://localhost:3000/device/${device.id}`;
+    } else {
+      qrContent = 'data:text/plain;charset=utf-8,' + encodeURIComponent(qrText);
+    }
 
     try {
-      const dataUrl = await QRCode.toDataURL(lines.join('\n'), {
-        errorCorrectionLevel: 'M', width: 300, margin: 2,
+      const qrDataUrl = await QRCode.toDataURL(qrContent, {
+        errorCorrectionLevel: mode === 'url' ? 'M' : 'L',
+        width: 300, margin: 2,
       });
-      results.push({ device, qrDataUrl: dataUrl, qrText: lines.join('\n') });
+      results.push({ device, qrDataUrl, qrText, qrContent, mode });
     } catch(e) {}
   }
   res.json(results);
+});
+
+// 장비 상세 페이지 (URL 모드 QR 스캔 시 열리는 페이지 - 사내망 필요)
+app.get('/device/:id', async (req, res) => {
+  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
+  if (!device) return res.status(404).send('<h2>장비를 찾을 수 없습니다</h2>');
+
+  const lines = buildDeviceInfoLines(device);
+  const rows = lines.map(l => {
+    const [k, ...vs] = l.split(': ');
+    return `<tr><th>${k}</th><td>${vs.join(': ')}</td></tr>`;
+  }).join('');
+
+  res.send(`<!DOCTYPE html><html lang="ko"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${device.name}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f8fafc;padding:16px;color:#1f2937}
+      .card{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;max-width:480px;margin:0 auto}
+      .card-head{background:#c0392b;color:#fff;padding:16px 20px}
+      .card-head h1{font-size:16px;font-weight:700;word-break:break-all}
+      .card-head p{font-size:12px;opacity:.8;margin-top:4px}
+      table{width:100%;border-collapse:collapse}
+      th{width:80px;padding:10px 16px;font-size:12px;color:#6b7280;font-weight:600;text-align:left;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap;vertical-align:top}
+      td{padding:10px 16px;font-size:13px;color:#111;border-bottom:1px solid #f3f4f6;word-break:break-all}
+      tr:last-child th,tr:last-child td{border-bottom:none}
+      .footer{text-align:center;font-size:11px;color:#9ca3af;padding:12px}
+    </style>
+  </head><body>
+    <div class="card">
+      <div class="card-head">
+        <h1>${device.name}</h1>
+        <p>네트워크 장비 정보</p>
+      </div>
+      <table>${rows}</table>
+    </div>
+    <p class="footer">KSM 네트워크 공사 이력 관리 시스템</p>
+  </body></html>`);
 });
 
 // SNMP 조회 API
