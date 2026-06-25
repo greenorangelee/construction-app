@@ -14,9 +14,10 @@
     "express": "^4.22.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "net-snmp": "^3.11.2",
+    "qrcode": "^1.5.4",
     "sql.js": "^1.14.1",
-    "xlsx": "^0.18.5",
-    "net-snmp": "^3.11.2"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
