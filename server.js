@@ -228,6 +228,7 @@ async function initDB() {
     snmp_community TEXT NOT NULL DEFAULT 'public',
     snmp_port INTEGER NOT NULL DEFAULT 161,
     location TEXT DEFAULT '',
+    location_detail TEXT DEFAULT '',
     network_type TEXT DEFAULT '',
     vendor TEXT DEFAULT '',
     model TEXT DEFAULT '',
@@ -239,7 +240,7 @@ async function initDB() {
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   // 기존 DB 호환: 신규 컬럼 없으면 추가
-  const netDevCols = ['network_type','vendor','model','serial','mac','interfaces','purchase_date'];
+  const netDevCols = ['network_type','vendor','model','serial','mac','interfaces','purchase_date','location_detail'];
   netDevCols.forEach(col => {
     const dflt = col === 'interfaces' ? "'[]'" : "''";
     try { db.run(`ALTER TABLE net_devices ADD COLUMN ${col} TEXT DEFAULT ${dflt}`); } catch(e) {}
@@ -1358,7 +1359,7 @@ app.get('/api/net-devices/export', authMiddleware, (req, res) => {
   const now = new Date();
   const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
 
-  const header = ['No.','장비명','위치','망','IP 주소','제조사','모델','시리얼 번호','MAC 주소','입고일','인터페이스','SNMP Community','SNMP Port','설명','등록일'];
+  const header = ['No.','장비명','위치','상세위치(랙)','망','IP 주소','제조사','모델','시리얼 번호','MAC 주소','입고일','인터페이스','SNMP Community','SNMP Port','설명','등록일'];
   const data = [header, ...rows.map((r, i) => {
     // 인터페이스 요약
     let ifaceSummary = '';
@@ -1370,6 +1371,7 @@ app.get('/api/net-devices/export', authMiddleware, (req, res) => {
       i + 1,
       r.name,
       r.location,
+      r.location_detail,
       r.network_type,
       r.ip,
       r.vendor,
@@ -1393,6 +1395,7 @@ app.get('/api/net-devices/export', authMiddleware, (req, res) => {
     { wch: 5  },  // No.
     { wch: 28 },  // 장비명
     { wch: 18 },  // 위치
+    { wch: 16 },  // 상세위치(랙)
     { wch: 10 },  // 망
     { wch: 16 },  // IP
     { wch: 12 },  // 제조사
@@ -1431,22 +1434,22 @@ app.get('/api/net-devices', authMiddleware, (req, res) => {
 });
 
 app.post('/api/net-devices', authMiddleware, requireWrite, (req, res) => {
-  const { name, ip, snmp_community, snmp_port, location, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
+  const { name, ip, snmp_community, snmp_port, location, location_detail, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
   if (!name) return res.status(400).json({ error: '장비명은 필수입니다' });
   db.run(
-    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,network_type,vendor,model,serial,mac,interfaces,purchase_date,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'']
+    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,location_detail,network_type,vendor,model,serial,mac,interfaces,purchase_date,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', location_detail||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'']
   );
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
 app.put('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
-  const { name, ip, snmp_community, snmp_port, location, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
+  const { name, ip, snmp_community, snmp_port, location, location_detail, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
   if (!name) return res.status(400).json({ error: '장비명은 필수입니다' });
   db.run(
-    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,network_type=?,vendor=?,model=?,serial=?,mac=?,interfaces=?,purchase_date=?,description=? WHERE id=?',
-    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'', req.params.id]
+    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,location_detail=?,network_type=?,vendor=?,model=?,serial=?,mac=?,interfaces=?,purchase_date=?,description=? WHERE id=?',
+    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', location_detail||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'', req.params.id]
   );
   saveDB();
   res.json({ success: true });
@@ -1544,6 +1547,7 @@ app.get('/device/:id', async (req, res) => {
 
   const infoRows = [
     ['위치',    device.location],
+    ['상세위치', device.location_detail],
     ['IP',      device.ip],
     ['제조사',  device.vendor],
     ['모델',    device.model],
