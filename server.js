@@ -227,9 +227,12 @@ async function initDB() {
     snmp_community TEXT NOT NULL DEFAULT 'public',
     snmp_port INTEGER NOT NULL DEFAULT 161,
     location TEXT DEFAULT '',
+    network_type TEXT DEFAULT '',
     description TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  // 기존 DB 호환: network_type 컬럼 없으면 추가
+  try { db.run(`ALTER TABLE net_devices ADD COLUMN network_type TEXT DEFAULT ''`); } catch(e) {}
   saveDB();
 }
 
@@ -1343,22 +1346,22 @@ app.get('/api/net-devices', authMiddleware, (req, res) => {
 });
 
 app.post('/api/net-devices', authMiddleware, requireWrite, (req, res) => {
-  const { name, ip, snmp_community, snmp_port, location, description } = req.body;
+  const { name, ip, snmp_community, snmp_port, location, network_type, description } = req.body;
   if (!name || !ip) return res.status(400).json({ error: '장비명과 IP는 필수입니다' });
   db.run(
-    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,description) VALUES (?,?,?,?,?,?)',
-    [name.trim(), ip.trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', description||'']
+    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,network_type,description) VALUES (?,?,?,?,?,?,?)',
+    [name.trim(), ip.trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', description||'']
   );
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
 app.put('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
-  const { name, ip, snmp_community, snmp_port, location, description } = req.body;
+  const { name, ip, snmp_community, snmp_port, location, network_type, description } = req.body;
   if (!name || !ip) return res.status(400).json({ error: '장비명과 IP는 필수입니다' });
   db.run(
-    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,description=? WHERE id=?',
-    [name.trim(), ip.trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', description||'', req.params.id]
+    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,network_type=?,description=? WHERE id=?',
+    [name.trim(), ip.trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', description||'', req.params.id]
   );
   saveDB();
   res.json({ success: true });
