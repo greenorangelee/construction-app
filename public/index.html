@@ -2809,6 +2809,7 @@
         <h2>🔌 네트워크 장비 관리</h2>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary" id="devAddBtn" onclick="openDeviceModal()">+ 장비 등록</button>
+          <button class="btn" onclick="exportDevicesExcel()" style="font-size:13px;background:#16a34a;color:#fff;border:none">↓ 엑셀 내보내기</button>
           <button class="btn" onclick="printAllQr()" style="font-size:13px;background:#059669;color:#fff;border:none">🖨️ 전체 QR 인쇄</button>
         </div>
       </div>
@@ -7276,6 +7277,32 @@ function updateDeviceUIByRole() {
   if (addBtn) addBtn.style.display = canWrite ? '' : 'none';
   const badge = document.getElementById('devUserBadge');
   if (badge && currentUser) badge.textContent = currentUser.username;
+}
+
+function exportDevicesExcel() {
+  const a = document.createElement('a');
+  a.href = '/api/net-devices/export';
+  a.setAttribute('Authorization', 'Bearer ' + getToken()); // 헤더 못 쓰므로 토큰 쿼리로
+  // fetch로 다운로드 (Authorization 헤더 포함)
+  fetch('/api/net-devices/export', {
+    headers: { 'Authorization': 'Bearer ' + getToken() }
+  })
+  .then(r => {
+    if (!r.ok) throw new Error('내보내기 실패');
+    const cd = r.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename\*=UTF-8''(.+)/);
+    const filename = match ? decodeURIComponent(match[1]) : '네트워크장비목록.xlsx';
+    return r.blob().then(blob => ({ blob, filename }));
+  })
+  .then(({ blob, filename }) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  })
+  .catch(e => alert('엑셀 내보내기 실패: ' + e.message));
 }
 
 async function loadDevices() {
