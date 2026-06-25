@@ -2809,6 +2809,7 @@
         <h2>🔌 네트워크 장비 관리</h2>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary" id="devAddBtn" onclick="openDeviceModal()">+ 장비 등록</button>
+          <button class="btn" onclick="printAllQr()" style="font-size:13px;background:#059669;color:#fff;border:none">🖨️ 전체 QR 인쇄</button>
         </div>
       </div>
 
@@ -3002,6 +3003,40 @@
     </div>
     <div id="snmpModalBody" class="modal-body" style="overflow-y:auto;flex:1">
       <div style="text-align:center;padding:32px;color:#999">불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- QR 코드 모달 -->
+<div id="qrModal" class="modal-overlay">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head">
+      <h2 id="qrModalTitle">QR 코드</h2>
+      <button class="modal-close" onclick="closeModal('qrModal')">✕</button>
+    </div>
+    <div class="modal-body" id="qrModalBody" style="display:flex;flex-direction:column;align-items:center;gap:16px">
+      <div style="text-align:center;padding:32px;color:#999">불러오는 중...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('qrModal')">닫기</button>
+      <button class="btn-primary" onclick="printSingleQr()">🖨️ 인쇄</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR 일괄 인쇄 모달 -->
+<div id="qrPrintModal" class="modal-overlay">
+  <div class="modal" style="max-width:860px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <h2>🖨️ QR 라벨 인쇄</h2>
+      <button class="modal-close" onclick="closeModal('qrPrintModal')">✕</button>
+    </div>
+    <div class="modal-body" id="qrPrintBody" style="overflow-y:auto;flex:1">
+      <div style="text-align:center;padding:32px;color:#999">생성 중...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('qrPrintModal')">닫기</button>
+      <button class="btn-primary" onclick="doPrint()">🖨️ 인쇄</button>
     </div>
   </div>
 </div>
@@ -7261,6 +7296,7 @@ function renderDevicesTable() {
           <td style="font-size:11px;color:#9ca3af;white-space:nowrap">${(d.created_at||'').substring(0,10)}</td>
           <td style="text-align:center;white-space:nowrap">
             <button class="btn btn-sm" onclick="runSnmp(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;margin-right:4px;background:#3b82f6;color:#fff;border:none">📡 SNMP</button>
+            <button class="btn btn-sm" onclick="showDeviceQr(${d.id})" style="font-size:11px;padding:3px 8px;margin-right:4px;background:#059669;color:#fff;border:none">QR</button>
             ${canWrite ? `
             <button class="btn btn-sm" onclick="openDeviceModal(${d.id})" style="font-size:11px;padding:3px 8px;margin-right:4px">수정</button>
             <button class="btn btn-sm" onclick="deleteDevice(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;background:#ef4444;color:#fff;border:none">삭제</button>
@@ -7535,6 +7571,134 @@ async function deleteDevice(id, name) {
     if (!res.ok) throw new Error('삭제 실패');
     loadDevices();
   } catch(e) { alert('삭제 실패: ' + e.message); }
+}
+
+// ── QR 코드 ──────────────────────────────────────────
+
+let currentQrDevice = null;  // 단일 QR 인쇄용
+
+async function showDeviceQr(id) {
+  currentQrDevice = null;
+  const d = devicesData.find(x => x.id === id);
+  document.getElementById('qrModalTitle').textContent = d ? `QR — ${d.name}` : 'QR 코드';
+  document.getElementById('qrModalBody').innerHTML =
+    '<div style="text-align:center;padding:32px;color:#999">QR 생성 중...</div>';
+  openModal('qrModal');
+
+  try {
+    const res = await fetch(`/api/net-devices/${id}/qr`, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    currentQrDevice = data;
+    renderQrModal(data);
+  } catch(e) {
+    document.getElementById('qrModalBody').innerHTML =
+      `<div style="color:#c00;padding:20px">QR 생성 실패: ${e.message}</div>`;
+  }
+}
+
+function renderQrModal(data) {
+  const lines = data.qrText.split('\n');
+  document.getElementById('qrModalBody').innerHTML = `
+    <img src="${data.qrDataUrl}" style="width:220px;height:220px;border:1px solid #e5e7eb;border-radius:8px">
+    <div style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px">
+      ${lines.map(l => {
+        const [key, ...vals] = l.split(': ');
+        return `<div style="display:flex;gap:8px;font-size:12px;padding:3px 0;border-bottom:1px solid #f3f4f6">
+          <span style="color:#9ca3af;width:60px;flex-shrink:0">${escHtml(key)}</span>
+          <span style="color:#374151;font-weight:500;word-break:break-all">${escHtml(vals.join(': '))}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <p style="font-size:11px;color:#9ca3af;text-align:center;margin:0">
+      스마트폰 기본 카메라로 스캔하면 장비 정보가 표시됩니다
+    </p>`;
+}
+
+function printSingleQr() {
+  if (!currentQrDevice) return;
+  openQrPrintWindow([currentQrDevice]);
+}
+
+async function printAllQr() {
+  const ids = devicesData.map(d => d.id);
+  if (!ids.length) return alert('등록된 장비가 없습니다.');
+
+  document.getElementById('qrPrintBody').innerHTML =
+    '<div style="text-align:center;padding:32px;color:#999">QR 생성 중... (장비 수: ' + ids.length + ')</div>';
+  openModal('qrPrintModal');
+
+  try {
+    const res = await fetch('/api/net-devices/qr-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ ids })
+    });
+    const items = await res.json();
+    renderQrPrintPreview(items);
+  } catch(e) {
+    document.getElementById('qrPrintBody').innerHTML =
+      `<div style="color:#c00;padding:20px">실패: ${e.message}</div>`;
+  }
+}
+
+function renderQrPrintPreview(items) {
+  const body = document.getElementById('qrPrintBody');
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding:4px">
+      ${items.map(item => buildQrLabelHtml(item)).join('')}
+    </div>`;
+}
+
+function buildQrLabelHtml(item) {
+  const d = item.device;
+  const lines = item.qrText.split('\n');
+  const infoHtml = lines.slice(0, 6).map(l => {
+    const [key, ...vals] = l.split(': ');
+    return `<div style="display:flex;gap:4px;font-size:9px;line-height:1.4">
+      <span style="color:#9ca3af;width:36px;flex-shrink:0">${escHtml(key)}</span>
+      <span style="color:#1f2937;font-weight:500;word-break:break-all">${escHtml(vals.join(': '))}</span>
+    </div>`;
+  }).join('');
+  return `
+    <div class="qr-label-card" style="border:1px solid #d1d5db;border-radius:8px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px;align-items:center">
+      <img src="${item.qrDataUrl}" style="width:120px;height:120px">
+      <div style="width:100%;font-weight:700;font-size:11px;color:#111;text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:6px">
+        ${escHtml(d.name)}
+      </div>
+      <div style="width:100%">${infoHtml}</div>
+    </div>`;
+}
+
+function doPrint() {
+  const items_html = document.getElementById('qrPrintBody').innerHTML;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>네트워크 장비 QR 라벨</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Malgun Gothic', sans-serif; background: #fff; }
+      @media print {
+        body { margin: 0; }
+        @page { margin: 10mm; size: A4; }
+      }
+    </style>
+  </head><body>${items_html}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 500);
+}
+
+function openQrPrintWindow(items) {
+  document.getElementById('qrPrintBody').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding:4px">
+      ${items.map(item => buildQrLabelHtml(item)).join('')}
+    </div>`;
+  closeModal('qrModal');
+  openModal('qrPrintModal');
 }
 
 // ── SNMP 조회 ──────────────────────────────────────────
