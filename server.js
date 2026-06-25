@@ -234,11 +234,12 @@ async function initDB() {
     serial TEXT DEFAULT '',
     mac TEXT DEFAULT '',
     interfaces TEXT DEFAULT '[]',
+    purchase_date TEXT DEFAULT '',
     description TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   // 기존 DB 호환: 신규 컬럼 없으면 추가
-  const netDevCols = ['network_type','vendor','model','serial','mac','interfaces'];
+  const netDevCols = ['network_type','vendor','model','serial','mac','interfaces','purchase_date'];
   netDevCols.forEach(col => {
     const dflt = col === 'interfaces' ? "'[]'" : "''";
     try { db.run(`ALTER TABLE net_devices ADD COLUMN ${col} TEXT DEFAULT ${dflt}`); } catch(e) {}
@@ -1357,22 +1358,22 @@ app.get('/api/net-devices', authMiddleware, (req, res) => {
 });
 
 app.post('/api/net-devices', authMiddleware, requireWrite, (req, res) => {
-  const { name, ip, snmp_community, snmp_port, location, network_type, vendor, model, serial, mac, interfaces, description } = req.body;
+  const { name, ip, snmp_community, snmp_port, location, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
   if (!name) return res.status(400).json({ error: '장비명은 필수입니다' });
   db.run(
-    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,network_type,vendor,model,serial,mac,interfaces,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), description||'']
+    'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,network_type,vendor,model,serial,mac,interfaces,purchase_date,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'']
   );
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
 
 app.put('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
-  const { name, ip, snmp_community, snmp_port, location, network_type, vendor, model, serial, mac, interfaces, description } = req.body;
+  const { name, ip, snmp_community, snmp_port, location, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
   if (!name) return res.status(400).json({ error: '장비명은 필수입니다' });
   db.run(
-    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,network_type=?,vendor=?,model=?,serial=?,mac=?,interfaces=?,description=? WHERE id=?',
-    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), description||'', req.params.id]
+    'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,network_type=?,vendor=?,model=?,serial=?,mac=?,interfaces=?,purchase_date=?,description=? WHERE id=?',
+    [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'', req.params.id]
   );
   saveDB();
   res.json({ success: true });
@@ -1475,6 +1476,7 @@ app.get('/device/:id', async (req, res) => {
     ['모델',    device.model],
     ['시리얼',  device.serial],
     ['MAC',     device.mac],
+    ['입고일',  device.purchase_date],
     ['설명',    device.description],
   ].filter(([,v]) => v).map(([k,v]) =>
     `<tr><th>${k}</th><td>${v}</td></tr>`
