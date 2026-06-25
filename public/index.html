@@ -2817,18 +2817,16 @@
           <thead>
             <tr>
               <th style="width:40px">No.</th>
+              <th>위치</th>
               <th>장비명</th>
               <th>IP 주소</th>
-              <th>SNMP Community</th>
-              <th>Port</th>
-              <th>위치</th>
               <th>설명</th>
               <th>등록일</th>
               <th style="width:140px">작업</th>
             </tr>
           </thead>
           <tbody id="devicesTableBody">
-            <tr><td colspan="9" style="text-align:center;padding:32px;color:#999">장비가 없습니다.</td></tr>
+            <tr><td colspan="7" style="text-align:center;padding:32px;color:#999">장비가 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2837,56 +2835,56 @@
 </div>
 
 <!-- 장비 등록/수정 모달 -->
-<div id="deviceFormModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeDeviceModal()">
-  <div class="modal-box" style="max-width:480px">
-    <div class="modal-header">
-      <h3 id="deviceFormTitle">장비 등록</h3>
+<div id="deviceFormModal" class="modal-overlay">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head">
+      <h2 id="deviceFormTitle">장비 등록</h2>
       <button class="modal-close" onclick="closeDeviceModal()">✕</button>
     </div>
-    <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
       <input type="hidden" id="df-id">
-      <div>
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">장비명 <span style="color:red">*</span></label>
-        <input type="text" id="df-name" class="form-input" placeholder="예) 본관 1층 스위치">
+      <div class="form-group">
+        <label>장비명 <span style="color:red">*</span></label>
+        <input type="text" id="df-name" placeholder="예) 본관 1층 스위치">
       </div>
-      <div>
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">IP 주소 <span style="color:red">*</span></label>
-        <input type="text" id="df-ip" class="form-input" placeholder="예) 10.100.100.10">
+      <div class="form-group">
+        <label>IP 주소 <span style="color:red">*</span></label>
+        <input type="text" id="df-ip" placeholder="예) 10.100.100.10">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">SNMP Community</label>
-          <input type="text" id="df-community" class="form-input" value="public" placeholder="public">
+        <div class="form-group">
+          <label>SNMP Community</label>
+          <input type="text" id="df-community" value="public" placeholder="public">
         </div>
-        <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">포트</label>
-          <input type="number" id="df-port" class="form-input" value="161" placeholder="161">
+        <div class="form-group">
+          <label>포트</label>
+          <input type="number" id="df-port" value="161" placeholder="161">
         </div>
       </div>
-      <div>
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">위치</label>
-        <input type="text" id="df-location" class="form-input" placeholder="예) 본관 1층 MDF실">
+      <div class="form-group">
+        <label>위치</label>
+        <input type="text" id="df-location" placeholder="예) 본관 1층 MDF실">
       </div>
-      <div>
-        <label style="font-size:12px;color:#666;display:block;margin-bottom:4px">설명</label>
-        <input type="text" id="df-description" class="form-input" placeholder="장비 설명">
+      <div class="form-group">
+        <label>설명</label>
+        <input type="text" id="df-description" placeholder="장비 설명">
       </div>
     </div>
-    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid #eee">
-      <button class="btn" onclick="closeDeviceModal()">취소</button>
-      <button class="btn btn-primary" onclick="saveDevice()">저장</button>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeDeviceModal()">취소</button>
+      <button class="btn-primary" onclick="saveDevice()">저장</button>
     </div>
   </div>
 </div>
 
 <!-- SNMP 조회 결과 모달 -->
-<div id="snmpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeSnmpModal()">
-  <div class="modal-box" style="max-width:780px;max-height:85vh;display:flex;flex-direction:column">
-    <div class="modal-header">
-      <h3 id="snmpModalTitle">SNMP 조회 결과</h3>
+<div id="snmpModal" class="modal-overlay">
+  <div class="modal" style="max-width:780px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <h2 id="snmpModalTitle">SNMP 조회 결과</h2>
       <button class="modal-close" onclick="closeSnmpModal()">✕</button>
     </div>
-    <div id="snmpModalBody" class="modal-body" style="padding:20px;overflow-y:auto;flex:1">
+    <div id="snmpModalBody" class="modal-body" style="overflow-y:auto;flex:1">
       <div style="text-align:center;padding:32px;color:#999">불러오는 중...</div>
     </div>
   </div>
@@ -7100,28 +7098,56 @@ function renderDevicesTable() {
   const tbody = document.getElementById('devicesTableBody');
   const canWrite = currentUser && (currentUser.role === 'write' || currentUser.role === 'admin');
   if (!devicesData.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
     return;
   }
-  tbody.innerHTML = devicesData.map((d, i) => `
-    <tr>
-      <td style="text-align:center;color:#999">${i+1}</td>
-      <td><strong>${escHtml(d.name)}</strong></td>
-      <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${escHtml(d.ip)}</code></td>
-      <td style="color:#6b7280;font-size:12px">${escHtml(d.snmp_community)}</td>
-      <td style="text-align:center;color:#6b7280;font-size:12px">${d.snmp_port}</td>
-      <td style="font-size:13px">${escHtml(d.location||'-')}</td>
-      <td style="font-size:12px;color:#6b7280;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${escHtml(d.description||'-')}</td>
-      <td style="font-size:11px;color:#9ca3af">${(d.created_at||'').substring(0,10)}</td>
-      <td style="text-align:center">
-        <button class="btn btn-sm" onclick="runSnmp(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;margin-right:4px;background:#3b82f6;color:#fff;border:none">📡 SNMP</button>
-        ${canWrite ? `
-        <button class="btn btn-sm" onclick="openDeviceModal(${d.id})" style="font-size:11px;padding:3px 8px;margin-right:4px">수정</button>
-        <button class="btn btn-sm" onclick="deleteDevice(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;background:#ef4444;color:#fff;border:none">삭제</button>
-        ` : ''}
-      </td>
-    </tr>
-  `).join('');
+
+  // 위치별 그룹핑
+  const groups = {};
+  devicesData.forEach(d => {
+    const loc = d.location && d.location.trim() ? d.location.trim() : '위치 미지정';
+    if (!groups[loc]) groups[loc] = [];
+    groups[loc].push(d);
+  });
+
+  // 위치명 가나다 정렬, '위치 미지정'은 맨 뒤
+  const sortedLocs = Object.keys(groups).sort((a, b) => {
+    if (a === '위치 미지정') return 1;
+    if (b === '위치 미지정') return -1;
+    return a.localeCompare(b, 'ko');
+  });
+
+  let globalNo = 1;
+  let html = '';
+  sortedLocs.forEach(loc => {
+    const devices = groups[loc];
+    html += `
+      <tr style="background:#f1f5f9">
+        <td colspan="7" style="padding:8px 14px;font-size:12px;font-weight:700;color:#475569;letter-spacing:0.3px">
+          📍 ${escHtml(loc)} <span style="font-weight:400;color:#94a3b8;margin-left:6px">${devices.length}대</span>
+        </td>
+      </tr>`;
+    devices.forEach(d => {
+      html += `
+        <tr>
+          <td style="text-align:center;color:#9ca3af;font-size:12px">${globalNo++}</td>
+          <td style="font-size:12px;color:#6b7280">${escHtml(d.location||'-')}</td>
+          <td><strong style="font-size:13px">${escHtml(d.name)}</strong></td>
+          <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${escHtml(d.ip)}</code></td>
+          <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${escHtml(d.description||'-')}</td>
+          <td style="font-size:11px;color:#9ca3af;white-space:nowrap">${(d.created_at||'').substring(0,10)}</td>
+          <td style="text-align:center;white-space:nowrap">
+            <button class="btn btn-sm" onclick="runSnmp(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;margin-right:4px;background:#3b82f6;color:#fff;border:none">📡 SNMP</button>
+            ${canWrite ? `
+            <button class="btn btn-sm" onclick="openDeviceModal(${d.id})" style="font-size:11px;padding:3px 8px;margin-right:4px">수정</button>
+            <button class="btn btn-sm" onclick="deleteDevice(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;background:#ef4444;color:#fff;border:none">삭제</button>
+            ` : ''}
+          </td>
+        </tr>`;
+    });
+  });
+
+  tbody.innerHTML = html;
 }
 
 function openDeviceModal(id) {
@@ -7134,11 +7160,11 @@ function openDeviceModal(id) {
   document.getElementById('df-port').value = d ? d.snmp_port : '161';
   document.getElementById('df-location').value = d ? (d.location||'') : '';
   document.getElementById('df-description').value = d ? (d.description||'') : '';
-  document.getElementById('deviceFormModal').style.display = 'flex';
+  openModal('deviceFormModal');
 }
 
 function closeDeviceModal() {
-  document.getElementById('deviceFormModal').style.display = 'none';
+  closeModal('deviceFormModal');
 }
 
 async function saveDevice() {
@@ -7187,7 +7213,7 @@ async function runSnmp(id, name) {
       <div style="font-size:28px;margin-bottom:12px">📡</div>
       <div>SNMP 조회 중...</div>
     </div>`;
-  document.getElementById('snmpModal').style.display = 'flex';
+  openModal('snmpModal');
   try {
     const res = await fetch(`/api/net-devices/${id}/snmp`, {
       headers: { 'Authorization': 'Bearer ' + getToken() }
@@ -7201,7 +7227,7 @@ async function runSnmp(id, name) {
 }
 
 function closeSnmpModal() {
-  document.getElementById('snmpModal').style.display = 'none';
+  closeModal('snmpModal');
 }
 
 function renderSnmpResult(data) {
