@@ -2837,103 +2837,162 @@
 
 <!-- 장비 등록/수정 모달 -->
 <div id="deviceFormModal" class="modal-overlay">
-  <div class="modal" style="max-width:500px">
+  <div class="modal" style="max-width:600px;max-height:90vh;display:flex;flex-direction:column">
     <div class="modal-head">
       <h2 id="deviceFormTitle">장비 등록</h2>
       <button class="modal-close" onclick="closeDeviceModal()">✕</button>
     </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- 탭 바 -->
+    <div style="display:flex;border-bottom:1px solid #e5e7eb;padding:0 24px;background:#fff;flex-shrink:0">
+      <button id="dfTab-basic" onclick="switchDfTab('basic')"
+        style="padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid #c0392b;color:#c0392b;margin-bottom:-1px">
+        기본 정보
+      </button>
+      <button id="dfTab-hw" onclick="switchDfTab('hw')"
+        style="padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#9ca3af;margin-bottom:-1px">
+        장비 정보
+      </button>
+      <button id="dfTab-iface" onclick="switchDfTab('iface')"
+        style="padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#9ca3af;margin-bottom:-1px">
+        인터페이스
+      </button>
+    </div>
+
+    <div class="modal-body" style="overflow-y:auto;flex:1">
       <input type="hidden" id="df-id">
 
-      <!-- 위치 선택 (3단계) -->
-      <div>
-        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">위치 <span style="color:red">*</span></label>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <div class="form-group" style="margin:0">
-            <label style="font-size:11px;color:#9ca3af">지역</label>
-            <select id="df-region" onchange="onDfRegionChange()">
-              <option value="">지역 선택</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin:0">
-            <label style="font-size:11px;color:#9ca3af">동</label>
-            <select id="df-dong" onchange="onDfDongChange()">
-              <option value="">동 선택</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin:0">
-            <label style="font-size:11px;color:#9ca3af">층</label>
-            <select id="df-floor" onchange="updateDeviceName()">
-              <option value="">층 선택</option>
-            </select>
+      <!-- ── 탭1: 기본 정보 ── -->
+      <div id="dfPane-basic" style="display:flex;flex-direction:column;gap:14px">
+
+        <!-- 위치 선택 (3단계) -->
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">위치 <span style="color:red">*</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <div class="form-group" style="margin:0">
+              <label style="font-size:11px;color:#9ca3af">지역</label>
+              <select id="df-region" onchange="onDfRegionChange()">
+                <option value="">지역 선택</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label style="font-size:11px;color:#9ca3af">동</label>
+              <select id="df-dong" onchange="onDfDongChange()">
+                <option value="">동 선택</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label style="font-size:11px;color:#9ca3af">층</label>
+              <select id="df-floor" onchange="updateDeviceName()">
+                <option value="">층 선택</option>
+              </select>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 사용 망 -->
-      <div class="form-group">
-        <label>사용 망 <span style="color:red">*</span></label>
-        <select id="df-network-type" onchange="onDfNetworkTypeChange()">
-          <option value="">망 선택</option>
-          <option value="사무망">사무망</option>
-          <option value="현장망">현장망</option>
-          <option value="장비망">장비망</option>
-          <option value="전화망">전화망</option>
-          <option value="기타">기타 (직접 입력)</option>
-        </select>
-      </div>
-      <div class="form-group" id="df-network-custom-wrap" style="display:none;margin-top:-8px">
-        <label style="font-size:11px;color:#9ca3af">기타 망 이름</label>
-        <input type="text" id="df-network-custom" placeholder="망 이름 직접 입력" oninput="updateDeviceName()">
-      </div>
-
-      <!-- 장비명 (자동 생성 + 수동 조정) -->
-      <div class="form-group">
-        <label>장비명 <span style="color:red">*</span>
-          <span style="font-weight:400;font-size:11px;color:#9ca3af;margin-left:6px">위치·망 선택 시 자동 생성</span>
-        </label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="df-name-prefix" style="flex:1;background:#f9fafb;color:#374151" readonly placeholder="위치_망_">
-          <span style="color:#9ca3af;font-size:13px;flex-shrink:0">+</span>
-          <input type="number" id="df-name-num" min="1" max="99" value="1" style="width:64px;text-align:center" oninput="updateDeviceName()">
-        </div>
-        <input type="hidden" id="df-name">
-        <div id="df-name-preview" style="margin-top:6px;font-size:12px;color:#6b7280">
-          장비명: <strong id="df-name-preview-text" style="color:#374151">-</strong>
-        </div>
-      </div>
-
-      <!-- IP -->
-      <div class="form-group">
-        <label>IP 주소 <span style="color:red">*</span></label>
-        <input type="text" id="df-ip" placeholder="예) 10.100.100.10">
-      </div>
-
-      <!-- SNMP -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <!-- 사용 망 -->
         <div class="form-group">
-          <label>SNMP Community</label>
-          <input type="text" id="df-community" value="public" placeholder="public">
+          <label>사용 망 <span style="color:red">*</span></label>
+          <select id="df-network-type" onchange="onDfNetworkTypeChange()">
+            <option value="">망 선택</option>
+            <option value="사무망">사무망 (O)</option>
+            <option value="현장망">현장망 (F)</option>
+            <option value="장비망">장비망 (E)</option>
+            <option value="전화망">전화망 (V)</option>
+            <option value="기타">기타 (직접 입력)</option>
+          </select>
         </div>
+        <div class="form-group" id="df-network-custom-wrap" style="display:none;margin-top:-8px">
+          <label style="font-size:11px;color:#9ca3af">기타 망 이름</label>
+          <input type="text" id="df-network-custom" placeholder="망 이름 직접 입력" oninput="updateDeviceName()">
+        </div>
+
+        <!-- 장비명 자동 생성 -->
         <div class="form-group">
-          <label>포트</label>
-          <input type="number" id="df-port" value="161" placeholder="161">
+          <label>장비명 <span style="color:red">*</span>
+            <span style="font-weight:400;font-size:11px;color:#9ca3af;margin-left:6px">위치·망 선택 시 자동 생성</span>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="df-name-prefix" style="flex:1;background:#f9fafb;color:#374151" readonly placeholder="위치_망_">
+            <span style="color:#9ca3af;font-size:13px;flex-shrink:0">+</span>
+            <input type="number" id="df-name-num" min="1" max="99" value="1" style="width:64px;text-align:center" oninput="updateDeviceName()">
+          </div>
+          <input type="hidden" id="df-name">
+          <div style="margin-top:6px;font-size:12px;color:#6b7280">
+            장비명: <strong id="df-name-preview-text" style="color:#374151">-</strong>
+          </div>
+        </div>
+
+        <!-- IP -->
+        <div class="form-group">
+          <label>IP 주소</label>
+          <input type="text" id="df-ip" placeholder="예) 10.100.100.10 (미정 시 공란)">
+        </div>
+
+        <!-- SNMP -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>SNMP Community</label>
+            <input type="text" id="df-community" value="public" placeholder="public">
+          </div>
+          <div class="form-group">
+            <label>SNMP 포트</label>
+            <input type="number" id="df-port" value="161" placeholder="161">
+          </div>
+        </div>
+
+        <!-- 설명 -->
+        <div class="form-group">
+          <label>설명</label>
+          <input type="text" id="df-description" placeholder="장비 설명">
         </div>
       </div>
 
-      <!-- 설명 -->
-      <div class="form-group">
-        <label>설명</label>
-        <input type="text" id="df-description" placeholder="장비 설명">
+      <!-- ── 탭2: 장비 정보 ── -->
+      <div id="dfPane-hw" style="display:none;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>제조사</label>
+            <input type="text" id="df-vendor" placeholder="예) Cisco, HP, Aruba">
+          </div>
+          <div class="form-group">
+            <label>모델명</label>
+            <input type="text" id="df-model" placeholder="예) C1300-24T">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>시리얼 번호</label>
+            <input type="text" id="df-serial" placeholder="S/N">
+          </div>
+          <div class="form-group">
+            <label>MAC 주소</label>
+            <input type="text" id="df-mac" placeholder="예) AA:BB:CC:DD:EE:FF">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 탭3: 인터페이스 ── -->
+      <div id="dfPane-iface" style="display:none;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;color:#6b7280">포트 그룹을 추가하세요</span>
+          <button class="btn-primary" onclick="addIfaceRow()" style="font-size:12px;padding:5px 12px">+ 포트 그룹 추가</button>
+        </div>
+        <div id="df-iface-list" style="display:flex;flex-direction:column;gap:8px">
+          <!-- JS로 동적 생성 -->
+        </div>
+        <div id="df-iface-empty" style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;border:1px dashed #e5e7eb;border-radius:8px">
+          포트 그룹이 없습니다.<br>위의 버튼으로 추가하세요.
+        </div>
       </div>
     </div>
+
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeDeviceModal()">취소</button>
       <button class="btn-primary" onclick="saveDevice()">저장</button>
     </div>
   </div>
 </div>
-
 <!-- SNMP 조회 결과 모달 -->
 <div id="snmpModal" class="modal-overlay">
   <div class="modal" style="max-width:780px;max-height:85vh;display:flex;flex-direction:column">
@@ -7215,6 +7274,76 @@ function renderDevicesTable() {
 }
 
 // 위치 드랍다운 연동
+function switchDfTab(tab) {
+  ['basic','hw','iface'].forEach(t => {
+    const btn = document.getElementById('dfTab-'+t);
+    const pane = document.getElementById('dfPane-'+t);
+    const active = t === tab;
+    btn.style.borderBottomColor = active ? '#c0392b' : 'transparent';
+    btn.style.color = active ? '#c0392b' : '#9ca3af';
+    pane.style.display = active ? 'flex' : 'none';
+  });
+}
+
+// ── 인터페이스 행 관리 ──
+let ifaceRows = [];  // [{id, speed, portType, count}]
+
+function renderIfaceRows() {
+  const list = document.getElementById('df-iface-list');
+  const empty = document.getElementById('df-iface-empty');
+  if (!ifaceRows.length) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = ifaceRows.map((row, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr 80px 36px;gap:8px;align-items:end;background:#f9fafb;padding:10px 12px;border-radius:8px;border:1px solid #e5e7eb">
+      <div class="form-group" style="margin:0">
+        <label style="font-size:11px;color:#9ca3af">속도</label>
+        <select onchange="updateIfaceRow(${i},'speed',this.value)">
+          ${['100M','1G','2.5G','5G','10G','25G','40G','100G'].map(s =>
+            `<option value="${s}" ${row.speed===s?'selected':''}>${s}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label style="font-size:11px;color:#9ca3af">포트 종류</label>
+        <select onchange="updateIfaceRow(${i},'portType',this.value)">
+          ${['RJ45','SFP','SFP+','QSFP','QSFP+','QSFP28','SFP28','Console','USB'].map(t =>
+            `<option value="${t}" ${row.portType===t?'selected':''}>${t}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label style="font-size:11px;color:#9ca3af">포트 수</label>
+        <input type="number" min="1" max="512" value="${row.count}"
+          onchange="updateIfaceRow(${i},'count',parseInt(this.value)||1)"
+          style="text-align:center">
+      </div>
+      <div style="padding-bottom:2px">
+        <button onclick="removeIfaceRow(${i})"
+          style="width:32px;height:32px;border:1px solid #fca5a5;background:#fef2f2;color:#ef4444;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addIfaceRow() {
+  ifaceRows.push({ speed: '1G', portType: 'RJ45', count: 24 });
+  renderIfaceRows();
+}
+
+function updateIfaceRow(i, field, val) {
+  ifaceRows[i][field] = val;
+}
+
+function removeIfaceRow(i) {
+  ifaceRows.splice(i, 1);
+  renderIfaceRows();
+}
+
+// ── 위치 드랍다운 연동 ──
 function populateDfRegions() {
   const sel = document.getElementById('df-region');
   const cur = sel.value;
@@ -7282,29 +7411,36 @@ function openDeviceModal(id) {
   const d = id ? devicesData.find(x => x.id === id) : null;
   document.getElementById('deviceFormTitle').textContent = d ? '장비 수정' : '장비 등록';
   document.getElementById('df-id').value = d ? d.id : '';
-  document.getElementById('df-ip').value = d ? d.ip : '';
+  document.getElementById('df-ip').value = d ? (d.ip||'') : '';
   document.getElementById('df-community').value = d ? d.snmp_community : 'public';
   document.getElementById('df-port').value = d ? d.snmp_port : '161';
   document.getElementById('df-description').value = d ? (d.description||'') : '';
+
+  // 장비 정보 탭
+  document.getElementById('df-vendor').value = d ? (d.vendor||'') : '';
+  document.getElementById('df-model').value  = d ? (d.model||'') : '';
+  document.getElementById('df-serial').value = d ? (d.serial||'') : '';
+  document.getElementById('df-mac').value    = d ? (d.mac||'') : '';
+
+  // 인터페이스 탭
+  try { ifaceRows = d && d.interfaces ? JSON.parse(d.interfaces) : []; }
+  catch(e) { ifaceRows = []; }
+  renderIfaceRows();
 
   // 위치 드랍다운 초기화
   if (!allLocations.length) loadLocations().then(populateDfRegions);
   else populateDfRegions();
 
   if (d) {
-    // 수정 모드: 기존 장비명에서 역파싱
-    // location 컬럼 값 → 지역/동/층 역매핑
     const locStr = d.location || '';
-    const parts = locStr.split('_');  // "지역_동_층" 형태로 저장
+    const parts = locStr.split('_');
     const [savedRegion='', savedDong='', savedFloor=''] = parts;
-
     document.getElementById('df-region').value = savedRegion;
     onDfRegionChange();
     document.getElementById('df-dong').value = savedDong;
     onDfDongChange();
     document.getElementById('df-floor').value = savedFloor;
 
-    // 망 타입 파싱 (장비명에서 추출: 지역 동 층_망_번호)
     const KNOWN_NETS = ['사무망','현장망','장비망','전화망'];
     const savedNet = d.network_type || '';
     if (KNOWN_NETS.includes(savedNet)) {
@@ -7318,14 +7454,12 @@ function openDeviceModal(id) {
       document.getElementById('df-network-type').value = '';
     }
 
-    // 번호 파싱: 장비명 끝의 숫자
     const nameMatch = d.name.match(/(\d+)$/);
     document.getElementById('df-name-num').value = nameMatch ? parseInt(nameMatch[1]) : 1;
     document.getElementById('df-name').value = d.name;
     document.getElementById('df-name-prefix').value = d.name.replace(/\d+$/, '');
     document.getElementById('df-name-preview-text').textContent = d.name;
   } else {
-    // 신규
     document.getElementById('df-region').value = '';
     document.getElementById('df-dong').innerHTML = '<option value="">동 선택</option>';
     document.getElementById('df-floor').innerHTML = '<option value="">층 선택</option>';
@@ -7338,6 +7472,7 @@ function openDeviceModal(id) {
     document.getElementById('df-name-preview-text').textContent = '-';
   }
 
+  switchDfTab('basic');
   openModal('deviceFormModal');
 }
 
@@ -7348,7 +7483,6 @@ function closeDeviceModal() {
 async function saveDevice() {
   const id = document.getElementById('df-id').value;
 
-  // 장비명 최종 확정
   updateDeviceName();
   const name = document.getElementById('df-name').value.trim();
   if (!name) return alert('위치와 망을 선택하거나 장비명을 확인해주세요.');
@@ -7364,14 +7498,19 @@ async function saveDevice() {
 
   const body = {
     name,
-    ip: document.getElementById('df-ip').value.trim(),
+    ip:            document.getElementById('df-ip').value.trim(),
     snmp_community: document.getElementById('df-community').value.trim() || 'public',
-    snmp_port: parseInt(document.getElementById('df-port').value) || 161,
-    location: locStr,
-    network_type: networkType,
-    description: document.getElementById('df-description').value.trim(),
+    snmp_port:     parseInt(document.getElementById('df-port').value) || 161,
+    location:      locStr,
+    network_type:  networkType,
+    vendor:        document.getElementById('df-vendor').value.trim(),
+    model:         document.getElementById('df-model').value.trim(),
+    serial:        document.getElementById('df-serial').value.trim(),
+    mac:           document.getElementById('df-mac').value.trim(),
+    interfaces:    ifaceRows,
+    description:   document.getElementById('df-description').value.trim(),
   };
-  if (!body.ip) return alert('IP 주소는 필수입니다.');
+
   try {
     const url = id ? `/api/net-devices/${id}` : '/api/net-devices';
     const method = id ? 'PUT' : 'POST';
