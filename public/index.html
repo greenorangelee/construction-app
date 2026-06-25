@@ -3007,40 +3007,38 @@
   </div>
 </div>
 
-<!-- QR 모드 선택 모달 -->
-<div id="qrModeModal" class="modal-overlay">
-  <div class="modal" style="max-width:440px">
+<!-- 장비 상세 모달 -->
+<div id="deviceDetailModal" class="modal-overlay">
+  <div class="modal" style="max-width:560px;max-height:90vh;display:flex;flex-direction:column">
     <div class="modal-head">
-      <h2>QR 코드 생성 방식 선택</h2>
+      <h2 id="deviceDetailTitle">장비 상세</h2>
+      <button class="modal-close" onclick="closeModal('deviceDetailModal')">✕</button>
+    </div>
+    <div id="deviceDetailBody" class="modal-body" style="overflow-y:auto;flex:1">
+      <div style="text-align:center;padding:32px;color:#999">불러오는 중...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('deviceDetailModal')">닫기</button>
+      <button id="deviceDetailQrBtn" class="btn-primary" onclick="showDeviceQrFromDetail()">QR 생성</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR 생성 모달 -->
+<div id="qrModeModal" class="modal-overlay">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-head">
+      <h2>QR 코드 생성</h2>
       <button class="modal-close" onclick="closeModal('qrModeModal')">✕</button>
     </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-      <p style="font-size:13px;color:#6b7280;margin-bottom:4px">스마트폰으로 QR을 찍었을 때 어떻게 열릴지 선택하세요.</p>
-
-      <!-- 오프라인 모드 -->
-      <label id="qrModeOfflineCard" style="display:flex;gap:14px;padding:14px 16px;border:2px solid #c0392b;border-radius:10px;cursor:pointer;background:#fff9f9">
-        <input type="radio" name="qrMode" value="offline" checked style="margin-top:2px;accent-color:#c0392b">
-        <div>
-          <div style="font-weight:700;font-size:14px;color:#1f2937">오프라인 텍스트 <span style="font-size:11px;background:#dcfce7;color:#16a34a;padding:2px 6px;border-radius:10px;margin-left:4px">인터넷 불필요</span></div>
-          <div style="font-size:12px;color:#6b7280;margin-top:4px">카메라로 찍으면 브라우저에서 텍스트 파일로 열립니다.<br>네트워크 없이도 장비 정보 확인 가능.</div>
-        </div>
-      </label>
-
-      <!-- URL 모드 -->
-      <label id="qrModeUrlCard" style="display:flex;gap:14px;padding:14px 16px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;background:#fff">
-        <input type="radio" name="qrMode" value="url" style="margin-top:2px;accent-color:#c0392b">
-        <div style="flex:1">
-          <div style="font-weight:700;font-size:14px;color:#1f2937">앱 연결 (사내망) <span style="font-size:11px;background:#dbeafe;color:#2563eb;padding:2px 6px;border-radius:10px;margin-left:4px">사내망 필요</span></div>
-          <div style="font-size:12px;color:#6b7280;margin-top:4px">카메라로 찍으면 앱의 장비 상세 페이지로 이동합니다.<br>실시간 SNMP 조회 등 앱 기능 사용 가능.</div>
-          <div id="qrBaseUrlWrap" style="margin-top:8px;display:none">
-            <label style="font-size:11px;color:#9ca3af">앱 주소 (자동 감지됨)</label>
-            <input type="text" id="qrBaseUrl" style="width:100%;margin-top:4px;font-size:12px" placeholder="http://192.168.1.100:3000">
-          </div>
-        </div>
-      </label>
-
-      <p id="qrModeDesc" style="font-size:11px;color:#9ca3af;padding:8px 12px;background:#f9fafb;border-radius:6px">
-        💡 오프라인 방식 권장: QR 재인쇄 없이 항상 최신 정보가 저장됩니다.
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <p style="font-size:13px;color:#6b7280">스캔 시 장비 상세 페이지로 이동합니다.<br>사내망에서 접속 가능한 앱 주소를 입력하세요.</p>
+      <div class="form-group">
+        <label>앱 주소 <span style="font-weight:400;font-size:11px;color:#9ca3af">(자동 감지)</span></label>
+        <input type="text" id="qrBaseUrl" placeholder="http://192.168.1.100:3000">
+      </div>
+      <p style="font-size:11px;color:#9ca3af;padding:8px 12px;background:#f9fafb;border-radius:6px">
+        💡 QR을 스캔하면 해당 주소의 장비 상세 페이지로 바로 이동합니다. 사내망 접속 상태에서 스캔하세요.
       </p>
     </div>
     <div class="modal-footer">
@@ -7332,7 +7330,7 @@ function renderDevicesTable() {
         <tr>
           <td style="text-align:center;color:#9ca3af;font-size:12px">${globalNo++}</td>
           <td style="font-size:12px;color:#6b7280">${escHtml(d.location||'-')}</td>
-          <td><strong style="font-size:13px">${escHtml(d.name)}</strong></td>
+          <td><strong style="font-size:13px;color:#c0392b;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="showDeviceDetail(${d.id})">${escHtml(d.name)}</strong></td>
           <td>${netBadge}</td>
           <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${escHtml(d.ip)}</code></td>
           <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${escHtml(d.description||'-')}</td>
@@ -7616,74 +7614,144 @@ async function deleteDevice(id, name) {
   } catch(e) { alert('삭제 실패: ' + e.message); }
 }
 
+// ── 장비 상세 모달 ──────────────────────────────────────────
+
+let currentDetailDeviceId = null;
+
+function showDeviceDetail(id) {
+  const d = devicesData.find(x => x.id === id);
+  if (!d) return;
+  currentDetailDeviceId = id;
+  document.getElementById('deviceDetailTitle').textContent = d.name;
+  document.getElementById('deviceDetailBody').innerHTML = buildDetailHtml(d);
+  openModal('deviceDetailModal');
+}
+
+function buildDetailHtml(d) {
+  const NET_COLOR = {'사무망':'#3b82f6','현장망':'#16a34a','장비망':'#f59e0b','전화망':'#8b5cf6'};
+  const nc = NET_COLOR[d.network_type] || '#6b7280';
+  const netBadge = d.network_type
+    ? `<span style="background:${nc}18;color:${nc};padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${escHtml(d.network_type)}</span>` : '';
+
+  // 기본 정보
+  const basicRows = [
+    ['위치',   d.location],
+    ['망',     d.network_type],
+    ['IP',     d.ip],
+    ['설명',   d.description],
+  ].filter(([,v]) => v).map(([k,v]) => `
+    <tr>
+      <td style="width:72px;padding:9px 14px;font-size:12px;color:#6b7280;font-weight:600;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap;vertical-align:top">${k}</td>
+      <td style="padding:9px 14px;font-size:13px;color:#111;border-bottom:1px solid #f3f4f6;word-break:break-all">${escHtml(v)}</td>
+    </tr>`).join('');
+
+  // 장비 정보
+  const hwRows = [
+    ['제조사', d.vendor],
+    ['모델',   d.model],
+    ['시리얼', d.serial],
+    ['MAC',    d.mac],
+  ].filter(([,v]) => v).map(([k,v]) => `
+    <tr>
+      <td style="width:72px;padding:9px 14px;font-size:12px;color:#6b7280;font-weight:600;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap">${k}</td>
+      <td style="padding:9px 14px;font-size:13px;color:#111;border-bottom:1px solid #f3f4f6;word-break:break-all">${escHtml(v)}</td>
+    </tr>`).join('');
+
+  // 인터페이스
+  let ifaceHtml = '';
+  try {
+    const ifaces = JSON.parse(d.interfaces || '[]');
+    if (ifaces.length) {
+      ifaceHtml = `
+        <div style="font-size:11px;font-weight:700;color:#6b7280;padding:10px 14px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;letter-spacing:.5px">인터페이스</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#f3f4f6">
+              <th style="padding:7px 14px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;border-bottom:1px solid #e5e7eb">포트 수</th>
+              <th style="padding:7px 14px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;border-bottom:1px solid #e5e7eb">종류</th>
+              <th style="padding:7px 14px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;border-bottom:1px solid #e5e7eb">속도</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ifaces.map(i => `
+              <tr>
+                <td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #f3f4f6">${i.count}포트</td>
+                <td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #f3f4f6">${escHtml(i.portType)}</td>
+                <td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #f3f4f6">${escHtml(i.speed)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+  } catch(e) {}
+
+  return `
+    <!-- 헤더 -->
+    <div style="background:#c0392b;color:#fff;padding:16px 20px;margin:-24px -28px 0;border-radius:0">
+      <div style="font-size:17px;font-weight:700;word-break:break-all">${escHtml(d.name)}</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+        ${netBadge}
+        ${d.ip ? `<span style="font-size:12px;opacity:.85">${escHtml(d.ip)}</span>` : ''}
+      </div>
+    </div>
+
+    <!-- 기본 정보 -->
+    ${basicRows ? `
+    <div style="margin-top:16px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+      <div style="font-size:11px;font-weight:700;color:#6b7280;padding:10px 14px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;letter-spacing:.5px">기본 정보</div>
+      <table style="width:100%;border-collapse:collapse"><tbody>${basicRows}</tbody></table>
+    </div>` : ''}
+
+    <!-- 장비 정보 -->
+    ${hwRows ? `
+    <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+      <div style="font-size:11px;font-weight:700;color:#6b7280;padding:10px 14px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;letter-spacing:.5px">장비 정보</div>
+      <table style="width:100%;border-collapse:collapse"><tbody>${hwRows}</tbody></table>
+    </div>` : ''}
+
+    <!-- 인터페이스 -->
+    ${ifaceHtml ? `<div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">${ifaceHtml}</div>` : ''}
+
+    <div style="margin-top:12px;font-size:11px;color:#9ca3af;text-align:right">
+      등록일: ${(d.created_at||'').substring(0,10)}
+    </div>`;
+}
+
+function showDeviceQrFromDetail() {
+  if (!currentDetailDeviceId) return;
+  closeModal('deviceDetailModal');
+  showDeviceQr(currentDetailDeviceId);
+}
+
 // ── QR 코드 ──────────────────────────────────────────
 
-let currentQrDevice = null;
-let pendingQrDeviceId = null;   // 모드 선택 확인 후 사용
-let pendingQrAction = null;     // 'single' | 'all'
+let currentQrDeviceId = null;
 
-// QR 버튼 클릭 → 모드 선택 모달 먼저
 function showDeviceQr(id) {
-  pendingQrDeviceId = id;
-  pendingQrAction = 'single';
-  openQrModeModal();
+  currentQrDeviceId = id;
+  // 앱 주소 자동 감지
+  document.getElementById('qrBaseUrl').value = window.location.origin;
+  openModal('qrModeModal');
 }
 
 function printAllQr() {
   if (!devicesData.length) return alert('등록된 장비가 없습니다.');
-  pendingQrAction = 'all';
-  openQrModeModal();
-}
-
-function openQrModeModal() {
-  // URL 자동 감지
-  const autoBase = window.location.origin;
-  document.getElementById('qrBaseUrl').value = autoBase;
-
-  // 라디오 버튼 이벤트 연결
-  document.querySelectorAll('input[name="qrMode"]').forEach(radio => {
-    radio.onchange = updateQrModeUI;
-  });
-  // 초기 상태: offline 선택
-  document.querySelector('input[name="qrMode"][value="offline"]').checked = true;
-  updateQrModeUI();
+  currentQrDeviceId = null;
+  document.getElementById('qrBaseUrl').value = window.location.origin;
   openModal('qrModeModal');
 }
 
-function updateQrModeUI() {
-  const mode = document.querySelector('input[name="qrMode"]:checked')?.value || 'offline';
-  const offlineCard = document.getElementById('qrModeOfflineCard');
-  const urlCard     = document.getElementById('qrModeUrlCard');
-  const urlWrap     = document.getElementById('qrBaseUrlWrap');
-  const desc        = document.getElementById('qrModeDesc');
-
-  offlineCard.style.borderColor = mode === 'offline' ? '#c0392b' : '#e5e7eb';
-  offlineCard.style.background  = mode === 'offline' ? '#fff9f9' : '#fff';
-  urlCard.style.borderColor     = mode === 'url'     ? '#c0392b' : '#e5e7eb';
-  urlCard.style.background      = mode === 'url'     ? '#fff9f9' : '#fff';
-  urlWrap.style.display         = mode === 'url' ? '' : 'none';
-
-  if (mode === 'offline') {
-    desc.textContent = '💡 오프라인 방식: 인터넷·사내망 없이도 장비 정보 확인 가능. QR이 조금 복잡해집니다.';
-  } else {
-    desc.textContent = '💡 URL 방식: QR이 단순해서 인식이 빠릅니다. 스캔 시 사내망 접속이 필요합니다.';
-  }
-}
-
 async function confirmQrMode() {
-  const mode    = document.querySelector('input[name="qrMode"]:checked')?.value || 'offline';
   const baseUrl = document.getElementById('qrBaseUrl').value.trim();
   closeModal('qrModeModal');
 
-  if (pendingQrAction === 'single') {
-    await generateSingleQr(pendingQrDeviceId, mode, baseUrl);
+  if (currentQrDeviceId !== null) {
+    await generateSingleQr(currentQrDeviceId, baseUrl);
   } else {
-    await generateAllQr(mode, baseUrl);
+    await generateAllQr(baseUrl);
   }
 }
 
-async function generateSingleQr(id, mode, baseUrl) {
-  currentQrDevice = null;
+async function generateSingleQr(id, baseUrl) {
   const d = devicesData.find(x => x.id === id);
   document.getElementById('qrModalTitle').textContent = d ? `QR — ${d.name}` : 'QR 코드';
   document.getElementById('qrModalBody').innerHTML =
@@ -7691,13 +7759,13 @@ async function generateSingleQr(id, mode, baseUrl) {
   openModal('qrModal');
 
   try {
-    const params = new URLSearchParams({ mode, baseUrl });
+    const params = new URLSearchParams({ baseUrl });
     const res  = await fetch(`/api/net-devices/${id}/qr?${params}`, {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    currentQrDevice = data;
+    currentQrDeviceData = data;
     renderQrModal(data);
   } catch(e) {
     document.getElementById('qrModalBody').innerHTML =
@@ -7705,14 +7773,11 @@ async function generateSingleQr(id, mode, baseUrl) {
   }
 }
 
+let currentQrDeviceData = null;
+
 function renderQrModal(data) {
   const lines = data.qrText.split('\n');
-  const modeLabel = data.mode === 'url'
-    ? '<span style="background:#dbeafe;color:#2563eb;font-size:11px;padding:2px 7px;border-radius:10px">URL 방식</span>'
-    : '<span style="background:#dcfce7;color:#16a34a;font-size:11px;padding:2px 7px;border-radius:10px">오프라인</span>';
-
   document.getElementById('qrModalBody').innerHTML = `
-    <div style="text-align:center">${modeLabel}</div>
     <img src="${data.qrDataUrl}" style="width:220px;height:220px;border:1px solid #e5e7eb;border-radius:8px">
     <div style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px">
       ${lines.map(l => {
@@ -7726,21 +7791,18 @@ function renderQrModal(data) {
       }).join('')}
     </div>
     <p style="font-size:11px;color:#9ca3af;text-align:center;margin:0">
-      ${data.mode === 'offline'
-        ? '스마트폰 카메라로 스캔 → 브라우저에서 텍스트 파일로 열림 (인터넷 불필요)'
-        : '스마트폰 카메라로 스캔 → 앱 장비 상세 페이지로 이동 (사내망 필요)'}
+      스마트폰 카메라로 스캔 → 장비 상세 페이지로 이동 (사내망 필요)
     </p>`;
 }
 
 function printSingleQr() {
-  if (!currentQrDevice) return;
-  openQrPrintPreview([currentQrDevice]);
+  if (!currentQrDeviceData) return;
+  openQrPrintPreview([currentQrDeviceData]);
 }
 
-async function generateAllQr(mode, baseUrl) {
+async function generateAllQr(baseUrl) {
   const ids = devicesData.map(d => d.id);
-  const modeText = mode === 'offline' ? '오프라인' : 'URL';
-  document.getElementById('qrPrintModalTitle').textContent = `🖨️ QR 라벨 인쇄 (${modeText})`;
+  document.getElementById('qrPrintModalTitle').textContent = `🖨️ QR 라벨 인쇄 (전체 ${ids.length}개)`;
   document.getElementById('qrPrintBody').innerHTML =
     `<div style="text-align:center;padding:32px;color:#999">QR 생성 중... (${ids.length}개)</div>`;
   openModal('qrPrintModal');
@@ -7749,7 +7811,7 @@ async function generateAllQr(mode, baseUrl) {
     const res = await fetch('/api/net-devices/qr-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
-      body: JSON.stringify({ ids, mode, baseUrl })
+      body: JSON.stringify({ ids, baseUrl })
     });
     const items = await res.json();
     renderQrPrintPreview(items);
@@ -7778,9 +7840,6 @@ function renderQrPrintPreview(items) {
 function buildQrLabelHtml(item) {
   const d = item.device;
   const lines = item.qrText.split('\n');
-  const modeTag = item.mode === 'url'
-    ? '<span style="font-size:9px;background:#dbeafe;color:#2563eb;padding:1px 5px;border-radius:8px">URL</span>'
-    : '<span style="font-size:9px;background:#dcfce7;color:#16a34a;padding:1px 5px;border-radius:8px">오프라인</span>';
   const infoHtml = lines.slice(0, 6).map(l => {
     const idx = l.indexOf(': ');
     const key = idx >= 0 ? l.substring(0, idx) : l;
@@ -7791,11 +7850,10 @@ function buildQrLabelHtml(item) {
     </div>`;
   }).join('');
   return `
-    <div class="qr-label-card" style="border:1px solid #d1d5db;border-radius:8px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px;align-items:center">
+    <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px;align-items:center">
       <img src="${item.qrDataUrl}" style="width:120px;height:120px">
-      <div style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #e5e7eb;padding-bottom:6px">
-        <span style="font-weight:700;font-size:11px;color:#111;text-align:center;word-break:break-all">${escHtml(d.name)}</span>
-        ${modeTag}
+      <div style="width:100%;font-weight:700;font-size:11px;color:#111;text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:6px;word-break:break-all">
+        ${escHtml(d.name)}
       </div>
       <div style="width:100%">${infoHtml}</div>
     </div>`;
@@ -7809,7 +7867,7 @@ function doPrint() {
     <title>네트워크 장비 QR 라벨</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#fff}
+      body{font-family:'Malgun Gothic','Apple SD Gothic Neo',Arial,sans-serif;background:#fff}
       @media print{body{margin:0}@page{margin:10mm;size:A4}}
     </style>
   </head><body>${items_html}</body></html>`);
