@@ -1405,36 +1405,23 @@ function buildDeviceInfoLines(device) {
   ].filter(Boolean);
 }
 
-// QR 코드 생성 API
-// query: mode=offline|url, baseUrl=http://...  (url 모드 시)
+// QR 코드 생성 API  (URL 방식 전용 — 사내망 접속으로 장비 상세페이지 이동)
 app.get('/api/net-devices/:id/qr', authMiddleware, async (req, res) => {
   const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
   if (!device) return res.status(404).json({ error: '장비를 찾을 수 없습니다' });
 
-  const mode    = req.query.mode || 'offline';
   const baseUrl = (req.query.baseUrl || '').replace(/\/$/, '');
-  const lines   = buildDeviceInfoLines(device);
-  const qrText  = lines.join('\n');
-
-  // QR에 실제 인코딩할 콘텐츠
-  let qrContent;
-  if (mode === 'url') {
-    qrContent = baseUrl
-      ? `${baseUrl}/device/${device.id}`
-      : `http://localhost:3000/device/${device.id}`;
-  } else {
-    // data URI → 브라우저에서 인터넷 없이 텍스트 파일로 열림
-    qrContent = 'data:text/plain;charset=utf-8,' + encodeURIComponent(qrText);
-  }
+  const qrUrl   = baseUrl ? `${baseUrl}/device/${device.id}` : `http://localhost:3000/device/${device.id}`;
+  const qrText  = buildDeviceInfoLines(device).join('\n');
 
   try {
-    const qrDataUrl = await QRCode.toDataURL(qrContent, {
-      errorCorrectionLevel: mode === 'url' ? 'M' : 'L',  // offline은 L로 QR 단순화
+    const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+      errorCorrectionLevel: 'M',
       width: 300,
       margin: 2,
       color: { dark: '#000000', light: '#ffffff' },
     });
-    res.json({ qrDataUrl, qrText, qrContent, mode, device });
+    res.json({ qrDataUrl, qrText, qrUrl, device });
   } catch(e) {
     res.status(500).json({ error: 'QR 생성 실패: ' + e.message });
   }
@@ -1442,7 +1429,7 @@ app.get('/api/net-devices/:id/qr', authMiddleware, async (req, res) => {
 
 // QR 일괄 생성
 app.post('/api/net-devices/qr-batch', authMiddleware, async (req, res) => {
-  const { ids, mode, baseUrl } = req.body;
+  const { ids, baseUrl } = req.body;
   if (!ids || !ids.length) return res.status(400).json({ error: 'ids 필요' });
 
   const cleanBase = (baseUrl || '').replace(/\/$/, '');
@@ -1450,22 +1437,11 @@ app.post('/api/net-devices/qr-batch', authMiddleware, async (req, res) => {
   for (const id of ids) {
     const device = queryOne('SELECT * FROM net_devices WHERE id=?', [id]);
     if (!device) continue;
-    const lines = buildDeviceInfoLines(device);
-    const qrText = lines.join('\n');
-
-    let qrContent;
-    if (mode === 'url') {
-      qrContent = cleanBase ? `${cleanBase}/device/${device.id}` : `http://localhost:3000/device/${device.id}`;
-    } else {
-      qrContent = 'data:text/plain;charset=utf-8,' + encodeURIComponent(qrText);
-    }
-
+    const qrUrl  = cleanBase ? `${cleanBase}/device/${device.id}` : `http://localhost:3000/device/${device.id}`;
+    const qrText = buildDeviceInfoLines(device).join('\n');
     try {
-      const qrDataUrl = await QRCode.toDataURL(qrContent, {
-        errorCorrectionLevel: mode === 'url' ? 'M' : 'L',
-        width: 300, margin: 2,
-      });
-      results.push({ device, qrDataUrl, qrText, qrContent, mode });
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'M', width: 300, margin: 2 });
+      results.push({ device, qrDataUrl, qrText, qrUrl });
     } catch(e) {}
   }
   res.json(results);
@@ -1474,39 +1450,73 @@ app.post('/api/net-devices/qr-batch', authMiddleware, async (req, res) => {
 // 장비 상세 페이지 (URL 모드 QR 스캔 시 열리는 페이지 - 사내망 필요)
 app.get('/device/:id', async (req, res) => {
   const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
-  if (!device) return res.status(404).send('<h2>장비를 찾을 수 없습니다</h2>');
+  if (!device) return res.status(404).send(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>오류</title></head><body style="font-family:sans-serif;padding:32px;text-align:center"><h2 style="color:#c0392b">장비를 찾을 수 없습니다</h2></body></html>`);
 
-  const lines = buildDeviceInfoLines(device);
-  const rows = lines.map(l => {
-    const [k, ...vs] = l.split(': ');
-    return `<tr><th>${k}</th><td>${vs.join(': ')}</td></tr>`;
-  }).join('');
+  // 인터페이스 테이블 HTML
+  let ifaceHtml = '';
+  try {
+    const ifaces = JSON.parse(device.interfaces || '[]');
+    if (ifaces.length) {
+      const rows = ifaces.map(i => `<tr><td>${i.count}포트</td><td>${i.portType}</td><td>${i.speed}</td></tr>`).join('');
+      ifaceHtml = `<div class="section-title">인터페이스</div>
+        <table><thead><tr><th>포트 수</th><th>종류</th><th>속도</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  } catch(e) {}
+
+  const NET_CODE = {'사무망':'O','현장망':'F','장비망':'E','전화망':'V'};
+  const netCode = NET_CODE[device.network_type] || '';
+  const netBadge = device.network_type
+    ? `<span class="badge">${device.network_type}${netCode ? ' ('+netCode+')' : ''}</span>` : '';
+
+  const infoRows = [
+    ['위치',    device.location],
+    ['IP',      device.ip],
+    ['제조사',  device.vendor],
+    ['모델',    device.model],
+    ['시리얼',  device.serial],
+    ['MAC',     device.mac],
+    ['설명',    device.description],
+  ].filter(([,v]) => v).map(([k,v]) =>
+    `<tr><th>${k}</th><td>${v}</td></tr>`
+  ).join('');
 
   res.send(`<!DOCTYPE html><html lang="ko"><head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${device.name}</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f8fafc;padding:16px;color:#1f2937}
-      .card{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;max-width:480px;margin:0 auto}
-      .card-head{background:#c0392b;color:#fff;padding:16px 20px}
-      .card-head h1{font-size:16px;font-weight:700;word-break:break-all}
-      .card-head p{font-size:12px;opacity:.8;margin-top:4px}
+      body{font-family:'Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;background:#f1f5f9;min-height:100vh;padding:16px}
+      .wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+      .card{background:#fff;border-radius:14px;box-shadow:0 1px 6px rgba(0,0,0,.08);overflow:hidden}
+      .card-head{background:#c0392b;color:#fff;padding:18px 20px}
+      .card-head h1{font-size:18px;font-weight:700;word-break:break-all;letter-spacing:-.3px}
+      .card-head .sub{font-size:12px;opacity:.75;margin-top:5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      .badge{display:inline-block;background:rgba(255,255,255,.25);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
       table{width:100%;border-collapse:collapse}
-      th{width:80px;padding:10px 16px;font-size:12px;color:#6b7280;font-weight:600;text-align:left;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap;vertical-align:top}
-      td{padding:10px 16px;font-size:13px;color:#111;border-bottom:1px solid #f3f4f6;word-break:break-all}
+      th{width:72px;padding:11px 16px;font-size:12px;color:#6b7280;font-weight:600;text-align:left;background:#f9fafb;border-bottom:1px solid #f3f4f6;white-space:nowrap;vertical-align:top}
+      td{padding:11px 16px;font-size:13px;color:#111827;border-bottom:1px solid #f3f4f6;word-break:break-all}
+      thead th{background:#f3f4f6;color:#374151;width:auto}
       tr:last-child th,tr:last-child td{border-bottom:none}
-      .footer{text-align:center;font-size:11px;color:#9ca3af;padding:12px}
+      .section-title{font-size:12px;font-weight:700;color:#6b7280;padding:12px 16px 8px;border-bottom:1px solid #f3f4f6;background:#f9fafb;letter-spacing:.3px;text-transform:uppercase}
+      .footer{text-align:center;font-size:11px;color:#94a3b8;padding:8px}
     </style>
   </head><body>
-    <div class="card">
-      <div class="card-head">
-        <h1>${device.name}</h1>
-        <p>네트워크 장비 정보</p>
+    <div class="wrap">
+      <div class="card">
+        <div class="card-head">
+          <h1>${device.name}</h1>
+          <div class="sub">
+            <span>네트워크 장비</span>
+            ${netBadge}
+            ${device.ip ? '<span class="badge">'+device.ip+'</span>' : ''}
+          </div>
+        </div>
+        ${infoRows ? `<div class="section-title">기본 정보</div><table><tbody>${infoRows}</tbody></table>` : ''}
+        ${ifaceHtml}
       </div>
-      <table>${rows}</table>
+      <p class="footer">KSM 네트워크 공사 이력 관리 시스템</p>
     </div>
-    <p class="footer">KSM 네트워크 공사 이력 관리 시스템</p>
   </body></html>`);
 });
 
