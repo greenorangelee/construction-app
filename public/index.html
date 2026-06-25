@@ -2814,6 +2814,23 @@
         </div>
       </div>
 
+      <!-- 검색 바 -->
+      <div style="padding:12px 0 4px;display:flex;gap:8px;align-items:center">
+        <div style="position:relative;flex:1;max-width:420px">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;pointer-events:none">🔍</span>
+          <input type="text" id="devSearchInput"
+            placeholder="장비명, IP, 위치, 제조사, 모델, 시리얼 검색..."
+            oninput="onDevSearch()"
+            style="width:100%;padding:8px 12px 8px 32px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
+        <span id="devSearchCount" style="font-size:12px;color:#9ca3af;white-space:nowrap"></span>
+        <button id="devSearchClearBtn" onclick="clearDevSearch()"
+          style="display:none;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;color:#6b7280;cursor:pointer">
+          ✕ 초기화
+        </button>
+      </div>
+
       <div class="table-wrap scroll-table">
         <table id="devicesTable">
           <thead>
@@ -6873,7 +6890,7 @@ function switchTab(tab) {
   if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
-  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); }
+  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -7310,6 +7327,44 @@ function exportDevicesExcel() {
   .catch(e => alert('엑셀 내보내기 실패: ' + e.message));
 }
 
+// ── 장비 검색 ──────────────────────────────────────────
+
+let devSearchQuery = '';
+
+function onDevSearch() {
+  const q = document.getElementById('devSearchInput').value.trim();
+  devSearchQuery = q;
+  document.getElementById('devSearchClearBtn').style.display = q ? '' : 'none';
+  renderDevicesTable();
+}
+
+function clearDevSearch() {
+  document.getElementById('devSearchInput').value = '';
+  devSearchQuery = '';
+  document.getElementById('devSearchClearBtn').style.display = 'none';
+  document.getElementById('devSearchCount').textContent = '';
+  renderDevicesTable();
+  document.getElementById('devSearchInput').focus();
+}
+
+function matchesSearch(d, q) {
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  return [
+    d.name, d.location, d.location_detail, d.network_type,
+    d.ip, d.vendor, d.model, d.serial, d.mac, d.description,
+  ].some(v => v && v.toLowerCase().includes(lower));
+}
+
+// 검색어 하이라이트
+function highlight(text, q) {
+  if (!q || !text) return escHtml(text || '');
+  const escaped = escHtml(text);
+  const escapedQ = escHtml(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(escapedQ, 'gi'),
+    m => `<mark style="background:#fef08a;color:#1e293b;border-radius:2px;padding:0 1px">${m}</mark>`);
+}
+
 async function loadDevices() {
   try {
     const res = await fetch('/api/net-devices', { headers: { 'Authorization': 'Bearer ' + getToken() } });
@@ -7325,14 +7380,35 @@ async function loadDevices() {
 function renderDevicesTable() {
   const tbody = document.getElementById('devicesTableBody');
   const canWrite = currentUser && (currentUser.role === 'write' || currentUser.role === 'admin');
-  if (!devicesData.length) {
+  const q = devSearchQuery;
+
+  // 검색 필터 적용
+  const filtered = devicesData.filter(d => matchesSearch(d, q));
+
+  // 검색 결과 카운트 표시
+  const countEl = document.getElementById('devSearchCount');
+  if (countEl) {
+    countEl.textContent = q
+      ? `${filtered.length} / ${devicesData.length}개`
+      : (devicesData.length ? `총 ${devicesData.length}개` : '');
+  }
+
+  if (!filtered.length) {
+    tbody.innerHTML = q
+      ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af">
+          <div style="font-size:24px;margin-bottom:8px">🔍</div>
+          <div style="font-size:13px"><strong>${escHtml(q)}</strong> 에 해당하는 장비가 없습니다.</div>
+        </td></tr>`
+      : '<tr><td colspan="9" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
+    return;
+  }
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#999">등록된 장비가 없습니다.</td></tr>';
     return;
   }
 
-  // 위치별 그룹핑
+  // 위치별 그룹핑 (필터된 결과 기준)
   const groups = {};
-  devicesData.forEach(d => {
+  filtered.forEach(d => {
     const loc = d.location && d.location.trim() ? d.location.trim() : '위치 미지정';
     if (!groups[loc]) groups[loc] = [];
     groups[loc].push(d);
@@ -7360,20 +7436,20 @@ function renderDevicesTable() {
     devices.forEach(d => {
       const netColor = NET_COLORS[d.network_type] || '#6b7280';
       const netBadge = d.network_type
-        ? `<span style="background:${netColor}18;color:${netColor};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">${escHtml(d.network_type)}</span>`
+        ? `<span style="background:${netColor}18;color:${netColor};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">${highlight(d.network_type, q)}</span>`
         : '<span style="color:#d1d5db;font-size:12px">-</span>';
       const locDetail = d.location_detail
-        ? `<span style="background:#f3f4f6;color:#374151;padding:1px 6px;border-radius:4px;font-size:11px;font-family:monospace">${escHtml(d.location_detail)}</span>`
+        ? `<span style="background:#f3f4f6;color:#374151;padding:1px 6px;border-radius:4px;font-size:11px;font-family:monospace">${highlight(d.location_detail, q)}</span>`
         : '<span style="color:#d1d5db;font-size:12px">-</span>';
       html += `
         <tr>
           <td style="text-align:center;color:#9ca3af;font-size:12px">${globalNo++}</td>
-          <td style="font-size:12px;color:#6b7280">${escHtml(d.location||'-')}</td>
+          <td style="font-size:12px;color:#6b7280">${highlight(d.location||'-', q)}</td>
           <td style="font-size:12px">${locDetail}</td>
-          <td><strong style="font-size:13px;color:#c0392b;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="showDeviceDetail(${d.id})">${escHtml(d.name)}</strong></td>
+          <td><strong style="font-size:13px;color:#c0392b;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="showDeviceDetail(${d.id})">${highlight(d.name, q)}</strong></td>
           <td>${netBadge}</td>
-          <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${escHtml(d.ip)}</code></td>
-          <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${escHtml(d.description||'-')}</td>
+          <td><code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px">${highlight(d.ip||'', q)}</code></td>
+          <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.description||'')}">${highlight(d.description||'-', q)}</td>
           <td style="font-size:11px;color:#9ca3af;white-space:nowrap">${(d.created_at||'').substring(0,10)}</td>
           <td style="text-align:center;white-space:nowrap">
             <button class="btn btn-sm" onclick="runSnmp(${d.id},'${escHtml(d.name)}')" style="font-size:11px;padding:3px 8px;margin-right:4px;background:#3b82f6;color:#fff;border:none">📡 SNMP</button>
