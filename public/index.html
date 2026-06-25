@@ -2825,10 +2825,18 @@
             style="width:100%;padding:6px 10px 6px 28px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;outline:none;background:#fff;color:#1e293b"
             onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#d1d5db'">
         </div>
-        <!-- 위치 필터 -->
-        <select id="devFilterLocation" onchange="onDevFilter()"
-          style="padding:6px 28px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
-          <option value="">전체 위치</option>
+        <!-- 위치 필터 (지역/동/층 3단계 연동) -->
+        <select id="devFilterRegion" onchange="onDevFilterRegion()"
+          style="padding:6px 26px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
+          <option value="">전체 지역</option>
+        </select>
+        <select id="devFilterDong" onchange="onDevFilterDong()"
+          style="padding:6px 26px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
+          <option value="">전체 동</option>
+        </select>
+        <select id="devFilterFloor" onchange="onDevFilter()"
+          style="padding:6px 26px 6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;background:#fff;color:#374151;cursor:pointer;appearance:none;background-image:url('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'><path d=\'M0 0l5 6 5-6z\' fill=\'%239ca3af\'/></svg>');background-repeat:no-repeat;background-position:right 8px center">
+          <option value="">전체 층</option>
         </select>
         <!-- 망 필터 -->
         <select id="devFilterNetwork" onchange="onDevFilter()"
@@ -6911,7 +6919,7 @@ function switchTab(tab) {
   if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
-  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={location:'',network:'',vendor:''}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
+  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:'',dong:'',floor:'',network:'',vendor:''}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -7351,65 +7359,139 @@ function exportDevicesExcel() {
 // ── 장비 검색 ──────────────────────────────────────────
 
 let devSearchQuery = '';
-let devFilters = { location: '', network: '', vendor: '' };
+let devFilters = { region: '', dong: '', floor: '', network: '', vendor: '' };
 
-// 필터 드랍다운 옵션 채우기 (데이터 로드 후 호출)
+// ── 위치 필터 드랍다운 연동 ──
+
 function populateDevFilters() {
-  // 위치 (지역 기준)
-  const locations = [...new Set(devicesData.map(d => d.location).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
-  const locSel = document.getElementById('devFilterLocation');
-  const curLoc = locSel.value;
-  locSel.innerHTML = '<option value="">전체 위치</option>' +
-    locations.map(l => `<option value="${escHtml(l)}" ${l===curLoc?'selected':''}>${escHtml(l)}</option>`).join('');
+  // 지역 목록 (데이터 기반, 중복 제거)
+  const regions = [...new Set(
+    devicesData.map(d => (d.location||'').split('_')[0]).filter(Boolean)
+  )].sort((a,b) => a.localeCompare(b,'ko'));
+
+  const regSel = document.getElementById('devFilterRegion');
+  const curReg = devFilters.region;
+  regSel.innerHTML = '<option value="">전체 지역</option>' +
+    regions.map(r => `<option value="${escHtml(r)}" ${r===curReg?'selected':''}>${escHtml(r)}</option>`).join('');
+
+  _repopulateDong();
+  _repopulateFloor();
 
   // 제조사
   const vendors = [...new Set(devicesData.map(d => d.vendor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
   const venSel = document.getElementById('devFilterVendor');
-  const curVen = venSel.value;
+  const curVen = devFilters.vendor;
   venSel.innerHTML = '<option value="">전체 제조사</option>' +
     vendors.map(v => `<option value="${escHtml(v)}" ${v===curVen?'selected':''}>${escHtml(v)}</option>`).join('');
 }
 
-function onDevFilter() {
-  devSearchQuery      = document.getElementById('devSearchInput').value.trim();
-  devFilters.location = document.getElementById('devFilterLocation').value;
-  devFilters.network  = document.getElementById('devFilterNetwork').value;
-  devFilters.vendor   = document.getElementById('devFilterVendor').value;
+function _repopulateDong() {
+  const reg = devFilters.region;
+  const dongs = [...new Set(
+    devicesData
+      .filter(d => !reg || (d.location||'').split('_')[0] === reg)
+      .map(d => (d.location||'').split('_')[1])
+      .filter(Boolean)
+  )].sort((a,b) => a.localeCompare(b,'ko'));
 
-  const hasFilter = devSearchQuery || devFilters.location || devFilters.network || devFilters.vendor;
-  document.getElementById('devSearchClearBtn').style.display = hasFilter ? '' : 'none';
+  const dongSel = document.getElementById('devFilterDong');
+  const curDong = devFilters.dong;
+  dongSel.innerHTML = '<option value="">전체 동</option>' +
+    dongs.map(d => `<option value="${escHtml(d)}" ${d===curDong?'selected':''}>${escHtml(d)}</option>`).join('');
+}
 
-  // 활성 필터 시각 표시
-  ['devFilterLocation','devFilterNetwork','devFilterVendor'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const active = !!el.value;
-    el.style.borderColor    = active ? '#c0392b' : '#d1d5db';
-    el.style.background     = active ? '#fff9f9' : '#fff';
-    el.style.color          = active ? '#c0392b' : '#374151';
-    el.style.fontWeight     = active ? '600'     : '400';
-  });
+function _repopulateFloor() {
+  const reg  = devFilters.region;
+  const dong = devFilters.dong;
+  const floors = [...new Set(
+    devicesData
+      .filter(d => {
+        const parts = (d.location||'').split('_');
+        return (!reg  || parts[0] === reg)
+            && (!dong || parts[1] === dong);
+      })
+      .map(d => (d.location||'').split('_')[2])
+      .filter(Boolean)
+  )].sort();
 
+  const floorSel = document.getElementById('devFilterFloor');
+  const curFloor = devFilters.floor;
+  floorSel.innerHTML = '<option value="">전체 층</option>' +
+    floors.map(f => `<option value="${escHtml(f)}" ${f===curFloor?'selected':''}>${escHtml(f)}</option>`).join('');
+}
+
+// 지역 변경 → 동/층 초기화 후 재채움
+function onDevFilterRegion() {
+  devFilters.region = document.getElementById('devFilterRegion').value;
+  devFilters.dong   = '';
+  devFilters.floor  = '';
+  _repopulateDong();
+  _repopulateFloor();
+  _applyFilterStyles();
   renderDevicesTable();
 }
 
-// 기존 onDevSearch 호환 유지
+// 동 변경 → 층 초기화 후 재채움
+function onDevFilterDong() {
+  devFilters.dong  = document.getElementById('devFilterDong').value;
+  devFilters.floor = '';
+  _repopulateFloor();
+  _applyFilterStyles();
+  renderDevicesTable();
+}
+
+function onDevFilter() {
+  devSearchQuery    = document.getElementById('devSearchInput').value.trim();
+  devFilters.region = document.getElementById('devFilterRegion').value;
+  devFilters.dong   = document.getElementById('devFilterDong').value;
+  devFilters.floor  = document.getElementById('devFilterFloor').value;
+  devFilters.network = document.getElementById('devFilterNetwork').value;
+  devFilters.vendor  = document.getElementById('devFilterVendor').value;
+  _applyFilterStyles();
+  renderDevicesTable();
+}
+
+// 기존 호환
 function onDevSearch() { onDevFilter(); }
+
+function _applyFilterStyles() {
+  const hasFilter = devSearchQuery || devFilters.region || devFilters.dong ||
+                    devFilters.floor || devFilters.network || devFilters.vendor;
+  document.getElementById('devSearchClearBtn').style.display = hasFilter ? '' : 'none';
+
+  ['devFilterRegion','devFilterDong','devFilterFloor','devFilterNetwork','devFilterVendor'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const active = !!el.value;
+    el.style.borderColor = active ? '#c0392b' : '#d1d5db';
+    el.style.background  = active ? '#fff9f9' : '#fff';
+    el.style.color       = active ? '#c0392b' : '#374151';
+    el.style.fontWeight  = active ? '600'     : '400';
+  });
+}
 
 function clearDevFilter() {
   document.getElementById('devSearchInput').value    = '';
-  document.getElementById('devFilterLocation').value = '';
-  document.getElementById('devFilterNetwork').value  = '';
-  document.getElementById('devFilterVendor').value   = '';
+  document.getElementById('devFilterRegion').value  = '';
+  document.getElementById('devFilterDong').value    = '';
+  document.getElementById('devFilterFloor').value   = '';
+  document.getElementById('devFilterNetwork').value = '';
+  document.getElementById('devFilterVendor').value  = '';
   devSearchQuery = '';
-  devFilters = { location: '', network: '', vendor: '' };
+  devFilters = { region: '', dong: '', floor: '', network: '', vendor: '' };
+  _repopulateDong();
+  _repopulateFloor();
   document.getElementById('devSearchClearBtn').style.display = 'none';
   document.getElementById('devSearchCount').textContent = '';
+  ['devFilterRegion','devFilterDong','devFilterFloor','devFilterNetwork','devFilterVendor'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.borderColor='#d1d5db'; el.style.background='#fff'; el.style.color='#374151'; el.style.fontWeight='400'; }
+  });
   renderDevicesTable();
   document.getElementById('devSearchInput').focus();
 }
 
-// 기존 clearDevSearch 호환 유지
+// 기존 호환
 function clearDevSearch() { clearDevFilter(); }
 
 function matchesSearch(d, q) {
@@ -7422,9 +7504,12 @@ function matchesSearch(d, q) {
 }
 
 function matchesFilters(d) {
-  if (devFilters.location && d.location !== devFilters.location) return false;
-  if (devFilters.network  && d.network_type !== devFilters.network) return false;
-  if (devFilters.vendor   && d.vendor !== devFilters.vendor) return false;
+  const parts = (d.location||'').split('_');
+  if (devFilters.region  && parts[0] !== devFilters.region)  return false;
+  if (devFilters.dong    && parts[1] !== devFilters.dong)    return false;
+  if (devFilters.floor   && parts[2] !== devFilters.floor)   return false;
+  if (devFilters.network && d.network_type !== devFilters.network) return false;
+  if (devFilters.vendor  && d.vendor !== devFilters.vendor)  return false;
   return true;
 }
 
