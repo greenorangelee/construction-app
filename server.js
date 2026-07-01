@@ -212,6 +212,15 @@ async function initDB() {
     it_manager TEXT, worker TEXT, memo TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS firewall_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    req_date TEXT, corp TEXT, dept TEXT, requester TEXT,
+    status TEXT DEFAULT '결재 대기중',
+    title TEXT, worker TEXT, doc TEXT, memo TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     construction_id INTEGER NOT NULL,
@@ -416,6 +425,52 @@ app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
   const adminCount = queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
   if (adminCount.cnt === 0) return res.status(400).json({ error: '관리자 계정이 최소 1개는 있어야 합니다' });
   db.run('DELETE FROM users WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+
+// ── 방화벽 정책요청 API ──────────────────────────────────────────
+
+app.get('/api/firewall', authMiddleware, (req, res) => {
+  const { search, status, corp } = req.query;
+  let sql = 'SELECT * FROM firewall_requests WHERE 1=1';
+  const params = [];
+  if (search) {
+    sql += ' AND (title LIKE ? OR requester LIKE ? OR dept LIKE ? OR doc LIKE ? OR worker LIKE ? OR memo LIKE ?)';
+    const kw = `%${search}%`;
+    params.push(kw, kw, kw, kw, kw, kw);
+  }
+  if (status) { sql += ' AND status=?'; params.push(status); }
+  if (corp)   { sql += ' AND corp=?';   params.push(corp); }
+  sql += ' ORDER BY id DESC';
+  res.json(queryAll(sql, params));
+});
+
+app.get('/api/firewall/:id', authMiddleware, (req, res) => {
+  const row = queryOne('SELECT * FROM firewall_requests WHERE id=?', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(row);
+});
+
+app.post('/api/firewall', authMiddleware, requireWrite, (req, res) => {
+  const { req_date, corp, dept, requester, status, title, worker, doc, memo } = req.body;
+  db.run('INSERT INTO firewall_requests (req_date,corp,dept,requester,status,title,worker,doc,memo) VALUES (?,?,?,?,?,?,?,?,?)',
+    [s(req_date),s(corp),s(dept),s(requester),status||'결재 대기중',s(title),s(worker),s(doc),s(memo)]);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/firewall/:id', authMiddleware, requireWrite, (req, res) => {
+  const { req_date, corp, dept, requester, status, title, worker, doc, memo } = req.body;
+  db.run("UPDATE firewall_requests SET req_date=?,corp=?,dept=?,requester=?,status=?,title=?,worker=?,doc=?,memo=?,updated_at=datetime('now','localtime') WHERE id=?",
+    [s(req_date),s(corp),s(dept),s(requester),status||'결재 대기중',s(title),s(worker),s(doc),s(memo),req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+app.delete('/api/firewall/:id', authMiddleware, requireWrite, (req, res) => {
+  db.run('DELETE FROM firewall_requests WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
