@@ -37,22 +37,25 @@
       color: var(--text);
       min-height: 100vh;
       overflow-x: hidden;
+    }
+
+    /* 클릭 UI 요소만 선택 방지 */
+    .nav-tab, .btn, .btn-red-sm, .btn-outline, .btn-primary,
+    .stat-card, .stat-label, .badge, .header, .header *:not(input):not(textarea),
+    .modal-close, .logout-btn, .file-tab, .file-tab-bar,
+    .region-item, .floor-tag, .floor-tag-add, .col-toggle-item label,
+    .group-section-header, .table-header-row th {
       user-select: none;
       -webkit-user-select: none;
     }
 
-    /* 입력 필드는 선택 허용 */
-    input, textarea, select, .work-name {
-      user-select: text;
-      -webkit-user-select: text;
-    }
-
-    /* 모달 본문, 상세보기, 목록 셀 텍스트 선택 허용 */
+    /* 모든 텍스트 콘텐츠는 선택 허용 */
+    input, textarea, select,
     .modal-body, .modal-body *,
-    .detail-grid, .detail-grid *,
-    .detail-val, .detail-key,
-    td, th,
-    .settings-panel, .settings-panel * {
+    .detail-val, .detail-key, .detail-grid *,
+    td, th, .work-name,
+    .settings-panel *,
+    .container p, .container span {
       user-select: text !important;
       -webkit-user-select: text !important;
     }
