@@ -2416,7 +2416,7 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-ip">🗺️ 선번 관리</button>
         <button class="nav-tab active" onclick="switchTab('ip')" id="tab-ip-ip">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-ip">🔌 네트워크 장비</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-fw-ip">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-ip">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
@@ -2629,7 +2629,7 @@
         <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-c">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-c">🔌 네트워크 장비</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-fw-c">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-c">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -2883,7 +2883,7 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-d">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-d">🖥️ IP 대장</button>
         <button class="nav-tab active" onclick="switchTab('devices')" id="tab-devices-d">🔌 네트워크 장비</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-fw-d">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-d">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
@@ -3280,7 +3280,7 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-fw">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-fw">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-fw">🔌 네트워크 장비</button>
-        <button class="nav-tab active" onclick="switchTab('fw')" id="tab-fw-fw">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-fw">🔥 방화벽 정책요청</button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
       </nav>
     </div>
@@ -3415,7 +3415,7 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-s">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-s">🔌 네트워크 장비</button>
-        <button class="nav-tab active" onclick="switchTab('settings')" id="tab-fw-s">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-s">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -7491,8 +7491,8 @@ function isBetaEnabled() {
 
 function applyBetaState(enabled) {
   // 탭 버튼 표시/숨김 (모든 헤더의 탭)
-  ['tab-cable','tab-cable-s','tab-cable-c','tab-cable-ip','tab-cable-d',
-   'tab-ip','tab-ip-s','tab-ip-c','tab-ip-ip','tab-ip-d'].forEach(id => {
+  ['tab-cable','tab-cable-s','tab-cable-c','tab-cable-ip','tab-cable-d','tab-cable-fw',
+   'tab-ip','tab-ip-s','tab-ip-c','tab-ip-ip','tab-ip-d','tab-ip-fw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = enabled ? '' : 'none';
   });
