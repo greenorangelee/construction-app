@@ -2182,6 +2182,7 @@
       <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
       <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip">🖥️ IP 대장</button>
       <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices">🔌 네트워크 장비</button>
+      <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -2415,7 +2416,8 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-ip">🗺️ 선번 관리</button>
         <button class="nav-tab active" onclick="switchTab('ip')" id="tab-ip-ip">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-ip">🔌 네트워크 장비</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-fw-ip">🔥 방화벽 정책요청</button>
+      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -2627,7 +2629,8 @@
         <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-c">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-c">🔌 네트워크 장비</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-fw-c">🔥 방화벽 정책요청</button>
+      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -2880,7 +2883,8 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-d">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-d">🖥️ IP 대장</button>
         <button class="nav-tab active" onclick="switchTab('devices')" id="tab-devices-d">🔌 네트워크 장비</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-fw-d">🔥 방화벽 정책요청</button>
+      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -3265,6 +3269,141 @@
   </div>
 </div>
 
+<!-- ─── 방화벽 정책요청 페이지 ─── -->
+<div id="firewallPage" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-fw">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-fw">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-fw">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-fw">🔌 네트워크 장비</button>
+        <button class="nav-tab active" onclick="switchTab('fw')" id="tab-fw-fw">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openFwModal()" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#ffffff'" id="fwAddBtn">
+        <span>+</span> 새 요청 등록
+      </button>
+      <div class="header-user">
+        <span class="header-user-name" id="headerUserName"></span>
+        <span class="header-user-role" id="headerUserRole"></span>
+        <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </header>
+  <div class="container">
+    <!-- 필터 -->
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input type="text" id="fwSearch" placeholder="🔍 공사명·요청자·부서·품의명 검색" oninput="loadFwList()" style="flex:1;min-width:200px;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+      <select id="fwStatusFilter" onchange="loadFwList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="">전체 상태</option>
+        <option value="결재 대기중">결재 대기중</option>
+        <option value="진행중">진행중</option>
+        <option value="완료">완료</option>
+      </select>
+      <select id="fwCorpFilter" onchange="loadFwList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="">전체 법인</option>
+        <option>KSM</option><option>FKSM</option><option>KSMC</option><option>YHE</option><option>KSMF</option>
+      </select>
+    </div>
+
+    <!-- 목록 -->
+    <div class="table-wrapper">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)">
+        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">🔥 방화벽 정책요청 목록</h2>
+        <span id="fwCount" style="font-size:12px;color:#9ca3af"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">No</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">요청일</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">법인</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">부서</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">요청자</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">상태</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left">품의명</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">작업자</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">품의 서류</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">관리</th>
+            </tr>
+          </thead>
+          <tbody id="fwTableBody">
+            <tr><td colspan="10" style="text-align:center;padding:40px;color:#9ca3af">불러오는 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 방화벽 정책요청 등록/수정 모달 ─── -->
+<div class="modal-overlay" id="fwModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h2 id="fwModalTitle">방화벽 정책요청 등록</h2>
+      <button class="modal-close" onclick="closeModal('fwModal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:24px">
+      <input type="hidden" id="fwModalId" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">요청일</label>
+          <input type="text" id="fw-req_date" placeholder="예) 26.01.01" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">법인</label>
+          <select id="fw-corp" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+            <option value="">선택</option>
+            <option>KSM</option><option>FKSM</option><option>KSMC</option><option>YHE</option><option>KSMF</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">부서</label>
+          <input type="text" id="fw-dept" placeholder="부서명" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">요청자</label>
+          <input type="text" id="fw-requester" placeholder="요청자 이름" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">상태</label>
+          <select id="fw-status" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+            <option>결재 대기중</option>
+            <option>진행중</option>
+            <option>완료</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">작업자</label>
+          <input type="text" id="fw-worker" placeholder="작업자 이름" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">품의명</label>
+          <input type="text" id="fw-title" placeholder="품의명 입력" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">품의 서류</label>
+          <input type="text" id="fw-doc" placeholder="예) 경영-품의-26-0001" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">메모</label>
+          <textarea id="fw-memo" placeholder="메모" rows="3" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('fwModal')">취소</button>
+      <button class="btn btn-primary" onclick="saveFwRequest()">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── 설정 페이지 ─── -->
 <div id="settingsPage">
   <header class="header">
@@ -3276,7 +3415,8 @@
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-s">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-s">🔌 네트워크 장비</button>
-        <button class="nav-tab active" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
+        <button class="nav-tab active" onclick="switchTab('settings')" id="tab-fw-s">🔥 방화벽 정책요청</button>
+      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -3712,6 +3852,7 @@ function showLogin() {
   document.getElementById('cablePage').style.display = 'none';
   document.getElementById('ipPage').style.display = 'none';
   document.getElementById('settingsPage').style.display = 'none';
+  document.getElementById('firewallPage').style.display = 'none';
 }
 
 function showApp() {
@@ -7034,10 +7175,11 @@ function switchTab(tab) {
   document.getElementById('cablePage').style.display = tab === 'cable' ? 'block' : 'none';
   document.getElementById('ipPage').style.display = tab === 'ip' ? 'block' : 'none';
   document.getElementById('devicesPage').style.display = tab === 'devices' ? 'block' : 'none';
+  document.getElementById('firewallPage').style.display = tab === 'fw' ? 'block' : 'none';
   document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
 
-  ['main','cable','ip','devices','settings'].forEach(t => {
-    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c', 'tab-'+t+'-ip', 'tab-'+t+'-d'].forEach(id => {
+  ['main','cable','ip','devices','fw','settings'].forEach(t => {
+    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c', 'tab-'+t+'-ip', 'tab-'+t+'-d', 'tab-'+t+'-fw'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', t === tab);
     });
@@ -7047,6 +7189,7 @@ function switchTab(tab) {
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
   if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
+  if (tab === 'fw') { loadFwList(); updateFwUIByRole(); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -7440,7 +7583,104 @@ function resetColWidths() {
   showToast('컬럼 너비가 초기화됐습니다');
 }
 
-// ── INIT ──────────────────────────────────────────
+// ── 방화벽 정책요청 ──────────────────────────────────────────
+
+async function loadFwList() {
+  const search = document.getElementById('fwSearch')?.value || '';
+  const status = document.getElementById('fwStatusFilter')?.value || '';
+  const corp   = document.getElementById('fwCorpFilter')?.value || '';
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (status) params.set('status', status);
+  if (corp)   params.set('corp', corp);
+  const rows = await api('GET', '/api/firewall?' + params.toString());
+  const FW_STATUS = { '결재 대기중': 'badge-holding', '진행중': 'badge-progress', '완료': 'badge-done' };
+  document.getElementById('fwCount').textContent = `총 ${rows.length}건`;
+  document.getElementById('fwTableBody').innerHTML = rows.length ? rows.map(r => `
+    <tr style="border-bottom:1px solid #f3f4f6" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+      <td style="padding:10px 12px;color:#9ca3af;font-size:12px">${r.id}</td>
+      <td style="padding:10px 12px;white-space:nowrap">${r.req_date||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap">${r.corp||'-'}</td>
+      <td style="padding:10px 12px">${r.dept||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap">${r.requester||'-'}</td>
+      <td style="padding:10px 12px"><span class="badge ${FW_STATUS[r.status]||'badge-holding'}">${r.status||'-'}</span></td>
+      <td style="padding:10px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap">${r.worker||'-'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#6b7280;white-space:nowrap">${r.doc||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap">
+        <button class="btn-red-sm" onclick="openFwModal(${r.id})" style="margin-right:4px">수정</button>
+        <button class="btn-red-sm" onclick="deleteFwRequest(${r.id})" style="background:#ef4444" id="fwDelBtn-${r.id}">삭제</button>
+      </td>
+    </tr>`).join('')
+    : '<tr><td colspan="10" style="text-align:center;padding:40px;color:#9ca3af">등록된 방화벽 정책요청이 없습니다</td></tr>';
+}
+
+function updateFwUIByRole() {
+  const canWrite = ['write','admin'].includes(currentUser?.role);
+  const addBtn = document.getElementById('fwAddBtn');
+  if (addBtn) addBtn.style.display = canWrite ? '' : 'none';
+}
+
+async function openFwModal(id = null) {
+  document.getElementById('fwModalTitle').textContent = id ? '방화벽 정책요청 수정' : '방화벽 정책요청 등록';
+  document.getElementById('fwModalId').value = id || '';
+  if (id) {
+    const r = await api('GET', `/api/firewall/${id}`);
+    document.getElementById('fw-req_date').value = r.req_date || '';
+    document.getElementById('fw-corp').value = r.corp || '';
+    document.getElementById('fw-dept').value = r.dept || '';
+    document.getElementById('fw-requester').value = r.requester || '';
+    document.getElementById('fw-status').value = r.status || '결재 대기중';
+    document.getElementById('fw-title').value = r.title || '';
+    document.getElementById('fw-worker').value = r.worker || '';
+    document.getElementById('fw-doc').value = r.doc || '';
+    document.getElementById('fw-memo').value = r.memo || '';
+  } else {
+    ['req_date','corp','dept','requester','title','worker','doc','memo'].forEach(f => {
+      const el = document.getElementById('fw-'+f);
+      if (el) el.value = f === 'status' ? '결재 대기중' : '';
+    });
+    document.getElementById('fw-status').value = '결재 대기중';
+  }
+  openModal('fwModal');
+}
+
+async function saveFwRequest() {
+  const id = document.getElementById('fwModalId').value;
+  const body = {
+    req_date:  document.getElementById('fw-req_date').value.trim(),
+    corp:      document.getElementById('fw-corp').value,
+    dept:      document.getElementById('fw-dept').value.trim(),
+    requester: document.getElementById('fw-requester').value.trim(),
+    status:    document.getElementById('fw-status').value,
+    title:     document.getElementById('fw-title').value.trim(),
+    worker:    document.getElementById('fw-worker').value.trim(),
+    doc:       document.getElementById('fw-doc').value.trim(),
+    memo:      document.getElementById('fw-memo').value.trim(),
+  };
+  try {
+    if (id) {
+      await api('PUT', `/api/firewall/${id}`, body);
+      showToast('수정됐습니다');
+    } else {
+      await api('POST', '/api/firewall', body);
+      showToast('등록됐습니다');
+    }
+    closeModal('fwModal');
+    loadFwList();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function deleteFwRequest(id) {
+  if (!confirm('이 요청을 삭제할까요?')) return;
+  try {
+    await api('DELETE', `/api/firewall/${id}`);
+    showToast('삭제됐습니다');
+    loadFwList();
+  } catch(e) { showToast(e.message, true); }
+}
+
+
 
 initColVisibility();
 checkAuth();
