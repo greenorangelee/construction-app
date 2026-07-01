@@ -48,11 +48,13 @@
     }
 
     /* 모달 본문, 상세보기, 목록 셀 텍스트 선택 허용 */
-    .modal-body, .modal-body *, .detail-grid, .detail-grid *,
-    td, .table-wrapper td, .fw-table td,
+    .modal-body, .modal-body *,
+    .detail-grid, .detail-grid *,
+    .detail-val, .detail-key,
+    td, th,
     .settings-panel, .settings-panel * {
-      user-select: text;
-      -webkit-user-select: text;
+      user-select: text !important;
+      -webkit-user-select: text !important;
     }
 
     /* ── HEADER ── */
