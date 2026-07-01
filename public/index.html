@@ -47,6 +47,14 @@
       -webkit-user-select: text;
     }
 
+    /* 모달 본문, 상세보기, 목록 셀 텍스트 선택 허용 */
+    .modal-body, .modal-body *, .detail-grid, .detail-grid *,
+    td, .table-wrapper td, .fw-table td,
+    .settings-panel, .settings-panel * {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
     /* ── HEADER ── */
     .header {
       background: #c0392b;
