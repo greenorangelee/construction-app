@@ -3391,6 +3391,7 @@
         <option value="3">Level 3</option>
         <option value="2">Level 2</option>
         <option value="1">Level 1</option>
+        <option value="0">Level 0 (시간제외)</option>
       </select>
     </div>
 
@@ -3439,25 +3440,35 @@
       <div style="margin-bottom:18px">
         <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:8px">장애 등급</label>
         <div style="display:flex;gap:8px">
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt0">
+            <input type="radio" name="inc-level" value="0" style="accent-color:#c0392b" onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.0</span>
+            <span style="font-size:9px;color:#9ca3af;text-align:center">단순 이슈</span>
+          </label>
           <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt1">
             <input type="radio" name="inc-level" value="1" style="accent-color:#c0392b" onchange="updateLevelUI()" />
             <span style="font-size:13px;font-weight:700">Lv.1</span>
+            <span style="font-size:9px;color:#9ca3af;text-align:center">경미 MINOR</span>
           </label>
           <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt2">
             <input type="radio" name="inc-level" value="2" style="accent-color:#c0392b" onchange="updateLevelUI()" />
             <span style="font-size:13px;font-weight:700">Lv.2</span>
+            <span style="font-size:9px;color:#9ca3af;text-align:center">주의 CAUTION</span>
           </label>
           <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt3">
             <input type="radio" name="inc-level" value="3" style="accent-color:#c0392b" checked onchange="updateLevelUI()" />
             <span style="font-size:13px;font-weight:700">Lv.3</span>
+            <span style="font-size:9px;color:#9ca3af;text-align:center">경고 WARNING</span>
           </label>
           <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt4">
             <input type="radio" name="inc-level" value="4" style="accent-color:#c0392b" onchange="updateLevelUI()" />
             <span style="font-size:13px;font-weight:700">Lv.4</span>
+            <span style="font-size:9px;color:#9ca3af;text-align:center">심각 MAJOR</span>
           </label>
           <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt5">
             <input type="radio" name="inc-level" value="5" style="accent-color:#c0392b" onchange="updateLevelUI()" />
             <span style="font-size:13px;font-weight:700">Lv.5</span>
+            <span style="font-size:9px;color:#9ca3af;text-align:center">치명 CRITICAL</span>
           </label>
         </div>
       </div>
@@ -7845,6 +7856,7 @@ function resetColWidths() {
 // ── 장애 이력 ──────────────────────────────────────────
 
 const INC_LEVEL_COLORS = {
+  0: { bg:'#f9fafb', color:'#9ca3af', border:'#e5e7eb', label:'Lv.0' },
   1: { bg:'#f3f4f6', color:'#6b7280', border:'#e5e7eb', label:'Lv.1' },
   2: { bg:'#eff6ff', color:'#3b82f6', border:'#bfdbfe', label:'Lv.2' },
   3: { bg:'#fef3c7', color:'#d97706', border:'#fcd34d', label:'Lv.3' },
@@ -7963,7 +7975,7 @@ async function loadIncidentList() {
       <td style="padding:10px 12px;font-size:12px">${r.location||'-'}</td>
       <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-family:'JetBrains Mono',monospace">${r.start_time||'-'}</td>
       <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-family:'JetBrains Mono',monospace">${r.end_time||'-'}</td>
-      <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:600;color:${r.duration_min>120?'#dc2626':r.duration_min>60?'#d97706':'#374151'}">${fmtDuration(r.duration_min)}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:600;color:${r.level===0?'#9ca3af':r.duration_min>120?'#dc2626':r.duration_min>60?'#d97706':'#374151'}">${r.level===0?'제외':fmtDuration(r.duration_min)}</td>
       <td style="padding:10px 12px;white-space:nowrap" onclick="event.stopPropagation()">
         <button class="btn-red-sm" onclick="openIncidentModal(${r.id})" style="margin-right:4px">수정</button>
         <button class="btn-red-sm" onclick="deleteIncident(${r.id})" style="background:#ef4444">삭제</button>
@@ -7973,8 +7985,8 @@ async function loadIncidentList() {
 }
 
 function updateLevelUI() {
-  const selected = parseInt(document.querySelector('input[name="inc-level"]:checked')?.value || 3);
-  [1,2,3,4,5].forEach(l => {
+  const selected = parseInt(document.querySelector('input[name="inc-level"]:checked')?.value ?? 3);
+  [0,1,2,3,4,5].forEach(l => {
     const opt = document.getElementById(`incLevelOpt${l}`);
     if (!opt) return;
     const c = INC_LEVEL_COLORS[l];
