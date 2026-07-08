@@ -525,35 +525,31 @@ app.delete('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
 // 엑셀 import
 app.post('/api/incidents/import', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
   try {
-    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-    const dataRows = rows.slice(2).filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '');
+    // 행1: 빈 헤더행, 행2: 컬럼명, 행3~: 데이터
+    // col0=NO, col1=장애구분, col2=요약, col3=날짜, col4=지역, col5=위치
+    // col6=최초발견자, col7=접수시간, col8=시작시간, col9=완료시간, col10=소요시간
+    // col11=장애내용, col12=조치내용, col13=주요원인, col14=비고
+    const dataRows = rows.slice(2).filter(r => r[0] !== undefined && r[0] !== null && r[0] !== '');
 
-    const toTimeStr = v => {
+    const toDateStr = v => {
       if (!v) return '';
-      if (typeof v === 'string') return v;
-      // Excel time fraction (0~1)
-      if (typeof v === 'number') {
-        const totalMin = Math.round(v * 24 * 60);
-        const h = Math.floor(totalMin / 60), m = totalMin % 60;
-        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-      }
-      // Date object from openpyxl-style (XLSX gives time as fraction or Date)
-      if (v instanceof Date) {
-        return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+      if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+      if (typeof v === 'string' && v.includes('T')) {
+        const d = new Date(v);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       }
       return String(v);
     };
 
-    const toDateStr = v => {
+    const toTimeStr = v => {
       if (!v) return '';
-      if (v instanceof Date) {
-        return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
-      }
-      if (typeof v === 'number') {
-        const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (v instanceof Date) return `${String(v.getUTCHours()).padStart(2,'0')}:${String(v.getUTCMinutes()).padStart(2,'0')}`;
+      if (typeof v === 'string' && v.includes('T')) {
+        const d = new Date(v);
+        return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
       }
       return String(v);
     };
@@ -562,25 +558,32 @@ app.post('/api/incidents/import', upload.single('file'), authMiddleware, require
       if (!start || !end) return 0;
       const [sh,sm] = start.split(':').map(Number);
       const [eh,em] = end.split(':').map(Number);
-      const diff = (eh*60+em) - (sh*60+sm);
-      return diff > 0 ? diff : 0;
+      return Math.max(0, (eh*60+em) - (sh*60+sm));
     };
 
     let inserted = 0, updated = 0;
     for (const row of dataRows) {
-      const no = parseInt(row[1]);
+      const no = parseInt(row[0]);
       if (!no) continue;
-      const startTime = toTimeStr(row[9]);
-      const endTime   = toTimeStr(row[10]);
+      const startTime = toTimeStr(row[8]);
+      const endTime   = toTimeStr(row[9]);
       const durMin    = calcMin(startTime, endTime);
       const fields = {
-        no, category: String(row[2]||'').trim(), summary: String(row[3]||'').trim(),
-        inc_date: toDateStr(row[4]), region: String(row[5]||'').trim(),
-        location: String(row[6]||'').trim(), reporter: String(row[7]||'').trim(),
-        start_time: startTime, end_time: endTime, duration_min: durMin,
-        content: String(row[12]||'').trim(), action: String(row[13]||'').trim(),
-        cause: String(row[14]||'').trim(), memo: String(row[15]||'').trim(),
-        level: 3
+        no,
+        category:   String(row[1]||'').trim(),
+        summary:    String(row[2]||'').trim(),
+        inc_date:   toDateStr(row[3]),
+        region:     String(row[4]||'').trim(),
+        location:   String(row[5]||'').trim(),
+        reporter:   String(row[6]||'').trim(),
+        start_time: startTime,
+        end_time:   endTime,
+        duration_min: durMin,
+        content:    String(row[11]||'').trim(),
+        action:     String(row[12]||'').trim(),
+        cause:      String(row[13]||'').trim(),
+        memo:       String(row[14]||'').trim(),
+        level:      3,
       };
       const existing = queryOne('SELECT id FROM incidents WHERE no=?', [no]);
       if (existing) {
