@@ -476,6 +476,22 @@ app.delete('/api/firewall/:id', authMiddleware, requireWrite, (req, res) => {
 });
 
 
+app.get('/api/stats/monthly', authMiddleware, (req, res) => {
+  // req_date 형식: YY.MM.DD → 연도/월 추출
+  const rows = queryAll(`
+    SELECT
+      CAST('20' || SUBSTR(req_date, 1, 2) AS INTEGER) as year,
+      CAST(SUBSTR(req_date, 4, 2) AS INTEGER) as month,
+      gubun,
+      COUNT(*) as cnt
+    FROM constructions
+    WHERE req_date IS NOT NULL AND req_date != '' AND LENGTH(req_date) >= 5
+    GROUP BY year, month, gubun
+    ORDER BY year, month
+  `);
+  res.json(rows);
+});
+
 app.get('/api/stats', authMiddleware, (req, res) => {
   const g = q => queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`).cnt;
   res.json({
