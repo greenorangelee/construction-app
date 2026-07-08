@@ -8087,7 +8087,7 @@ async function saveIncident() {
     action:       document.getElementById('inc-action').value,
     cause:        document.getElementById('inc-cause').value,
     memo:         document.getElementById('inc-memo').value,
-    level:        parseInt(document.querySelector('input[name="inc-level"]:checked')?.value || 3),
+    level:        (() => { const v = document.querySelector('input[name="inc-level"]:checked')?.value; return v != null ? parseInt(v) : 3; })(),
   };
   try {
     if (id) { await api('PUT', `/api/incidents/${id}`, body); showToast('수정됐습니다'); }
