@@ -497,7 +497,7 @@ app.post('/api/incidents', authMiddleware, requireWrite, (req, res) => {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [d.no||lastNo,s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),
      s(d.reporter),s(d.start_time),s(d.end_time),parseInt(d.duration_min)||0,
-     s(d.content),s(d.action),s(d.cause),s(d.memo),parseInt(d.level)||3]);
+     s(d.content),s(d.action),s(d.cause),s(d.memo),d.level!=null?parseInt(d.level):3]);
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
@@ -509,7 +509,7 @@ app.put('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
     updated_at=datetime('now','localtime') WHERE id=?`,
     [s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),s(d.reporter),
      s(d.start_time),s(d.end_time),parseInt(d.duration_min)||0,
-     s(d.content),s(d.action),s(d.cause),s(d.memo),parseInt(d.level)||3,req.params.id]);
+     s(d.content),s(d.action),s(d.cause),s(d.memo),d.level!=null?parseInt(d.level):3,req.params.id]);
   saveDB();
   res.json({ success: true });
 });
