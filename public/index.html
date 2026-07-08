@@ -2335,11 +2335,13 @@
       <div style="display:flex;gap:6px">
         <button onclick="toggleChartType('bar')" id="chartBtnBar" style="padding:4px 12px;border:1.5px solid #c0392b;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:#c0392b;color:#fff;transition:all 0.15s">막대</button>
         <button onclick="toggleChartType('line')" id="chartBtnLine" style="padding:4px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#6b7280;transition:all 0.15s">꺾은선</button>
-        <button onclick="document.getElementById('monthlyChartSection').style.display='none'" style="padding:4px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;cursor:pointer;background:#fff;color:#9ca3af">접기</button>
+        <button onclick="toggleMonthlyChart()" id="chartToggleBtn" style="padding:4px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;cursor:pointer;background:#fff;color:#9ca3af">접기</button>
       </div>
     </div>
-    <canvas id="monthlyChart" height="90"></canvas>
-    <div id="monthlyChartLegend" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:#6b7280"></div>
+    <div id="monthlyChartBody">
+      <canvas id="monthlyChart" height="90"></canvas>
+      <div id="monthlyChartLegend" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:#6b7280"></div>
+    </div>
   </div>
 
   <!-- FILTERS -->
@@ -7722,6 +7724,14 @@ async function deleteFwRequest(id) {
 let monthlyChartInstance = null;
 let monthlyChartType = 'bar';
 let monthlyChartData = [];
+
+function toggleMonthlyChart() {
+  const body = document.getElementById('monthlyChartBody');
+  const btn = document.getElementById('chartToggleBtn');
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  btn.textContent = collapsed ? '접기' : '펼치기';
+}
 
 function toggleChartType(type) {
   monthlyChartType = type;
