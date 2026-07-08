@@ -475,12 +475,12 @@ app.get('/api/incidents/stats', authMiddleware, (req, res) => {
     SELECT
       SUBSTR(inc_date,1,7) as ym,
       COUNT(*) as cnt,
-      SUM(CASE WHEN level > 0 THEN duration_min ELSE 0 END) as total_min
+      SUM(duration_min) as total_min
     FROM incidents
-    WHERE inc_date IS NOT NULL AND inc_date != ''
+    WHERE inc_date IS NOT NULL AND inc_date != '' AND level > 0
     GROUP BY ym ORDER BY ym
   `);
-  const total = queryOne('SELECT COUNT(*) as cnt, SUM(CASE WHEN level > 0 THEN duration_min ELSE 0 END) as total_min FROM incidents');
+  const total = queryOne('SELECT COUNT(*) as cnt, SUM(duration_min) as total_min FROM incidents WHERE level > 0');
   res.json({ monthly, total });
 });
 
