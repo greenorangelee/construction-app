@@ -2198,7 +2198,8 @@
       <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip">🖥️ IP 대장</button>
       <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices">🔌 네트워크 장비</button>
       <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw">🔥 방화벽 정책요청</button>
-      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
+      <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident">🚨 장애 이력</button>
+      <button onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
   <div class="header-actions">
@@ -2452,7 +2453,8 @@
         <button class="nav-tab active" onclick="switchTab('ip')" id="tab-ip-ip">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-ip">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-ip">🔥 방화벽 정책요청</button>
-      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
+      <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-ip">🚨 장애 이력</button>
+      <button onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -2665,7 +2667,8 @@
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-c">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-c">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-c">🔥 방화벽 정책요청</button>
-      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
+      <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-c">🚨 장애 이력</button>
+      <button onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -2919,7 +2922,8 @@
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-d">🖥️ IP 대장</button>
         <button class="nav-tab active" onclick="switchTab('devices')" id="tab-devices-d">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-d">🔥 방화벽 정책요청</button>
-      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
+      <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-d">🚨 장애 이력</button>
+      <button onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -3304,6 +3308,201 @@
   </div>
 </div>
 
+<!-- ─── 장애 이력 페이지 ─── -->
+<div id="incidentPage" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-incident">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-incident">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-incident">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-incident">🔌 네트워크 장비</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-incident">🔥 방화벽 정책요청</button>
+        <button class="nav-tab active" onclick="switchTab('incident')" id="tab-incident-incident">🚨 장애 이력</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-incident">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <label class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);cursor:pointer" id="incidentImportBtn">
+        📥 엑셀 import
+        <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importIncidentExcel(this)" />
+      </label>
+      <button class="btn" style="background:#ffffff;color:#c0392b;font-weight:600" onclick="openIncidentModal()" id="incidentAddBtn">
+        <span>+</span> 장애 등록
+      </button>
+      <div class="header-user">
+        <span class="header-user-name" id="headerUserName"></span>
+        <span class="header-user-role" id="headerUserRole"></span>
+        <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- 통계 카드 -->
+    <div id="incidentStatsArea" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      <!-- 전체 통계 -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px">📊 전체 통계</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">총 장애 건수</div>
+            <div id="incTotalCnt" style="font-size:26px;font-weight:800;color:#c0392b">-</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">총 장애 시간</div>
+            <div id="incTotalMin" style="font-size:22px;font-weight:700;color:#374151">-</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">전체 가용성</div>
+            <div id="incTotalAvail" style="font-size:22px;font-weight:700;color:#10b981">-</div>
+          </div>
+        </div>
+      </div>
+      <!-- 월별 통계 차트 -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:13px;font-weight:700;color:#374151">📅 월별 장애 현황</span>
+          <select id="incidentYearSelect" onchange="renderIncidentChart()" style="padding:3px 8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none"></select>
+        </div>
+        <canvas id="incidentChart" height="70"></canvas>
+      </div>
+    </div>
+
+    <!-- 필터 -->
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input type="text" id="incidentSearch" placeholder="🔍 요약·구분·위치·내용 검색" oninput="loadIncidentList()" style="flex:1;min-width:200px;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+      <select id="incidentYearFilter" onchange="loadIncidentList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="">전체 연도</option>
+      </select>
+      <select id="incidentMonthFilter" onchange="loadIncidentList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="">전체 월</option>
+        ${Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}월</option>`).join('')}
+      </select>
+      <select id="incidentLevelFilter" onchange="loadIncidentList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="">전체 등급</option>
+        <option value="5">Level 5</option>
+        <option value="4">Level 4</option>
+        <option value="3">Level 3</option>
+        <option value="2">Level 2</option>
+        <option value="1">Level 1</option>
+      </select>
+    </div>
+
+    <!-- 목록 -->
+    <div class="table-wrapper">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)">
+        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">🚨 장애 이력 목록</h2>
+        <span id="incidentCount" style="font-size:12px;color:#9ca3af"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">등급</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">No</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">날짜</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">구분</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left">요약</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">지역</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">위치</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">시작</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">완료</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">소요</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">관리</th>
+            </tr>
+          </thead>
+          <tbody id="incidentTableBody">
+            <tr><td colspan="11" style="text-align:center;padding:40px;color:#9ca3af">불러오는 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 장애 이력 상세/등록/수정 모달 ─── -->
+<div class="modal-overlay" id="incidentModal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head">
+      <h2 id="incidentModalTitle">장애 등록</h2>
+      <button class="modal-close" onclick="closeModal('incidentModal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:24px;max-height:70vh;overflow-y:auto">
+      <input type="hidden" id="inc-id" />
+      <!-- 등급 -->
+      <div style="margin-bottom:18px">
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:8px">장애 등급</label>
+        <div style="display:flex;gap:8px">
+          ${[1,2,3,4,5].map(l => `
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt${l}">
+            <input type="radio" name="inc-level" value="${l}" style="accent-color:#c0392b" ${l===3?'checked':''} onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.${l}</span>
+          </label>`).join('')}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">날짜</label>
+          <input type="text" id="inc-inc_date" class="datepicker-input" placeholder="날짜 선택" readonly style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">장애 구분</label>
+          <input type="text" id="inc-category" placeholder="예) KPI, DOWN, 트래픽 급증" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">요약</label>
+          <input type="text" id="inc-summary" placeholder="장애 요약" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">지역</label>
+          <input type="text" id="inc-region" placeholder="예) 대곶, 하성" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">위치</label>
+          <input type="text" id="inc-location" placeholder="예) HO동 4F" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">최초 발견자</label>
+          <input type="text" id="inc-reporter" placeholder="이름" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">시작 시간</label>
+            <input type="time" id="inc-start_time" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">완료 시간</label>
+            <input type="time" id="inc-end_time" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+          </div>
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">장애 내용</label>
+          <textarea id="inc-content" rows="3" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical"></textarea>
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">조치 내용</label>
+          <textarea id="inc-action" rows="3" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical"></textarea>
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">주요 원인</label>
+          <textarea id="inc-cause" rows="2" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical"></textarea>
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">비고</label>
+          <textarea id="inc-memo" rows="2" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('incidentModal')">취소</button>
+      <button class="btn btn-primary" onclick="saveIncident()">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── 방화벽 정책요청 페이지 ─── -->
 <div id="firewallPage" style="display:none">
   <header class="header">
@@ -3316,7 +3515,8 @@
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-fw">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-fw">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-fw">🔥 방화벽 정책요청</button>
-        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
+        <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-fw">🚨 장애 이력</button>
+      <button onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -3451,7 +3651,8 @@
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-s">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-s">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-s">🔥 방화벽 정책요청</button>
-      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
+      <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-s">🚨 장애 이력</button>
+      <button onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
     <div class="header-actions">
@@ -3888,6 +4089,7 @@ function showLogin() {
   document.getElementById('ipPage').style.display = 'none';
   document.getElementById('settingsPage').style.display = 'none';
   document.getElementById('firewallPage').style.display = 'none';
+  document.getElementById('incidentPage').style.display = 'none';
 }
 
 function showApp() {
@@ -7213,10 +7415,11 @@ function switchTab(tab) {
   document.getElementById('ipPage').style.display = tab === 'ip' ? 'block' : 'none';
   document.getElementById('devicesPage').style.display = tab === 'devices' ? 'block' : 'none';
   document.getElementById('firewallPage').style.display = tab === 'fw' ? 'block' : 'none';
+  document.getElementById('incidentPage').style.display = tab === 'incident' ? 'block' : 'none';
   document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
 
-  ['main','cable','ip','devices','fw','settings'].forEach(t => {
-    ['tab-'+t, 'tab-'+t+'-s', 'tab-'+t+'-c', 'tab-'+t+'-ip', 'tab-'+t+'-d', 'tab-'+t+'-fw'].forEach(id => {
+  ['main','cable','ip','devices','fw','incident','settings'].forEach(t => {
+    ['tab-'+t,'tab-'+t+'-s','tab-'+t+'-c','tab-'+t+'-ip','tab-'+t+'-d','tab-'+t+'-fw','tab-'+t+'-incident'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', t === tab);
     });
@@ -7227,6 +7430,7 @@ function switchTab(tab) {
   if (tab === 'ip') { initIpPage(); }
   if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
   if (tab === 'fw') { loadFwList(); updateFwUIByRole(); }
+  if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -7620,7 +7824,278 @@ function resetColWidths() {
   showToast('컬럼 너비가 초기화됐습니다');
 }
 
-// ── 방화벽 정책요청 ──────────────────────────────────────────
+// ── 장애 이력 ──────────────────────────────────────────
+
+const INC_LEVEL_COLORS = {
+  1: { bg:'#f3f4f6', color:'#6b7280', border:'#e5e7eb', label:'Lv.1' },
+  2: { bg:'#eff6ff', color:'#3b82f6', border:'#bfdbfe', label:'Lv.2' },
+  3: { bg:'#fef3c7', color:'#d97706', border:'#fcd34d', label:'Lv.3' },
+  4: { bg:'#fff7ed', color:'#ea580c', border:'#fed7aa', label:'Lv.4' },
+  5: { bg:'#fef2f2', color:'#dc2626', border:'#fecaca', label:'Lv.5' },
+};
+
+function incLevelBadge(level) {
+  const l = INC_LEVEL_COLORS[level] || INC_LEVEL_COLORS[3];
+  return `<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${l.bg};color:${l.color};border:1px solid ${l.border}">${l.label}</span>`;
+}
+
+function fmtDuration(min) {
+  if (!min) return '-';
+  const h = Math.floor(min/60), m = min%60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+// 가용성 계산 (해당 기간 총 분 기준, 24h*30day 기준)
+function calcAvailability(totalDownMin, daysInPeriod) {
+  const totalMin = daysInPeriod * 24 * 60;
+  const avail = ((totalMin - totalDownMin) / totalMin * 100);
+  return avail.toFixed(3) + '%';
+}
+
+let incidentChartInstance = null;
+
+async function loadIncidentStats() {
+  const data = await api('GET', '/api/incidents/stats');
+
+  // 전체 통계
+  const tot = data.total;
+  document.getElementById('incTotalCnt').textContent = tot.cnt || 0;
+  document.getElementById('incTotalMin').textContent = fmtDuration(tot.total_min || 0);
+
+  // 전체 가용성 (올해 기준 경과일)
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const daysPassed = Math.ceil((now - startOfYear) / (1000*60*60*24));
+  document.getElementById('incTotalAvail').textContent = calcAvailability(tot.total_min || 0, daysPassed);
+
+  // 연도 목록
+  const years = [...new Set(data.monthly.map(d => d.ym?.slice(0,4)).filter(Boolean))].sort((a,b) => b-a);
+  const sel = document.getElementById('incidentYearSelect');
+  const curYear = String(now.getFullYear());
+  sel.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join('');
+  if (!sel.value) sel.value = years.includes(curYear) ? curYear : years[0];
+
+  // 연도 필터도 업데이트
+  const yf = document.getElementById('incidentYearFilter');
+  const prevVal = yf.value;
+  yf.innerHTML = '<option value="">전체 연도</option>' + years.map(y => `<option value="${y}">${y}년</option>`).join('');
+  yf.value = prevVal;
+
+  renderIncidentChart(data.monthly);
+}
+
+function renderIncidentChart(monthlyData) {
+  const year = document.getElementById('incidentYearSelect')?.value;
+  if (!year || !window.Chart) return;
+
+  // monthlyData가 없으면 API 재호출
+  if (!monthlyData) {
+    api('GET', '/api/incidents/stats').then(d => renderIncidentChart(d.monthly));
+    return;
+  }
+
+  const yearData = monthlyData.filter(d => d.ym?.startsWith(year));
+  const months = Array.from({length:12}, (_,i) => String(i+1).padStart(2,'0'));
+  const labels = months.map(m => `${parseInt(m)}월`);
+  const cntData  = months.map(m => (yearData.find(d => d.ym === `${year}-${m}`) || {cnt:0}).cnt);
+  const minData  = months.map(m => (yearData.find(d => d.ym === `${year}-${m}`) || {total_min:0}).total_min || 0);
+
+  if (incidentChartInstance) incidentChartInstance.destroy();
+  const ctx = document.getElementById('incidentChart').getContext('2d');
+  incidentChartInstance = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type:'bar', label:'건수', data:cntData, backgroundColor:'#fca5a566', borderColor:'#ef4444', borderWidth:1, borderRadius:3, yAxisID:'y' },
+        { type:'line', label:'장애시간(분)', data:minData, borderColor:'#c0392b', backgroundColor:'#c0392b22', borderWidth:2, tension:0.3, pointRadius:3, fill:true, yAxisID:'y1' }
+      ]
+    },
+    options: {
+      responsive:true,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{ legend:{ labels:{ font:{ family:'Noto Sans KR', size:11 }, boxWidth:12 } } },
+      scales:{
+        y:{ beginAtZero:true, ticks:{ stepSize:1, font:{family:'Noto Sans KR',size:10} }, grid:{color:'#f3f4f6'}, title:{display:true,text:'건수',font:{size:10}} },
+        y1:{ beginAtZero:true, position:'right', ticks:{ font:{family:'Noto Sans KR',size:10} }, grid:{drawOnChartArea:false}, title:{display:true,text:'분',font:{size:10}} }
+      }
+    }
+  });
+}
+
+async function loadIncidentList() {
+  const search = document.getElementById('incidentSearch')?.value || '';
+  const year   = document.getElementById('incidentYearFilter')?.value || '';
+  const month  = document.getElementById('incidentMonthFilter')?.value || '';
+  const level  = document.getElementById('incidentLevelFilter')?.value || '';
+  const p = new URLSearchParams();
+  if (search) p.set('search', search);
+  if (year)   p.set('year', year);
+  if (month)  p.set('month', month);
+  if (level)  p.set('level', level);
+  const rows = await api('GET', '/api/incidents?' + p.toString());
+  document.getElementById('incidentCount').textContent = `총 ${rows.length}건`;
+  document.getElementById('incidentTableBody').innerHTML = rows.length ? rows.map(r => `
+    <tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openIncidentDetail(${r.id})" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+      <td style="padding:10px 12px">${incLevelBadge(r.level)}</td>
+      <td style="padding:10px 12px;color:#9ca3af;font-size:12px">${r.no||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px">${r.inc_date||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap"><span style="background:#f3f4f6;padding:2px 8px;border-radius:6px;font-size:11px;color:#374151">${r.category||'-'}</span></td>
+      <td style="padding:10px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:#c0392b" title="${r.summary||''}">${r.summary||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px">${r.region||'-'}</td>
+      <td style="padding:10px 12px;font-size:12px">${r.location||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-family:'JetBrains Mono',monospace">${r.start_time||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-family:'JetBrains Mono',monospace">${r.end_time||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:600;color:${r.duration_min>120?'#dc2626':r.duration_min>60?'#d97706':'#374151'}">${fmtDuration(r.duration_min)}</td>
+      <td style="padding:10px 12px;white-space:nowrap" onclick="event.stopPropagation()">
+        <button class="btn-red-sm" onclick="openIncidentModal(${r.id})" style="margin-right:4px">수정</button>
+        <button class="btn-red-sm" onclick="deleteIncident(${r.id})" style="background:#ef4444">삭제</button>
+      </td>
+    </tr>`).join('')
+    : '<tr><td colspan="11" style="text-align:center;padding:40px;color:#9ca3af">장애 이력이 없습니다</td></tr>';
+}
+
+function updateLevelUI() {
+  const selected = parseInt(document.querySelector('input[name="inc-level"]:checked')?.value || 3);
+  [1,2,3,4,5].forEach(l => {
+    const opt = document.getElementById(`incLevelOpt${l}`);
+    if (!opt) return;
+    const c = INC_LEVEL_COLORS[l];
+    opt.style.borderColor = l === selected ? c.color : '#e5e7eb';
+    opt.style.background  = l === selected ? c.bg : '#fff';
+  });
+}
+
+async function openIncidentDetail(id) {
+  const r = await api('GET', `/api/incidents/${id}`);
+  const c = INC_LEVEL_COLORS[r.level] || INC_LEVEL_COLORS[3];
+  const html = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      ${incLevelBadge(r.level)}
+      <span style="font-size:16px;font-weight:700;color:#1a1a1a">${r.summary||''}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+      <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">날짜</span><br><b>${r.inc_date||'-'}</b></div>
+      <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">구분</span><br><b>${r.category||'-'}</b></div>
+      <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">지역 / 위치</span><br><b>${r.region||'-'} / ${r.location||'-'}</b></div>
+      <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">최초 발견자</span><br><b>${r.reporter||'-'}</b></div>
+      <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">시작 / 완료</span><br><b>${r.start_time||'-'} ~ ${r.end_time||'-'}</b></div>
+      <div style="background:${c.bg};border:1px solid ${c.border};border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">소요 시간</span><br><b style="color:${c.color};font-size:18px">${fmtDuration(r.duration_min)}</b></div>
+      <div style="grid-column:1/-1;background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">장애 내용</span><br><div style="margin-top:6px;line-height:1.6;white-space:pre-wrap">${r.content||'-'}</div></div>
+      <div style="grid-column:1/-1;background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">조치 내용</span><br><div style="margin-top:6px;line-height:1.6;white-space:pre-wrap">${r.action||'-'}</div></div>
+      <div style="grid-column:1/-1;background:#fef3c7;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">주요 원인</span><br><div style="margin-top:6px;line-height:1.6;white-space:pre-wrap">${r.cause||'-'}</div></div>
+      ${r.memo ? `<div style="grid-column:1/-1;background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">비고</span><br><div style="margin-top:6px;white-space:pre-wrap">${r.memo}</div></div>` : ''}
+    </div>`;
+
+  // 간단 상세 모달 재활용
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid #e5e7eb">
+        <h2 style="font-size:16px;font-weight:700;color:#1a1a1a">장애 상세</h2>
+        <div style="display:flex;gap:8px">
+          <button onclick="this.closest('div[style*=fixed]').remove();openIncidentModal(${r.id})" style="padding:6px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;cursor:pointer">수정</button>
+          <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:6px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;cursor:pointer">닫기</button>
+        </div>
+      </div>
+      <div style="padding:20px 24px">${html}</div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+async function openIncidentModal(id = null) {
+  document.getElementById('incidentModalTitle').textContent = id ? '장애 수정' : '장애 등록';
+  document.getElementById('inc-id').value = id || '';
+  if (id) {
+    const r = await api('GET', `/api/incidents/${id}`);
+    document.getElementById('inc-inc_date').value = r.inc_date || '';
+    document.getElementById('inc-category').value = r.category || '';
+    document.getElementById('inc-summary').value   = r.summary || '';
+    document.getElementById('inc-region').value    = r.region || '';
+    document.getElementById('inc-location').value  = r.location || '';
+    document.getElementById('inc-reporter').value  = r.reporter || '';
+    document.getElementById('inc-start_time').value = r.start_time || '';
+    document.getElementById('inc-end_time').value   = r.end_time || '';
+    document.getElementById('inc-content').value   = r.content || '';
+    document.getElementById('inc-action').value    = r.action || '';
+    document.getElementById('inc-cause').value     = r.cause || '';
+    document.getElementById('inc-memo').value      = r.memo || '';
+    const radio = document.querySelector(`input[name="inc-level"][value="${r.level||3}"]`);
+    if (radio) radio.checked = true;
+  } else {
+    ['inc_date','category','summary','region','location','reporter','start_time','end_time','content','action','cause','memo'].forEach(f => {
+      const el = document.getElementById('inc-'+f); if (el) el.value = '';
+    });
+    const r = document.querySelector('input[name="inc-level"][value="3"]');
+    if (r) r.checked = true;
+  }
+  updateLevelUI();
+  openModal('incidentModal');
+}
+
+async function saveIncident() {
+  const id = document.getElementById('inc-id').value;
+  const startTime = document.getElementById('inc-start_time').value;
+  const endTime   = document.getElementById('inc-end_time').value;
+  const calcMin = (s, e) => {
+    if (!s || !e) return 0;
+    const [sh,sm] = s.split(':').map(Number), [eh,em] = e.split(':').map(Number);
+    return Math.max(0, (eh*60+em)-(sh*60+sm));
+  };
+  const body = {
+    inc_date:     document.getElementById('inc-inc_date').value,
+    category:     document.getElementById('inc-category').value,
+    summary:      document.getElementById('inc-summary').value,
+    region:       document.getElementById('inc-region').value,
+    location:     document.getElementById('inc-location').value,
+    reporter:     document.getElementById('inc-reporter').value,
+    start_time:   startTime,
+    end_time:     endTime,
+    duration_min: calcMin(startTime, endTime),
+    content:      document.getElementById('inc-content').value,
+    action:       document.getElementById('inc-action').value,
+    cause:        document.getElementById('inc-cause').value,
+    memo:         document.getElementById('inc-memo').value,
+    level:        parseInt(document.querySelector('input[name="inc-level"]:checked')?.value || 3),
+  };
+  try {
+    if (id) { await api('PUT', `/api/incidents/${id}`, body); showToast('수정됐습니다'); }
+    else    { await api('POST', '/api/incidents', body); showToast('등록됐습니다'); }
+    closeModal('incidentModal');
+    loadIncidentList();
+    loadIncidentStats();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function deleteIncident(id) {
+  if (!confirm('이 장애 이력을 삭제할까요?')) return;
+  await api('DELETE', `/api/incidents/${id}`);
+  showToast('삭제됐습니다');
+  loadIncidentList();
+  loadIncidentStats();
+}
+
+async function importIncidentExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/incidents/import', { method:'POST', body:fd, headers:{'Authorization':'Bearer '+getToken()} });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || '오류', true); return; }
+    const parts = [];
+    if (data.inserted) parts.push(`신규 ${data.inserted}건`);
+    if (data.updated)  parts.push(`업데이트 ${data.updated}건`);
+    showToast(`✓ ${parts.join(', ')} import 완료`);
+    loadIncidentList();
+    loadIncidentStats();
+  } catch(e) { showToast('오류: ' + e.message, true); }
+  input.value = '';
+}
+
+
 
 async function loadFwList() {
   const search = document.getElementById('fwSearch')?.value || '';
