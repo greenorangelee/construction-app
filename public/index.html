@@ -3379,7 +3379,10 @@
       </select>
       <select id="incidentMonthFilter" onchange="loadIncidentList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
         <option value="">전체 월</option>
-        ${Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}월</option>`).join('')}
+        <option value="1">1월</option><option value="2">2월</option><option value="3">3월</option>
+        <option value="4">4월</option><option value="5">5월</option><option value="6">6월</option>
+        <option value="7">7월</option><option value="8">8월</option><option value="9">9월</option>
+        <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
       </select>
       <select id="incidentLevelFilter" onchange="loadIncidentList()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
         <option value="">전체 등급</option>
@@ -3436,11 +3439,26 @@
       <div style="margin-bottom:18px">
         <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:8px">장애 등급</label>
         <div style="display:flex;gap:8px">
-          ${[1,2,3,4,5].map(l => `
-          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt${l}">
-            <input type="radio" name="inc-level" value="${l}" style="accent-color:#c0392b" ${l===3?'checked':''} onchange="updateLevelUI()" />
-            <span style="font-size:13px;font-weight:700">Lv.${l}</span>
-          </label>`).join('')}
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt1">
+            <input type="radio" name="inc-level" value="1" style="accent-color:#c0392b" onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.1</span>
+          </label>
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt2">
+            <input type="radio" name="inc-level" value="2" style="accent-color:#c0392b" onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.2</span>
+          </label>
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt3">
+            <input type="radio" name="inc-level" value="3" style="accent-color:#c0392b" checked onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.3</span>
+          </label>
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt4">
+            <input type="radio" name="inc-level" value="4" style="accent-color:#c0392b" onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.4</span>
+          </label>
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:2px solid #e5e7eb;border-radius:10px;cursor:pointer;transition:all 0.15s" id="incLevelOpt5">
+            <input type="radio" name="inc-level" value="5" style="accent-color:#c0392b" onchange="updateLevelUI()" />
+            <span style="font-size:13px;font-weight:700">Lv.5</span>
+          </label>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
