@@ -6,6 +6,7 @@
   <title>네트워크 공사 이력 관리</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #f4f5f7;
@@ -2323,6 +2324,24 @@
     </div>
   </div>
 
+  <!-- 월별 공사 현황 차트 -->
+  <div id="monthlyChartSection" style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:14px;font-weight:700;color:#1a1a1a">📅 월별 공사 현황</span>
+        <select id="chartYearSelect" onchange="renderMonthlyChart()" style="padding:4px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;color:#374151">
+        </select>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="toggleChartType('bar')" id="chartBtnBar" style="padding:4px 12px;border:1.5px solid #c0392b;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:#c0392b;color:#fff;transition:all 0.15s">막대</button>
+        <button onclick="toggleChartType('line')" id="chartBtnLine" style="padding:4px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#6b7280;transition:all 0.15s">꺾은선</button>
+        <button onclick="document.getElementById('monthlyChartSection').style.display='none'" style="padding:4px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;cursor:pointer;background:#fff;color:#9ca3af">접기</button>
+      </div>
+    </div>
+    <canvas id="monthlyChart" height="90"></canvas>
+    <div id="monthlyChartLegend" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:#6b7280"></div>
+  </div>
+
   <!-- FILTERS -->
   <div class="filter-bar">
     <input type="text" id="searchInput" placeholder="🔍  스페이스로 AND 검색  예) B1 1F" oninput="loadData()" />
@@ -3911,6 +3930,7 @@ async function doLogin() {
     loadData().then(() => initColResize());
     loadLocations();
     loadNetworks();
+    loadMonthlyChart();
     initBeta();
   } catch(e) {
     errEl.textContent = '서버 연결 오류';
@@ -3937,6 +3957,7 @@ async function checkAuth() {
     loadData().then(() => initColResize());
     loadLocations();
     loadNetworks();
+    loadMonthlyChart();
     initBeta();
   } catch(e) {
     showLogin();
@@ -7695,6 +7716,94 @@ async function deleteFwRequest(id) {
 }
 
 
+
+// ── 월별 공사 현황 차트 ──────────────────────────────────────────
+
+let monthlyChartInstance = null;
+let monthlyChartType = 'bar';
+let monthlyChartData = [];
+
+function toggleChartType(type) {
+  monthlyChartType = type;
+  document.getElementById('chartBtnBar').style.cssText  = `padding:4px 12px;border:1.5px solid ${type==='bar'?'#c0392b':'#e5e7eb'};border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:${type==='bar'?'#c0392b':'#fff'};color:${type==='bar'?'#fff':'#6b7280'};transition:all 0.15s`;
+  document.getElementById('chartBtnLine').style.cssText = `padding:4px 12px;border:1.5px solid ${type==='line'?'#c0392b':'#e5e7eb'};border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:${type==='line'?'#c0392b':'#fff'};color:${type==='line'?'#fff':'#6b7280'};transition:all 0.15s`;
+  renderMonthlyChart();
+}
+
+async function loadMonthlyChart() {
+  try {
+    const data = await api('GET', '/api/stats/monthly');
+    monthlyChartData = data;
+
+    const years = [...new Set(data.map(d => d.year))].sort((a,b) => b - a);
+    const sel = document.getElementById('chartYearSelect');
+    const curYear = new Date().getFullYear();
+    const displayYears = years.length ? years : [curYear];
+    sel.innerHTML = displayYears.map(y => `<option value="${y}">${y}년</option>`).join('');
+    sel.value = displayYears.includes(curYear) ? curYear : displayYears[0];
+
+    renderMonthlyChart();
+  } catch(e) { console.error('월별 통계 로드 실패:', e); }
+}
+
+function renderMonthlyChart() {
+  const year = parseInt(document.getElementById('chartYearSelect')?.value);
+  if (!year || !window.Chart) return;
+
+  const yearData = monthlyChartData.filter(d => d.year === year);
+  const months = Array.from({length:12}, (_,i) => i+1);
+  const labels = months.map(m => `${m}월`);
+
+  const GUBUN_COLORS = {
+    '자체공사':'#3b82f6','외주공사':'#8b5cf6','지급':'#06b6d4',
+    '구매':'#f97316','임시포설':'#a21caf','접수':'#10b981'
+  };
+
+  const gubuns = [...new Set(monthlyChartData.map(d => d.gubun).filter(Boolean))];
+  const isBar = monthlyChartType === 'bar';
+
+  const datasets = gubuns.map(g => ({
+    label: g,
+    data: months.map(m => (yearData.find(d => d.month === m && d.gubun === g) || {cnt:0}).cnt),
+    backgroundColor: (GUBUN_COLORS[g]||'#94a3b8') + (isBar ? 'cc' : '33'),
+    borderColor: GUBUN_COLORS[g]||'#94a3b8',
+    borderWidth: isBar ? 0 : 2,
+    borderRadius: isBar ? 4 : 0,
+    tension: 0.3,
+    pointRadius: isBar ? 0 : 4,
+    fill: false,
+  }));
+
+  if (monthlyChartInstance) monthlyChartInstance.destroy();
+
+  const ctx = document.getElementById('monthlyChart').getContext('2d');
+  monthlyChartInstance = new Chart(ctx, {
+    type: isBar ? 'bar' : 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            footer: items => `합계: ${items.reduce((s,i) => s + i.parsed.y, 0)}건`
+          }
+        }
+      },
+      scales: {
+        x: { stacked: isBar, grid: { display: false }, ticks: { font: { family: 'Noto Sans KR', size: 11 } } },
+        y: { stacked: isBar, beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Noto Sans KR', size: 11 } }, grid: { color: '#f3f4f6' } }
+      }
+    }
+  });
+
+  document.getElementById('monthlyChartLegend').innerHTML = gubuns.map(g =>
+    `<span style="display:flex;align-items:center;gap:4px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${GUBUN_COLORS[g]||'#94a3b8'};display:inline-block"></span>${g}
+    </span>`
+  ).join('');
+}
 
 initColVisibility();
 checkAuth();
