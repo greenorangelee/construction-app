@@ -255,6 +255,28 @@ async function initDB() {
     try { db.run(`ALTER TABLE net_devices ADD COLUMN ${col} TEXT DEFAULT ${dflt}`); } catch(e) {}
   });
   // ip NOT NULL 해제는 SQLite에서 직접 불가 → 기존 행 빈값 허용은 앱 레벨에서 처리
+
+  db.run(`CREATE TABLE IF NOT EXISTS incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    no INTEGER,
+    category TEXT,
+    summary TEXT,
+    inc_date TEXT,
+    region TEXT,
+    location TEXT,
+    reporter TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    duration_min INTEGER,
+    content TEXT,
+    action TEXT,
+    cause TEXT,
+    memo TEXT,
+    level INTEGER DEFAULT 3,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
   saveDB();
 }
 
@@ -430,7 +452,159 @@ app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
 });
 
 
-// ── 방화벽 정책요청 API ──────────────────────────────────────────
+// ── 장애 이력 API ──────────────────────────────────────────
+
+app.get('/api/incidents', authMiddleware, (req, res) => {
+  const { search, year, month, level } = req.query;
+  let sql = 'SELECT * FROM incidents WHERE 1=1';
+  const params = [];
+  if (search) {
+    sql += ' AND (summary LIKE ? OR category LIKE ? OR location LIKE ? OR reporter LIKE ? OR content LIKE ? OR cause LIKE ?)';
+    const kw = `%${search}%`;
+    params.push(kw,kw,kw,kw,kw,kw);
+  }
+  if (year)  { sql += ' AND SUBSTR(inc_date,1,4)=?'; params.push(year); }
+  if (month) { sql += ' AND SUBSTR(inc_date,6,2)=?'; params.push(String(month).padStart(2,'0')); }
+  if (level) { sql += ' AND level=?'; params.push(parseInt(level)); }
+  sql += ' ORDER BY inc_date DESC, start_time DESC';
+  res.json(queryAll(sql, params));
+});
+
+app.get('/api/incidents/stats', authMiddleware, (req, res) => {
+  // 월별 통계
+  const monthly = queryAll(`
+    SELECT
+      SUBSTR(inc_date,1,7) as ym,
+      COUNT(*) as cnt,
+      SUM(duration_min) as total_min
+    FROM incidents
+    WHERE inc_date IS NOT NULL AND inc_date != ''
+    GROUP BY ym ORDER BY ym
+  `);
+  // 전체 통계
+  const total = queryOne('SELECT COUNT(*) as cnt, SUM(duration_min) as total_min FROM incidents');
+  res.json({ monthly, total });
+});
+
+app.get('/api/incidents/:id', authMiddleware, (req, res) => {
+  const row = queryOne('SELECT * FROM incidents WHERE id=?', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(row);
+});
+
+app.post('/api/incidents', authMiddleware, requireWrite, (req, res) => {
+  const d = req.body;
+  const lastNo = (queryOne('SELECT MAX(no) as m FROM incidents').m || 0) + 1;
+  db.run(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [d.no||lastNo,s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),
+     s(d.reporter),s(d.start_time),s(d.end_time),parseInt(d.duration_min)||0,
+     s(d.content),s(d.action),s(d.cause),s(d.memo),parseInt(d.level)||3]);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
+  const d = req.body;
+  db.run(`UPDATE incidents SET category=?,summary=?,inc_date=?,region=?,location=?,reporter=?,
+    start_time=?,end_time=?,duration_min=?,content=?,action=?,cause=?,memo=?,level=?,
+    updated_at=datetime('now','localtime') WHERE id=?`,
+    [s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),s(d.reporter),
+     s(d.start_time),s(d.end_time),parseInt(d.duration_min)||0,
+     s(d.content),s(d.action),s(d.cause),s(d.memo),parseInt(d.level)||3,req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+app.delete('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
+  db.run('DELETE FROM incidents WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+// 엑셀 import
+app.post('/api/incidents/import', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const dataRows = rows.slice(2).filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '');
+
+    const toTimeStr = v => {
+      if (!v) return '';
+      if (typeof v === 'string') return v;
+      // Excel time fraction (0~1)
+      if (typeof v === 'number') {
+        const totalMin = Math.round(v * 24 * 60);
+        const h = Math.floor(totalMin / 60), m = totalMin % 60;
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      }
+      // Date object from openpyxl-style (XLSX gives time as fraction or Date)
+      if (v instanceof Date) {
+        return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+      }
+      return String(v);
+    };
+
+    const toDateStr = v => {
+      if (!v) return '';
+      if (v instanceof Date) {
+        return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+      }
+      if (typeof v === 'number') {
+        const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      }
+      return String(v);
+    };
+
+    const calcMin = (start, end) => {
+      if (!start || !end) return 0;
+      const [sh,sm] = start.split(':').map(Number);
+      const [eh,em] = end.split(':').map(Number);
+      const diff = (eh*60+em) - (sh*60+sm);
+      return diff > 0 ? diff : 0;
+    };
+
+    let inserted = 0, updated = 0;
+    for (const row of dataRows) {
+      const no = parseInt(row[1]);
+      if (!no) continue;
+      const startTime = toTimeStr(row[9]);
+      const endTime   = toTimeStr(row[10]);
+      const durMin    = calcMin(startTime, endTime);
+      const fields = {
+        no, category: String(row[2]||'').trim(), summary: String(row[3]||'').trim(),
+        inc_date: toDateStr(row[4]), region: String(row[5]||'').trim(),
+        location: String(row[6]||'').trim(), reporter: String(row[7]||'').trim(),
+        start_time: startTime, end_time: endTime, duration_min: durMin,
+        content: String(row[12]||'').trim(), action: String(row[13]||'').trim(),
+        cause: String(row[14]||'').trim(), memo: String(row[15]||'').trim(),
+        level: 3
+      };
+      const existing = queryOne('SELECT id FROM incidents WHERE no=?', [no]);
+      if (existing) {
+        db.run(`UPDATE incidents SET category=?,summary=?,inc_date=?,region=?,location=?,reporter=?,
+          start_time=?,end_time=?,duration_min=?,content=?,action=?,cause=?,memo=? WHERE no=?`,
+          [fields.category,fields.summary,fields.inc_date,fields.region,fields.location,
+           fields.reporter,fields.start_time,fields.end_time,fields.duration_min,
+           fields.content,fields.action,fields.cause,fields.memo,no]);
+        updated++;
+      } else {
+        db.run(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [fields.no,fields.category,fields.summary,fields.inc_date,fields.region,fields.location,
+           fields.reporter,fields.start_time,fields.end_time,fields.duration_min,
+           fields.content,fields.action,fields.cause,fields.memo,fields.level]);
+        inserted++;
+      }
+    }
+    saveDB();
+    res.json({ success: true, inserted, updated });
+  } catch(e) { res.status(500).json({ error: '파일 처리 오류: ' + e.message }); }
+});
+
+
 
 app.get('/api/firewall', authMiddleware, (req, res) => {
   const { search, status, corp } = req.query;
