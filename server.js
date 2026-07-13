@@ -256,6 +256,23 @@ async function initDB() {
   });
   // ip NOT NULL 해제는 SQLite에서 직접 불가 → 기존 행 빈값 허용은 앱 레벨에서 처리
 
+  db.run(`CREATE TABLE IF NOT EXISTS conreq (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requester TEXT NOT NULL,
+    dept TEXT NOT NULL,
+    title TEXT NOT NULL,
+    due_date TEXT,
+    location TEXT,
+    qty_office INTEGER DEFAULT 0,
+    qty_field INTEGER DEFAULT 0,
+    qty_device INTEGER DEFAULT 0,
+    qty_phone INTEGER DEFAULT 0,
+    memo TEXT,
+    status TEXT DEFAULT '대기중',
+    req_date TEXT DEFAULT (date('now','localtime')),
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     no INTEGER,
@@ -451,6 +468,52 @@ app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+
+// ── 공사 요청 API ──────────────────────────────────────────
+
+app.get('/api/conreq', authMiddleware, (req, res) => {
+  const { search, status } = req.query;
+  let sql = 'SELECT * FROM conreq WHERE 1=1';
+  const params = [];
+  if (search) {
+    sql += ' AND (requester LIKE ? OR dept LIKE ? OR title LIKE ? OR memo LIKE ?)';
+    const kw = `%${search}%`;
+    params.push(kw,kw,kw,kw);
+  }
+  if (status) { sql += ' AND status=?'; params.push(status); }
+  sql += ' ORDER BY id DESC';
+  res.json(queryAll(sql, params));
+});
+
+app.get('/api/conreq/:id', authMiddleware, (req, res) => {
+  const row = queryOne('SELECT * FROM conreq WHERE id=?', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(row);
+});
+
+app.post('/api/conreq', authMiddleware, (req, res) => {
+  const { requester, dept, title, due_date, location, qty_office, qty_field, qty_device, qty_phone, memo } = req.body;
+  if (!requester || !dept || !title) return res.status(400).json({ error: '필수값 누락' });
+  db.run(`INSERT INTO conreq (requester,dept,title,due_date,location,qty_office,qty_field,qty_device,qty_phone,memo)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [s(requester),s(dept),s(title),s(due_date),s(location),
+     parseInt(qty_office)||0, parseInt(qty_field)||0, parseInt(qty_device)||0, parseInt(qty_phone)||0, s(memo)]);
+  saveDB();
+  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+});
+
+app.put('/api/conreq/:id', authMiddleware, requireWrite, (req, res) => {
+  const { status } = req.body;
+  db.run('UPDATE conreq SET status=? WHERE id=?', [status, req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
+
+app.delete('/api/conreq/:id', authMiddleware, requireWrite, (req, res) => {
+  db.run('DELETE FROM conreq WHERE id=?', [req.params.id]);
+  saveDB();
+  res.json({ success: true });
+});
 
 // ── 장애 이력 API ──────────────────────────────────────────
 
