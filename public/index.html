@@ -8302,6 +8302,7 @@ function crHandleDrop(event) {
 // 핀 관리
 let crPins = []; // [{x, y, office, field, device, phone, memo}]
 let crEditingPinIdx = null;
+let crPendingPin = null; // 아직 배열에 추가 안 된 새 핀
 const crPinQtyTemp = { office:0, field:0, device:0, phone:0 };
 
 const CR_USAGE_LABELS = { office:'사무PC', field:'현장PC', device:'장비', phone:'전화' };
@@ -8347,7 +8348,7 @@ function crUpdateRemainingBadges() {
 }
 
 function crAddPin(event) {
-  // 모든 용도의 잔여 수량 합계 확인
+  // 잔여 수량 확인
   const rem = crGetRemaining();
   const totalRemaining = Object.values(rem).reduce((s,v) => s+v, 0);
   if (totalRemaining <= 0) {
@@ -8358,10 +8359,10 @@ function crAddPin(event) {
   const rect = wrap.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width;
   const y = (event.clientY - rect.top)  / rect.height;
-  crPins.push({ x, y, office:0, field:0, device:0, phone:0, memo:'' });
-  crEditingPinIdx = crPins.length - 1;
-  crOpenPinModal(crEditingPinIdx);
-  crRenderPins();
+  // 핀을 배열에 넣기 전에 모달 먼저 열고 저장 시 추가
+  crPendingPin = { x, y, office:0, field:0, device:0, phone:0, memo:'' };
+  crEditingPinIdx = null; // 신규 핀임을 표시
+  crOpenNewPinModal();
 }
 
 function crRenderPins() {
@@ -8382,6 +8383,20 @@ function crRenderPins() {
   }).join('');
 }
 
+function crOpenNewPinModal() {
+  // 신규 핀: 배열에 아직 없음, crPendingPin에 임시 보관
+  const rem = crGetRemaining(); // excludeIdx 없이 전체 기준
+  document.getElementById('crPinModalIdx').value = '__new__';
+  Object.keys(crPinQtyTemp).forEach(k => {
+    crPinQtyTemp[k] = 0;
+    document.getElementById('crPinQty-'+k).textContent = '0';
+    document.getElementById('crPinRemain-'+k).textContent =
+      crQtys[k] > 0 ? `잔여 ${rem[k]}개` : '미선택';
+  });
+  document.getElementById('crPinMemo').value = '';
+  openModal('crPinModal');
+}
+
 function crOpenPinModal(idx) {
   crEditingPinIdx = idx;
   const pin = crPins[idx];
@@ -8400,23 +8415,41 @@ function crOpenPinModal(idx) {
 }
 
 function crPinQtyChange(type, delta) {
-  const rem = crGetRemaining(crEditingPinIdx);
+  const idxVal = document.getElementById('crPinModalIdx').value;
+  const excludeIdx = idxVal === '__new__' ? null : parseInt(idxVal);
+  const rem = crGetRemaining(excludeIdx);
   const newVal = crPinQtyTemp[type] + delta;
   if (newVal < 0) return;
-  if (delta > 0 && rem[type] <= 0) { showToast(`${CR_USAGE_LABELS[type]} 잔여 수량이 없습니다`, true); return; }
+  if (delta > 0 && crPinQtyTemp[type] >= rem[type]) {
+    showCenterAlert(`${CR_USAGE_ICONS[type]} ${CR_USAGE_LABELS[type]} 잔여 수량이 없습니다`); return;
+  }
   crPinQtyTemp[type] = newVal;
   document.getElementById('crPinQty-'+type).textContent = newVal;
-  const remAfter = crGetRemaining(crEditingPinIdx);
+  // 잔여 표시 업데이트
   Object.keys(crPinQtyTemp).forEach(k => {
+    const r = crGetRemaining(excludeIdx)[k] - crPinQtyTemp[k] + (excludeIdx !== null ? (crPins[excludeIdx]?.[k]||0) : 0);
     document.getElementById('crPinRemain-'+k).textContent =
-      crQtys[k] > 0 ? `잔여 ${remAfter[k] + crPinQtyTemp[k] - (crPins[crEditingPinIdx]?.[k]||0)}개` : '미선택';
+      crQtys[k] > 0 ? `잔여 ${rem[k] - crPinQtyTemp[k] + (excludeIdx !== null ? (crPins[excludeIdx]?.[k]||0) : 0)}개` : '미선택';
   });
 }
 
 function crSavePinModal() {
-  const idx = parseInt(document.getElementById('crPinModalIdx').value);
-  Object.keys(crPinQtyTemp).forEach(k => crPins[idx][k] = crPinQtyTemp[k]);
-  crPins[idx].memo = document.getElementById('crPinMemo').value;
+  const idxVal = document.getElementById('crPinModalIdx').value;
+  const pinData = { ...crPinQtyTemp, memo: document.getElementById('crPinMemo').value };
+
+  // 수량이 하나도 없으면 저장 불가
+  const total = Object.keys(crPinQtyTemp).reduce((s,k) => s + crPinQtyTemp[k], 0);
+  if (total === 0) { showCenterAlert('용도와 수량을 최소 1개 이상 설정하세요'); return; }
+
+  if (idxVal === '__new__') {
+    // 신규 핀 — 이제 배열에 추가
+    crPins.push({ ...crPendingPin, ...pinData });
+    crPendingPin = null;
+  } else {
+    // 기존 핀 수정
+    const idx = parseInt(idxVal);
+    Object.keys(pinData).forEach(k => crPins[idx][k] = pinData[k]);
+  }
   crEditingPinIdx = null;
   closeModal('crPinModal');
   crRenderPins();
@@ -8425,8 +8458,13 @@ function crSavePinModal() {
 }
 
 function crDeletePin() {
-  const idx = parseInt(document.getElementById('crPinModalIdx').value);
-  crPins.splice(idx, 1);
+  const idxVal = document.getElementById('crPinModalIdx').value;
+  if (idxVal === '__new__') {
+    // 신규 핀은 배열에 없으니 그냥 취소
+    crPendingPin = null;
+  } else {
+    crPins.splice(parseInt(idxVal), 1);
+  }
   crEditingPinIdx = null;
   closeModal('crPinModal');
   crRenderPins();
