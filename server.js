@@ -269,6 +269,8 @@ async function initDB() {
     qty_phone INTEGER DEFAULT 0,
     memo TEXT,
     status TEXT DEFAULT '대기중',
+    pins TEXT,
+    floor_img TEXT,
     req_date TEXT DEFAULT (date('now','localtime')),
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
@@ -492,12 +494,13 @@ app.get('/api/conreq/:id', authMiddleware, (req, res) => {
 });
 
 app.post('/api/conreq', authMiddleware, (req, res) => {
-  const { requester, dept, title, due_date, location, qty_office, qty_field, qty_device, qty_phone, memo } = req.body;
+  const { requester, dept, title, due_date, location, qty_office, qty_field, qty_device, qty_phone, memo, pins, floor_img } = req.body;
   if (!requester || !dept || !title) return res.status(400).json({ error: '필수값 누락' });
-  db.run(`INSERT INTO conreq (requester,dept,title,due_date,location,qty_office,qty_field,qty_device,qty_phone,memo)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`,
+  db.run(`INSERT INTO conreq (requester,dept,title,due_date,location,qty_office,qty_field,qty_device,qty_phone,memo,pins,floor_img)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [s(requester),s(dept),s(title),s(due_date),s(location),
-     parseInt(qty_office)||0, parseInt(qty_field)||0, parseInt(qty_device)||0, parseInt(qty_phone)||0, s(memo)]);
+     parseInt(qty_office)||0, parseInt(qty_field)||0, parseInt(qty_device)||0, parseInt(qty_phone)||0,
+     s(memo), pins||null, floor_img||null]);
   saveDB();
   res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
 });
