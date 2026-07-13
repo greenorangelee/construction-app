@@ -712,6 +712,12 @@
       animation: slideUp 0.2s ease;
     }
 
+    @keyframes fadeInOut {
+      0%   { opacity:0; transform:scale(0.9); }
+      15%  { opacity:1; transform:scale(1); }
+      75%  { opacity:1; transform:scale(1); }
+      100% { opacity:0; transform:scale(0.95); }
+    }
     @keyframes slideUp {
       from { transform: translateY(12px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
@@ -5016,6 +5022,14 @@ document.addEventListener('keydown', e => {
 
 // ── TOAST ──────────────────────────────────────────
 
+function showCenterAlert(msg) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:99999;pointer-events:none';
+  el.innerHTML = `<div style="background:#1a1a1a;color:#fff;padding:18px 32px;border-radius:14px;font-size:15px;font-weight:600;font-family:\'Noto Sans KR\',sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.3);text-align:center;animation:fadeInOut 2s ease forwards">${msg}</div>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2000);
+}
+
 function showToast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
@@ -8428,7 +8442,7 @@ function crRenderPinList() {
 }
 
 async function submitConReqFinal(withFloor) {
-  if (!crFloorImgData) { showToast('도면을 먼저 업로드해주세요', true); return; }
+  if (!crFloorImgData) { showCenterAlert('🗺️ 도면을 먼저 업로드해주세요'); return; }
   const body = {
     requester: document.getElementById('cr-requester').value.trim(),
     dept:      document.getElementById('cr-dept').value.trim(),
