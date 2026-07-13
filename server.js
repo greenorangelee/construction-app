@@ -276,6 +276,9 @@ async function initDB() {
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
 
+  try { db.run('ALTER TABLE conreq ADD COLUMN pins TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE conreq ADD COLUMN floor_img TEXT'); } catch(e) {}
+
   db.run(`CREATE TABLE IF NOT EXISTS incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     no INTEGER,
