@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
   <style>
     :root {
       --bg: #f4f5f7;
@@ -3569,7 +3571,7 @@
     </div>
   </header>
   <div class="container" style="max-width:700px;margin:0 auto">
-    <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:32px 36px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-top:8px">
+    <div id="conreqStep1" style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:32px 36px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-top:8px">
       <h2 style="font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:6px">📋 공사 요청</h2>
       <p style="font-size:13px;color:#9ca3af;margin-bottom:28px">공사 요청 내용을 입력하면 IT관리팀에 전달됩니다</p>
 
@@ -3644,10 +3646,131 @@
         </div>
       </div>
 
-      <div style="margin-top:24px;display:flex;justify-content:flex-end;gap:10px">
-        <button onclick="resetConReq()" style="padding:11px 22px;border:1.5px solid #e5e7eb;border-radius:10px;background:#fff;font-size:13px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;color:#6b7280">초기화</button>
-        <button onclick="submitConReq()" style="padding:11px 28px;border:none;border-radius:10px;background:#c0392b;color:#fff;font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer">요청 제출</button>
+      <div style="margin-top:24px;display:flex;justify-content:space-between;align-items:center">
+        <!-- 단계 표시 -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div id="step1Dot" style="width:28px;height:28px;border-radius:50%;background:#c0392b;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">1</div>
+            <span style="font-size:12px;font-weight:600;color:#c0392b">기본 정보</span>
+          </div>
+          <div style="width:32px;height:2px;background:#e5e7eb"></div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div id="step2Dot" style="width:28px;height:28px;border-radius:50%;background:#e5e7eb;color:#9ca3af;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">2</div>
+            <span style="font-size:12px;font-weight:600;color:#9ca3af">도면 & 핀</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button onclick="resetConReq()" style="padding:11px 22px;border:1.5px solid #e5e7eb;border-radius:10px;background:#fff;font-size:13px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;color:#6b7280">초기화</button>
+          <button onclick="goToStep2()" style="padding:11px 28px;border:none;border-radius:10px;background:#c0392b;color:#fff;font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer">다음 단계 →</button>
+        </div>
       </div>
+    </div>
+
+    <!-- ── 2단계: 도면 & 핀 ── -->
+    <div id="conreqStep2" style="display:none;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:32px 36px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <h2 style="font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:4px">📐 도면 & 핀 설정</h2>
+          <p style="font-size:12px;color:#9ca3af">도면을 업로드하고 노드가 필요한 위치에 핀을 찍어주세요</p>
+        </div>
+        <button onclick="goToStep1()" style="padding:8px 16px;border:1.5px solid #e5e7eb;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;color:#6b7280">← 이전 단계</button>
+      </div>
+
+      <!-- 남은 수량 현황 -->
+      <div id="crRemainingBadges" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+      <!-- 도면 업로드 -->
+      <div id="crFloorUploadArea" style="border:2px dashed #e5e7eb;border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:all 0.15s;margin-bottom:16px" onclick="document.getElementById('crFloorInput').click()" ondragover="event.preventDefault();this.style.borderColor='#c0392b'" ondragleave="this.style.borderColor='#e5e7eb'" ondrop="crHandleDrop(event)">
+        <div style="font-size:32px;margin-bottom:8px">🗺️</div>
+        <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px">도면 파일을 업로드하세요</div>
+        <div style="font-size:12px;color:#9ca3af">PDF, JPG, PNG 지원 · 클릭하거나 드래그</div>
+        <input type="file" id="crFloorInput" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="crLoadFloor(this)" />
+      </div>
+
+      <!-- 도면 캔버스 -->
+      <div id="crCanvasWrap" style="display:none;position:relative;border:1.5px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#f8f9fa;cursor:crosshair" onclick="crAddPin(event)">
+        <img id="crFloorImg" style="width:100%;display:block;pointer-events:none;user-select:none" />
+        <div id="crPinLayer" style="position:absolute;inset:0;pointer-events:none"></div>
+      </div>
+
+      <div style="margin-top:12px;font-size:12px;color:#9ca3af;text-align:center" id="crPinHint" style="display:none">도면을 클릭하면 핀이 추가됩니다 · 핀을 클릭하면 용도를 설정할 수 있습니다</div>
+
+      <!-- 핀 목록 -->
+      <div id="crPinList" style="margin-top:16px"></div>
+
+      <!-- 제출 -->
+      <div style="margin-top:24px;display:flex;justify-content:flex-end;gap:10px">
+        <button onclick="submitConReqFinal(true)" style="padding:11px 28px;border:none;border-radius:10px;background:#c0392b;color:#fff;font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer">✓ 요청 제출</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 핀 용도 설정 모달 ─── -->
+<div class="modal-overlay" id="crPinModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head">
+      <h2>핀 용도 설정</h2>
+      <button class="modal-close" onclick="closeModal('crPinModal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px">
+      <p style="font-size:12px;color:#6b7280;margin-bottom:16px">이 위치에 설치할 용도와 수량을 입력하세요. 한 핀에 여러 용도를 설정할 수 있습니다.</p>
+      <input type="hidden" id="crPinModalIdx" />
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#f9fafb;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">🖥️</span>
+            <div><div style="font-size:13px;font-weight:600">사무 PC</div><div id="crPinRemain-office" style="font-size:11px;color:#9ca3af"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="crPinQtyChange('office',-1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">−</button>
+            <span id="crPinQty-office" style="font-size:15px;font-weight:700;min-width:20px;text-align:center">0</span>
+            <button onclick="crPinQtyChange('office',1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">+</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#f9fafb;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">💻</span>
+            <div><div style="font-size:13px;font-weight:600">현장 PC</div><div id="crPinRemain-field" style="font-size:11px;color:#9ca3af"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="crPinQtyChange('field',-1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">−</button>
+            <span id="crPinQty-field" style="font-size:15px;font-weight:700;min-width:20px;text-align:center">0</span>
+            <button onclick="crPinQtyChange('field',1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">+</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#f9fafb;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">🔌</span>
+            <div><div style="font-size:13px;font-weight:600">장비</div><div id="crPinRemain-device" style="font-size:11px;color:#9ca3af"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="crPinQtyChange('device',-1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">−</button>
+            <span id="crPinQty-device" style="font-size:15px;font-weight:700;min-width:20px;text-align:center">0</span>
+            <button onclick="crPinQtyChange('device',1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">+</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#f9fafb;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">📞</span>
+            <div><div style="font-size:13px;font-weight:600">전화</div><div id="crPinRemain-phone" style="font-size:11px;color:#9ca3af"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="crPinQtyChange('phone',-1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">−</button>
+            <span id="crPinQty-phone" style="font-size:15px;font-weight:700;min-width:20px;text-align:center">0</span>
+            <button onclick="crPinQtyChange('phone',1)" style="width:28px;height:28px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;font-weight:700">+</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">메모</label>
+          <input type="text" id="crPinMemo" placeholder="예) 책상 왼쪽" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-red-sm" onclick="crDeletePin()" style="background:#ef4444;margin-right:auto">핀 삭제</button>
+      <button class="btn-outline" onclick="closeModal('crPinModal')">취소</button>
+      <button class="btn btn-primary" onclick="crSavePinModal()">저장</button>
     </div>
   </div>
 </div>
@@ -8077,7 +8200,16 @@ function resetConReq() {
   });
 }
 
-async function submitConReq() {
+function goToStep1() {
+  document.getElementById('conreqStep2').style.display = 'none';
+  document.getElementById('conreqStep1').style.display = 'block';
+  document.getElementById('step1Dot').style.background = '#c0392b';
+  document.getElementById('step1Dot').style.color = '#fff';
+  document.getElementById('step2Dot').style.background = '#e5e7eb';
+  document.getElementById('step2Dot').style.color = '#9ca3af';
+}
+
+function goToStep2() {
   const requester = document.getElementById('cr-requester').value.trim();
   const dept      = document.getElementById('cr-dept').value.trim();
   const title     = document.getElementById('cr-title').value.trim();
@@ -8087,19 +8219,239 @@ async function submitConReq() {
   }
   const totalQty = Object.values(crQtys).reduce((s,v) => s+v, 0);
   if (totalQty === 0) { showToast('용도 및 수량을 최소 1개 이상 입력하세요', true); return; }
+
+  // 핀 데이터 초기화 (1단계 다시 왔다가 넘어올 때 수량 변경 대비)
+  crPins = [];
+  crRenderPins();
+  crUpdateRemainingBadges();
+
+  document.getElementById('conreqStep1').style.display = 'none';
+  document.getElementById('conreqStep2').style.display = 'block';
+  document.getElementById('step1Dot').style.background = '#10b981';
+  document.getElementById('step1Dot').style.color = '#fff';
+  document.getElementById('step2Dot').style.background = '#c0392b';
+  document.getElementById('step2Dot').style.color = '#fff';
+}
+
+// 도면 로드
+let crFloorImgData = null;
+let crFloorImgType = '';
+
+async function crLoadFloor(input) {
+  const file = input.files[0];
+  if (!file) return;
+  crFloorImgType = file.type;
+
+  if (file.type === 'application/pdf') {
+    // PDF → 첫 페이지 렌더링 (pdfjsLib)
+    const url = URL.createObjectURL(file);
+    if (window.pdfjsLib) {
+      const pdf = await pdfjsLib.getDocument(url).promise;
+      const page = await pdf.getPage(1);
+      const vp = page.getViewport({ scale: 2.0 });
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      crFloorImgData = canvas.toDataURL('image/png');
+    } else {
+      showToast('PDF 미리보기를 위해 잠시 후 다시 시도하세요', true); return;
+    }
+  } else {
+    // 이미지 직접 읽기
+    crFloorImgData = await new Promise(res => {
+      const reader = new FileReader();
+      reader.onload = e => res(e.target.result);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  document.getElementById('crFloorImg').src = crFloorImgData;
+  document.getElementById('crFloorUploadArea').style.display = 'none';
+  document.getElementById('crCanvasWrap').style.display = 'block';
+  document.getElementById('crPinHint').style.display = 'block';
+  crRenderPins();
+}
+
+function crHandleDrop(event) {
+  event.preventDefault();
+  event.currentTarget.style.borderColor = '#e5e7eb';
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const input = document.getElementById('crFloorInput');
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  crLoadFloor(input);
+}
+
+// 핀 관리
+let crPins = []; // [{x, y, office, field, device, phone, memo}]
+let crEditingPinIdx = null;
+const crPinQtyTemp = { office:0, field:0, device:0, phone:0 };
+
+const CR_USAGE_LABELS = { office:'사무PC', field:'현장PC', device:'장비', phone:'전화' };
+const CR_USAGE_ICONS  = { office:'🖥️', field:'💻', device:'🔌', phone:'📞' };
+
+function crGetUsed() {
+  const used = { office:0, field:0, device:0, phone:0 };
+  crPins.forEach((p, idx) => {
+    if (idx === crEditingPinIdx) return; // 편집 중인 핀은 제외
+    Object.keys(used).forEach(k => used[k] += (p[k]||0));
+  });
+  return used;
+}
+
+function crGetRemaining(excludeIdx = null) {
+  const used = { office:0, field:0, device:0, phone:0 };
+  crPins.forEach((p, idx) => {
+    if (idx === excludeIdx) return;
+    Object.keys(used).forEach(k => used[k] += (p[k]||0));
+  });
+  return {
+    office: crQtys.office - used.office,
+    field:  crQtys.field  - used.field,
+    device: crQtys.device - used.device,
+    phone:  crQtys.phone  - used.phone,
+  };
+}
+
+function crUpdateRemainingBadges() {
+  const rem = crGetRemaining();
+  const total = Object.values(crQtys).reduce((s,v) => s+v, 0);
+  const usedTotal = crPins.reduce((s,p) => s + (p.office||0)+(p.field||0)+(p.device||0)+(p.phone||0), 0);
+  document.getElementById('crRemainingBadges').innerHTML =
+    Object.keys(crQtys).filter(k => crQtys[k] > 0).map(k => {
+      const r = rem[k];
+      const color = r === 0 ? '#10b981' : '#c0392b';
+      const bg    = r === 0 ? '#dcfce7' : '#fef2f2';
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;background:${bg};color:${color}">
+        ${CR_USAGE_ICONS[k]} ${CR_USAGE_LABELS[k]}: ${crQtys[k]-rem[k]}/${crQtys[k]}
+        ${r===0?'<span style="font-size:10px">✓</span>':''}
+      </span>`;
+    }).join('');
+}
+
+function crAddPin(event) {
+  const wrap = document.getElementById('crCanvasWrap');
+  const rect = wrap.getBoundingClientRect();
+  const x = (event.clientX - rect.left) / rect.width;
+  const y = (event.clientY - rect.top)  / rect.height;
+  // 기존 핀 클릭 여부 체크 (핀 클릭은 renderPins에서 처리)
+  crPins.push({ x, y, office:0, field:0, device:0, phone:0, memo:'' });
+  crEditingPinIdx = crPins.length - 1;
+  crOpenPinModal(crEditingPinIdx);
+  crRenderPins();
+}
+
+function crRenderPins() {
+  const layer = document.getElementById('crPinLayer');
+  if (!layer) return;
+  layer.innerHTML = crPins.map((pin, i) => {
+    const total = (pin.office||0)+(pin.field||0)+(pin.device||0)+(pin.phone||0);
+    const labels = Object.keys(CR_USAGE_ICONS).filter(k=>pin[k]>0).map(k=>`${CR_USAGE_ICONS[k]}${pin[k]}`).join(' ');
+    const color = total > 0 ? '#c0392b' : '#9ca3af';
+    return `<div onclick="event.stopPropagation();crOpenPinModal(${i})"
+      style="position:absolute;left:calc(${pin.x*100}% - 16px);top:calc(${pin.y*100}% - 32px);
+      cursor:pointer;pointer-events:all;display:flex;flex-direction:column;align-items:center;z-index:10">
+      <div style="background:${color};color:#fff;border-radius:8px 8px 0 0;padding:3px 7px;font-size:10px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)">
+        ${labels || '?'}
+      </div>
+      <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid ${color}"></div>
+    </div>`;
+  }).join('');
+}
+
+function crOpenPinModal(idx) {
+  crEditingPinIdx = idx;
+  const pin = crPins[idx];
+  const rem = crGetRemaining(idx);
+  document.getElementById('crPinModalIdx').value = idx;
+
+  // 현재 핀의 값 설정
+  Object.keys(crPinQtyTemp).forEach(k => {
+    crPinQtyTemp[k] = pin[k] || 0;
+    document.getElementById('crPinQty-'+k).textContent = crPinQtyTemp[k];
+    document.getElementById('crPinRemain-'+k).textContent =
+      crQtys[k] > 0 ? `잔여 ${rem[k]+crPinQtyTemp[k]}개` : '미선택';
+  });
+  document.getElementById('crPinMemo').value = pin.memo || '';
+  openModal('crPinModal');
+}
+
+function crPinQtyChange(type, delta) {
+  const rem = crGetRemaining(crEditingPinIdx);
+  const newVal = crPinQtyTemp[type] + delta;
+  if (newVal < 0) return;
+  if (delta > 0 && rem[type] <= 0) { showToast(`${CR_USAGE_LABELS[type]} 잔여 수량이 없습니다`, true); return; }
+  crPinQtyTemp[type] = newVal;
+  document.getElementById('crPinQty-'+type).textContent = newVal;
+  const remAfter = crGetRemaining(crEditingPinIdx);
+  Object.keys(crPinQtyTemp).forEach(k => {
+    document.getElementById('crPinRemain-'+k).textContent =
+      crQtys[k] > 0 ? `잔여 ${remAfter[k] + crPinQtyTemp[k] - (crPins[crEditingPinIdx]?.[k]||0)}개` : '미선택';
+  });
+}
+
+function crSavePinModal() {
+  const idx = parseInt(document.getElementById('crPinModalIdx').value);
+  Object.keys(crPinQtyTemp).forEach(k => crPins[idx][k] = crPinQtyTemp[k]);
+  crPins[idx].memo = document.getElementById('crPinMemo').value;
+  crEditingPinIdx = null;
+  closeModal('crPinModal');
+  crRenderPins();
+  crUpdateRemainingBadges();
+  crRenderPinList();
+}
+
+function crDeletePin() {
+  const idx = parseInt(document.getElementById('crPinModalIdx').value);
+  crPins.splice(idx, 1);
+  crEditingPinIdx = null;
+  closeModal('crPinModal');
+  crRenderPins();
+  crUpdateRemainingBadges();
+  crRenderPinList();
+}
+
+function crRenderPinList() {
+  const el = document.getElementById('crPinList');
+  if (!el || crPins.length === 0) { if(el) el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">핀 목록 (${crPins.length}개)</div>
+  <div style="display:grid;gap:6px">` +
+  crPins.map((p, i) => {
+    const labels = Object.keys(CR_USAGE_ICONS).filter(k=>p[k]>0).map(k=>`${CR_USAGE_ICONS[k]} ${CR_USAGE_LABELS[k]} ${p[k]}개`).join(' · ');
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9fafb;border-radius:8px;font-size:12px">
+      <span style="color:#374151">${i+1}. ${labels||'미설정'}${p.memo?' — '+p.memo:''}</span>
+      <button onclick="crOpenPinModal(${i})" style="padding:3px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;font-size:11px;cursor:pointer;color:#6b7280">수정</button>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+async function submitConReqFinal(withFloor) {
+  if (!crFloorImgData) { showToast('도면을 먼저 업로드해주세요', true); return; }
   const body = {
-    requester, dept, title, due_date,
-    location: document.getElementById('cr-location').value.trim(),
+    requester: document.getElementById('cr-requester').value.trim(),
+    dept:      document.getElementById('cr-dept').value.trim(),
+    title:     document.getElementById('cr-title').value.trim(),
+    due_date:  document.getElementById('cr-due_date').value.trim(),
+    location:  document.getElementById('cr-location').value.trim(),
     qty_office: crQtys.office, qty_field: crQtys.field,
     qty_device: crQtys.device, qty_phone: crQtys.phone,
-    memo: document.getElementById('cr-memo').value.trim(),
+    memo:      document.getElementById('cr-memo').value.trim(),
+    pins:      JSON.stringify(crPins),
+    floor_img: withFloor && crFloorImgData ? crFloorImgData : null,
   };
   try {
     await api('POST', '/api/conreq', body);
     showToast('✓ 공사 요청이 접수됐습니다');
     resetConReq();
+    goToStep1();
   } catch(e) { showToast(e.message, true); }
 }
+
+async function submitConReq() { goToStep2(); }
+
+
 
 async function loadConBox() {
   const search = document.getElementById('conboxSearch')?.value || '';
@@ -8183,6 +8535,20 @@ async function showConReqDetail(id) {
           </div>
         </div>
         ${r.memo?`<div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">추가 요청사항</span><br><div style="margin-top:6px;white-space:pre-wrap;line-height:1.6">${r.memo}</div></div>`:''}
+        ${r.floor_img ? `
+        <div style="background:#f9fafb;border-radius:8px;padding:12px">
+          <span style="color:#9ca3af;font-size:11px;display:block;margin-bottom:8px">도면 & 핀</span>
+          <div style="position:relative;border-radius:8px;overflow:hidden">
+            <img src="${r.floor_img}" style="width:100%;display:block" />
+            ${(JSON.parse(r.pins||'[]')).map(p => {
+              const labels = Object.keys({office:'🖥️',field:'💻',device:'🔌',phone:'📞'}).filter(k=>p[k]>0).map(k=>({office:'🖥️',field:'💻',device:'🔌',phone:'📞'})[k]+p[k]).join(' ');
+              return `<div style="position:absolute;left:calc(${p.x*100}% - 16px);top:calc(${p.y*100}% - 32px);display:flex;flex-direction:column;align-items:center">
+                <div style="background:#c0392b;color:#fff;border-radius:8px 8px 0 0;padding:3px 7px;font-size:10px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)">${labels||'?'}</div>
+                <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid #c0392b"></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
       </div>
     </div>`;
   overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
