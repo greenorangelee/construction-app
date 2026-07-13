@@ -5025,9 +5025,10 @@ document.addEventListener('keydown', e => {
 function showCenterAlert(msg) {
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:99999;pointer-events:none';
-  el.innerHTML = `<div style="background:#1a1a1a;color:#fff;padding:18px 32px;border-radius:14px;font-size:15px;font-weight:600;font-family:\'Noto Sans KR\',sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.3);text-align:center;animation:fadeInOut 2s ease forwards">${msg}</div>`;
+  const lines = msg.split('\n').join('<br>');
+  el.innerHTML = `<div style="background:#1a1a1a;color:#fff;padding:18px 32px;border-radius:14px;font-size:15px;font-weight:600;font-family:'Noto Sans KR',sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.3);text-align:center;animation:fadeInOut 2.5s ease forwards;line-height:1.7">${lines}</div>`;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2000);
+  setTimeout(() => el.remove(), 2500);
 }
 
 function showToast(msg) {
@@ -8346,11 +8347,17 @@ function crUpdateRemainingBadges() {
 }
 
 function crAddPin(event) {
+  // 모든 용도의 잔여 수량 합계 확인
+  const rem = crGetRemaining();
+  const totalRemaining = Object.values(rem).reduce((s,v) => s+v, 0);
+  if (totalRemaining <= 0) {
+    showCenterAlert('✅ 모든 수량이 배정됐습니다');
+    return;
+  }
   const wrap = document.getElementById('crCanvasWrap');
   const rect = wrap.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width;
   const y = (event.clientY - rect.top)  / rect.height;
-  // 기존 핀 클릭 여부 체크 (핀 클릭은 renderPins에서 처리)
   crPins.push({ x, y, office:0, field:0, device:0, phone:0, memo:'' });
   crEditingPinIdx = crPins.length - 1;
   crOpenPinModal(crEditingPinIdx);
@@ -8443,6 +8450,14 @@ function crRenderPinList() {
 
 async function submitConReqFinal(withFloor) {
   if (!crFloorImgData) { showCenterAlert('🗺️ 도면을 먼저 업로드해주세요'); return; }
+  const rem = crGetRemaining();
+  const totalRemaining = Object.values(rem).reduce((s,v) => s+v, 0);
+  if (totalRemaining > 0) {
+    const unassigned = Object.keys(rem).filter(k => rem[k] > 0)
+      .map(k => `${CR_USAGE_ICONS[k]} ${CR_USAGE_LABELS[k]} ${rem[k]}개`).join(', ');
+    showCenterAlert(`📍 미배정 수량이 있습니다\n${unassigned}`);
+    return;
+  }
   const body = {
     requester: document.getElementById('cr-requester').value.trim(),
     dept:      document.getElementById('cr-dept').value.trim(),
