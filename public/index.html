@@ -2199,6 +2199,8 @@
       <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices">🔌 네트워크 장비</button>
       <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox">📬 공사 요청함</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -2454,6 +2456,8 @@
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-ip">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-ip">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-ip">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-ip">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-ip">📬 공사 요청함</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
@@ -2668,6 +2672,8 @@
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-c">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-c">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-c">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-c">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-c">📬 공사 요청함</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -2923,6 +2929,8 @@
         <button class="nav-tab active" onclick="switchTab('devices')" id="tab-devices-d">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-d">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-d">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-d">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-d">📬 공사 요청함</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
@@ -3321,6 +3329,8 @@
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-incident">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-incident">🔥 방화벽 정책요청</button>
         <button class="nav-tab active" onclick="switchTab('incident')" id="tab-incident-incident">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-incident">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-incident">📬 공사 요청함</button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-incident">⚙️ 설정</button>
       </nav>
     </div>
@@ -3532,6 +3542,185 @@
   </div>
 </div>
 
+<!-- ─── 공사 요청 페이지 ─── -->
+<div id="conreqPage" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-conreq">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-conreq">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-conreq">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-conreq">🔌 네트워크 장비</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-conreq">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conreq">🚨 장애 이력</button>
+        <button class="nav-tab active" onclick="switchTab('conreq')" id="tab-conreq-conreq">📋 공사 요청</button>
+        <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-conreq">📬 공사 요청함</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conreq">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <div class="header-user">
+        <span class="header-user-name" id="headerUserName"></span>
+        <span class="header-user-role" id="headerUserRole"></span>
+        <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </header>
+  <div class="container" style="max-width:700px;margin:0 auto">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:32px 36px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-top:8px">
+      <h2 style="font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:6px">📋 공사 요청</h2>
+      <p style="font-size:13px;color:#9ca3af;margin-bottom:28px">공사 요청 내용을 입력하면 IT관리팀에 전달됩니다</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">요청자 <span style="color:#c0392b">*</span></label>
+          <input type="text" id="cr-requester" placeholder="이름" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#e5e7eb'" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">부서 <span style="color:#c0392b">*</span></label>
+          <input type="text" id="cr-dept" placeholder="부서명" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#e5e7eb'" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">공사명 <span style="color:#c0392b">*</span></label>
+          <input type="text" id="cr-title" placeholder="공사 내용을 간략히 입력하세요" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#e5e7eb'" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">희망 완료일 <span style="color:#c0392b">*</span></label>
+          <input type="text" id="cr-due_date" class="datepicker-input" placeholder="날짜 선택" readonly style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer;background:#fff" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">위치</label>
+          <input type="text" id="cr-location" placeholder="예) HO동 3층" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#e5e7eb'" />
+        </div>
+
+        <!-- 용도별 개수 -->
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:10px">용도 및 수량</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+            <div style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;text-align:center;transition:border-color 0.15s" id="crUsage-office">
+              <div style="font-size:20px;margin-bottom:6px">🖥️</div>
+              <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">사무 PC</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                <button onclick="crQtyChange('office',-1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">−</button>
+                <span id="crQty-office" style="font-size:16px;font-weight:700;color:#1a1a1a;min-width:20px;text-align:center">0</span>
+                <button onclick="crQtyChange('office',1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">+</button>
+              </div>
+            </div>
+            <div style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;text-align:center;transition:border-color 0.15s" id="crUsage-field">
+              <div style="font-size:20px;margin-bottom:6px">💻</div>
+              <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">현장 PC</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                <button onclick="crQtyChange('field',-1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">−</button>
+                <span id="crQty-field" style="font-size:16px;font-weight:700;color:#1a1a1a;min-width:20px;text-align:center">0</span>
+                <button onclick="crQtyChange('field',1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">+</button>
+              </div>
+            </div>
+            <div style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;text-align:center;transition:border-color 0.15s" id="crUsage-device">
+              <div style="font-size:20px;margin-bottom:6px">🔌</div>
+              <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">장비</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                <button onclick="crQtyChange('device',-1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">−</button>
+                <span id="crQty-device" style="font-size:16px;font-weight:700;color:#1a1a1a;min-width:20px;text-align:center">0</span>
+                <button onclick="crQtyChange('device',1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">+</button>
+              </div>
+            </div>
+            <div style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;text-align:center;transition:border-color 0.15s" id="crUsage-phone">
+              <div style="font-size:20px;margin-bottom:6px">📞</div>
+              <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px">전화</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                <button onclick="crQtyChange('phone',-1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">−</button>
+                <span id="crQty-phone" style="font-size:16px;font-weight:700;color:#1a1a1a;min-width:20px;text-align:center">0</span>
+                <button onclick="crQtyChange('phone',1)" style="width:26px;height:26px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;cursor:pointer;font-size:14px;font-weight:700;color:#374151">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">추가 요청사항</label>
+          <textarea id="cr-memo" rows="3" placeholder="기타 요청사항을 입력하세요" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical" onfocus="this.style.borderColor='#c0392b'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
+        </div>
+      </div>
+
+      <div style="margin-top:24px;display:flex;justify-content:flex-end;gap:10px">
+        <button onclick="resetConReq()" style="padding:11px 22px;border:1.5px solid #e5e7eb;border-radius:10px;background:#fff;font-size:13px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;color:#6b7280">초기화</button>
+        <button onclick="submitConReq()" style="padding:11px 28px;border:none;border-radius:10px;background:#c0392b;color:#fff;font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer">요청 제출</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 공사 요청함 페이지 ─── -->
+<div id="conboxPage" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-conbox">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-conbox">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-conbox">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-conbox">🔌 네트워크 장비</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-conbox">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conbox">🚨 장애 이력</button>
+        <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-conbox">📋 공사 요청</button>
+        <button class="nav-tab active" onclick="switchTab('conbox')" id="tab-conbox-conbox">📬 공사 요청함</button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conbox">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <div class="header-user">
+        <span class="header-user-name" id="headerUserName"></span>
+        <span class="header-user-role" id="headerUserRole"></span>
+        <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </header>
+  <div class="container">
+    <!-- 필터 -->
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input type="text" id="conboxSearch" placeholder="🔍 요청자·부서·공사명 검색" oninput="loadConBox()" style="flex:1;min-width:200px;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+      <select id="conboxStatusFilter" onchange="loadConBox()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="">전체 상태</option>
+        <option value="대기중">대기중</option>
+        <option value="처리중">처리중</option>
+        <option value="완료">완료</option>
+        <option value="반려">반려</option>
+      </select>
+    </div>
+
+    <!-- 목록 -->
+    <div class="table-wrapper">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)">
+        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">📬 공사 요청함</h2>
+        <span id="conboxCount" style="font-size:12px;color:#9ca3af"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">No</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">요청일</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">요청자</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">부서</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left">공사명</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">용도/수량</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">희망완료일</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">상태</th>
+              <th style="padding:10px 12px;background:#f9fafb;border-bottom:2px solid #e5e7eb;color:#6b7280;font-weight:600;text-align:left;white-space:nowrap">관리</th>
+            </tr>
+          </thead>
+          <tbody id="conboxTableBody">
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af">불러오는 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ─── 방화벽 정책요청 페이지 ─── -->
 <div id="firewallPage" style="display:none">
   <header class="header">
@@ -3545,6 +3734,8 @@
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-fw">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-fw">🔥 방화벽 정책요청</button>
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-fw">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-fw">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-fw">📬 공사 요청함</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
       </nav>
     </div>
@@ -3681,6 +3872,8 @@
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-s">🔌 네트워크 장비</button>
         <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-s">🔥 방화벽 정책요청</button>
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-s">🚨 장애 이력</button>
+      <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-s">📋 공사 요청</button>
+      <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-s">📬 공사 요청함</button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -4119,6 +4312,8 @@ function showLogin() {
   document.getElementById('settingsPage').style.display = 'none';
   document.getElementById('firewallPage').style.display = 'none';
   document.getElementById('incidentPage').style.display = 'none';
+  document.getElementById('conreqPage').style.display = 'none';
+  document.getElementById('conboxPage').style.display = 'none';
 }
 
 function showApp() {
@@ -7445,10 +7640,12 @@ function switchTab(tab) {
   document.getElementById('devicesPage').style.display = tab === 'devices' ? 'block' : 'none';
   document.getElementById('firewallPage').style.display = tab === 'fw' ? 'block' : 'none';
   document.getElementById('incidentPage').style.display = tab === 'incident' ? 'block' : 'none';
+  document.getElementById('conreqPage').style.display = tab === 'conreq' ? 'block' : 'none';
+  document.getElementById('conboxPage').style.display = tab === 'conbox' ? 'block' : 'none';
   document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
 
-  ['main','cable','ip','devices','fw','incident','settings'].forEach(t => {
-    ['tab-'+t,'tab-'+t+'-s','tab-'+t+'-c','tab-'+t+'-ip','tab-'+t+'-d','tab-'+t+'-fw','tab-'+t+'-incident'].forEach(id => {
+  ['main','cable','ip','devices','fw','incident','conreq','conbox','settings'].forEach(t => {
+    ['tab-'+t,'tab-'+t+'-s','tab-'+t+'-c','tab-'+t+'-ip','tab-'+t+'-d','tab-'+t+'-fw','tab-'+t+'-incident','tab-'+t+'-conreq','tab-'+t+'-conbox'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', t === tab);
     });
@@ -7460,6 +7657,7 @@ function switchTab(tab) {
   if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
   if (tab === 'fw') { loadFwList(); updateFwUIByRole(); }
   if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); }
+  if (tab === 'conbox') { loadConBox(); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -7851,6 +8049,144 @@ function resetColWidths() {
   localStorage.removeItem('colWidths');
   document.querySelectorAll('thead th').forEach(th => { th.style.width = ''; });
   showToast('컬럼 너비가 초기화됐습니다');
+}
+
+// ── 공사 요청 ──────────────────────────────────────────
+
+const crQtys = { office:0, field:0, device:0, phone:0 };
+
+function crQtyChange(type, delta) {
+  crQtys[type] = Math.max(0, crQtys[type] + delta);
+  document.getElementById('crQty-'+type).textContent = crQtys[type];
+  const card = document.getElementById('crUsage-'+type);
+  if (card) {
+    card.style.borderColor = crQtys[type] > 0 ? '#c0392b' : '#e5e7eb';
+    card.style.background  = crQtys[type] > 0 ? '#fef2f2' : '#fff';
+  }
+}
+
+function resetConReq() {
+  ['cr-requester','cr-dept','cr-title','cr-due_date','cr-location','cr-memo'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['office','field','device','phone'].forEach(t => {
+    crQtys[t] = 0;
+    document.getElementById('crQty-'+t).textContent = '0';
+    const card = document.getElementById('crUsage-'+t);
+    if (card) { card.style.borderColor = '#e5e7eb'; card.style.background = '#fff'; }
+  });
+}
+
+async function submitConReq() {
+  const requester = document.getElementById('cr-requester').value.trim();
+  const dept      = document.getElementById('cr-dept').value.trim();
+  const title     = document.getElementById('cr-title').value.trim();
+  const due_date  = document.getElementById('cr-due_date').value.trim();
+  if (!requester || !dept || !title || !due_date) {
+    showToast('필수 항목을 모두 입력하세요 (요청자·부서·공사명·희망완료일)', true); return;
+  }
+  const totalQty = Object.values(crQtys).reduce((s,v) => s+v, 0);
+  if (totalQty === 0) { showToast('용도 및 수량을 최소 1개 이상 입력하세요', true); return; }
+  const body = {
+    requester, dept, title, due_date,
+    location: document.getElementById('cr-location').value.trim(),
+    qty_office: crQtys.office, qty_field: crQtys.field,
+    qty_device: crQtys.device, qty_phone: crQtys.phone,
+    memo: document.getElementById('cr-memo').value.trim(),
+  };
+  try {
+    await api('POST', '/api/conreq', body);
+    showToast('✓ 공사 요청이 접수됐습니다');
+    resetConReq();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function loadConBox() {
+  const search = document.getElementById('conboxSearch')?.value || '';
+  const status = document.getElementById('conboxStatusFilter')?.value || '';
+  const p = new URLSearchParams();
+  if (search) p.set('search', search);
+  if (status) p.set('status', status);
+  const rows = await api('GET', '/api/conreq?' + p.toString());
+  document.getElementById('conboxCount').textContent = `총 ${rows.length}건`;
+  const canWrite = ['write','admin'].includes(currentUser?.role);
+  const qtyStr = r => {
+    const parts = [];
+    if (r.qty_office) parts.push(`사무PC×${r.qty_office}`);
+    if (r.qty_field)  parts.push(`현장PC×${r.qty_field}`);
+    if (r.qty_device) parts.push(`장비×${r.qty_device}`);
+    if (r.qty_phone)  parts.push(`전화×${r.qty_phone}`);
+    return parts.join(', ') || '-';
+  };
+  document.getElementById('conboxTableBody').innerHTML = rows.length ? rows.map(r => `
+    <tr style="border-bottom:1px solid #f3f4f6" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+      <td style="padding:10px 12px;color:#9ca3af;font-size:12px">${r.id}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px">${r.req_date||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-weight:500">${r.requester||'-'}</td>
+      <td style="padding:10px 12px;white-space:nowrap">${r.dept||'-'}</td>
+      <td style="padding:10px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c0392b;font-weight:500" title="${r.title||''}">${r.title||'-'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#6b7280;white-space:nowrap">${qtyStr(r)}</td>
+      <td style="padding:10px 12px;white-space:nowrap;font-size:12px">${r.due_date||'-'}</td>
+      <td style="padding:10px 12px">
+        ${canWrite
+          ? `<select onchange="updateConReqStatus(${r.id}, this.value)" style="padding:4px 8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer">
+              ${['대기중','처리중','완료','반려'].map(s => `<option${s===r.status?' selected':''}>${s}</option>`).join('')}
+             </select>`
+          : `<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">${r.status||'대기중'}</span>`}
+      </td>
+      <td style="padding:10px 12px;white-space:nowrap">
+        <button class="btn-red-sm" onclick="showConReqDetail(${r.id})">상세</button>
+        ${canWrite ? `<button class="btn-red-sm" onclick="deleteConReq(${r.id})" style="background:#ef4444;margin-left:4px">삭제</button>` : ''}
+      </td>
+    </tr>`).join('')
+    : '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af">공사 요청이 없습니다</td></tr>';
+}
+
+async function updateConReqStatus(id, status) {
+  try { await api('PUT', `/api/conreq/${id}`, { status }); showToast('상태가 변경됐습니다'); }
+  catch(e) { showToast(e.message, true); }
+}
+
+async function deleteConReq(id) {
+  if (!confirm('이 요청을 삭제할까요?')) return;
+  await api('DELETE', `/api/conreq/${id}`);
+  showToast('삭제됐습니다'); loadConBox();
+}
+
+async function showConReqDetail(id) {
+  const r = await api('GET', `/api/conreq/${id}`);
+  const qtyItems = [
+    {label:'사무 PC 🖥️',val:r.qty_office},{label:'현장 PC 💻',val:r.qty_field},
+    {label:'장비 🔌',val:r.qty_device},{label:'전화 📞',val:r.qty_phone},
+  ].filter(x => x.val > 0);
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid #e5e7eb">
+        <h2 style="font-size:16px;font-weight:700">공사 요청 상세</h2>
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:6px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;cursor:pointer">닫기</button>
+      </div>
+      <div style="padding:20px 24px;display:grid;gap:12px;font-size:13px">
+        <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">공사명</span><br><b style="font-size:15px;color:#c0392b">${r.title||'-'}</b></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">요청자</span><br><b>${r.requester||'-'}</b></div>
+          <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">부서</span><br><b>${r.dept||'-'}</b></div>
+          <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">요청일</span><br><b>${r.req_date||'-'}</b></div>
+          <div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">희망완료일</span><br><b>${r.due_date||'-'}</b></div>
+          ${r.location?`<div style="background:#f9fafb;border-radius:8px;padding:12px;grid-column:1/-1"><span style="color:#9ca3af;font-size:11px">위치</span><br><b>${r.location}</b></div>`:''}
+        </div>
+        <div style="background:#f9fafb;border-radius:8px;padding:12px">
+          <span style="color:#9ca3af;font-size:11px;display:block;margin-bottom:8px">용도 및 수량</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${qtyItems.map(x=>`<span style="background:#fef2f2;color:#c0392b;border:1px solid #fecaca;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${x.label} ${x.val}개</span>`).join('')||'<span style="color:#9ca3af">-</span>'}
+          </div>
+        </div>
+        ${r.memo?`<div style="background:#f9fafb;border-radius:8px;padding:12px"><span style="color:#9ca3af;font-size:11px">추가 요청사항</span><br><div style="margin-top:6px;white-space:pre-wrap;line-height:1.6">${r.memo}</div></div>`:''}
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 // ── 장애 이력 ──────────────────────────────────────────
