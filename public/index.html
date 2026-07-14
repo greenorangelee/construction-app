@@ -3695,7 +3695,14 @@
 
       <!-- 도면 캔버스 -->
       <div id="crCanvasWrap" style="display:none">
-        <!-- 미리보기 + 전체화면 버튼 -->
+        <!-- 미리보기 + 버튼들 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:600;color:#374151">📎 업로드된 도면</span>
+          <label style="padding:5px 12px;border:1.5px solid #e5e7eb;border-radius:8px;background:#fff;font-size:11px;cursor:pointer;color:#6b7280;font-family:'Noto Sans KR',sans-serif;font-weight:600">
+            🔄 도면 교체
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="crReplaceFloor(this)" />
+          </label>
+        </div>
         <div style="position:relative;border:1.5px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#f8f9fa;max-height:280px">
           <img id="crFloorImg" style="width:100%;display:block;pointer-events:none;user-select:none;max-height:280px;object-fit:contain" />
           <div id="crPinLayerPreview" style="position:absolute;inset:0;pointer-events:none"></div>
@@ -8277,6 +8284,21 @@ function goToStep2() {
 // 도면 로드
 let crFloorImgData = null;
 let crFloorImgType = '';
+
+async function crReplaceFloor(input) {
+  if (!input.files[0]) return;
+  if (crPins.length > 0) {
+    if (!confirm('도면을 교체하면 찍어둔 핀이 모두 초기화됩니다. 계속할까요?')) {
+      input.value = '';
+      return;
+    }
+    crPins = [];
+    crRenderPinsPreview();
+    crRenderPinList();
+    crUpdateRemainingBadges();
+  }
+  await crLoadFloor(input);
+}
 
 async function crLoadFloor(input) {
   const file = input.files[0];
