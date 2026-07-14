@@ -8392,23 +8392,100 @@ function crAddPin(event) {
   crOpenNewPinModal();
 }
 
+function crClusterPins(pins, threshold = 0.04) {
+  const groups = [];
+  const assigned = new Array(pins.length).fill(false);
+  for (let i = 0; i < pins.length; i++) {
+    if (assigned[i]) continue;
+    const group = [i];
+    assigned[i] = true;
+    for (let j = i + 1; j < pins.length; j++) {
+      if (assigned[j]) continue;
+      const dx = pins[i].x - pins[j].x;
+      const dy = pins[i].y - pins[j].y;
+      if (Math.sqrt(dx*dx + dy*dy) < threshold) {
+        group.push(j);
+        assigned[j] = true;
+      }
+    }
+    groups.push(group);
+  }
+  return groups;
+}
+
+// 겹친 핀들을 부채꼴로 펼쳐서 표시 위치 계산
+function crSpreadPositions(cx, cy, count) {
+  if (count === 1) return [[cx, cy]];
+  const spread = 0.035; // 펼침 반경
+  return Array.from({length: count}, (_, i) => {
+    const angle = (2 * Math.PI * i / count) - Math.PI / 2;
+    return [cx + Math.cos(angle) * spread, cy + Math.sin(angle) * spread];
+  });
+}
+
 function crRenderPins() {
   const layer = document.getElementById('crPinLayer');
   if (!layer) return;
-  layer.innerHTML = crPins.map((pin, i) => {
-    const total = (pin.office||0)+(pin.field||0)+(pin.device||0)+(pin.phone||0);
-    const labels = Object.keys(CR_USAGE_ICONS).filter(k=>pin[k]>0).map(k=>`${CR_USAGE_ICONS[k]}${pin[k]}`).join(' ');
-    const color = total > 0 ? '#c0392b' : '#9ca3af';
-    return `<div onclick="event.stopPropagation();crOpenPinModal(${i})"
-      style="position:absolute;left:calc(${pin.x*100}% - 16px);top:calc(${pin.y*100}% - 32px);
-      cursor:pointer;pointer-events:all;display:flex;flex-direction:column;align-items:center;z-index:10">
-      <div style="background:${color};color:#fff;border-radius:8px 8px 0 0;padding:3px 7px;font-size:10px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)">
-        ${labels || '?'}
-      </div>
-      <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid ${color}"></div>
-    </div>`;
-  }).join('');
+
+  const groups = crClusterPins(crPins);
+  let html = '';
+
+  groups.forEach(group => {
+    const cx = group.reduce((s,i) => s + crPins[i].x, 0) / group.length;
+    const cy = group.reduce((s,i) => s + crPins[i].y, 0) / group.length;
+    const positions = crSpreadPositions(cx, cy, group.length);
+
+    group.forEach((pinIdx, no) => {
+      const pin = crPins[pinIdx];
+      const [px, py] = positions[no];
+      const total = (pin.office||0)+(pin.field||0)+(pin.device||0)+(pin.phone||0);
+      const labels = Object.keys(CR_USAGE_ICONS).filter(k=>pin[k]>0).map(k=>`${CR_USAGE_ICONS[k]}${pin[k]}`).join(' ');
+      const color = total > 0 ? '#c0392b' : '#9ca3af';
+      // 겹친 핀이면 번호 표시
+      const numBadge = group.length > 1 ? `<div style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;background:#f97316;border-radius:50%;font-size:9px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff">${no+1}</div>` : '';
+      html += `<div onclick="event.stopPropagation();crOpenPinModal(${pinIdx})"
+        style="position:absolute;left:calc(${px*100}% - 16px);top:calc(${py*100}% - 32px);
+        cursor:pointer;pointer-events:all;display:flex;flex-direction:column;align-items:center;z-index:${10+no}">
+        <div style="position:relative;background:${color};color:#fff;border-radius:8px 8px 0 0;padding:3px 7px;font-size:10px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)">
+          ${labels||'?'}${numBadge}
+        </div>
+        <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid ${color}"></div>
+      </div>`;
+    });
+  });
+
+  layer.innerHTML = html;
 }
+
+function crOpenClusterPopup(event, indices) {
+  document.querySelectorAll('.cr-cluster-popup').forEach(el => el.remove());
+  const popup = document.createElement('div');
+  popup.className = 'cr-cluster-popup';
+  popup.style.cssText = `position:fixed;z-index:30000;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);padding:12px;min-width:180px;left:${event.clientX}px;top:${event.clientY - 10}px`;
+  popup.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:#9ca3af;margin-bottom:8px">📍 핀 ${indices.length}개 묶음</div>
+    ${indices.map((i, no) => {
+      const p = crPins[i];
+      const labels = Object.keys(CR_USAGE_ICONS).filter(k=>p[k]>0).map(k=>`${CR_USAGE_ICONS[k]} ${CR_USAGE_LABELS[k]} ${p[k]}개`).join(', ');
+      return `<div onclick="document.querySelectorAll('.cr-cluster-popup').forEach(el=>el.remove());crOpenPinModal(${i})"
+        style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:12px;margin-bottom:4px;background:#f9fafb"
+        onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#f9fafb'">
+        <span style="font-weight:600;color:#c0392b">핀 ${no+1}</span>
+        <span style="color:#374151;margin-left:6px">${labels||'미설정'}${p.memo?' · '+p.memo:''}</span>
+      </div>`;
+    }).join('')}`;
+  document.body.appendChild(popup);
+  const rect = popup.getBoundingClientRect();
+  if (rect.right > window.innerWidth) popup.style.left = (event.clientX - rect.width) + 'px';
+  if (rect.bottom > window.innerHeight) popup.style.top = (event.clientY - rect.height - 10) + 'px';
+  setTimeout(() => {
+    document.addEventListener('click', function close() {
+      document.querySelectorAll('.cr-cluster-popup').forEach(el => el.remove());
+      document.removeEventListener('click', close);
+    });
+  }, 50);
+}
+
 
 function crOpenFullscreen() {
   const overlay = document.getElementById('crFullscreenOverlay');
@@ -8685,13 +8762,39 @@ async function showConReqDetail(id) {
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);opacity:0;transition:opacity 0.15s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0">
               <span style="color:#fff;font-size:13px;font-weight:700">🔍 클릭하여 확대</span>
             </div>
-            ${(JSON.parse(r.pins||'[]')).map(p => {
-              const labels = Object.keys({office:'🖥️',field:'💻',device:'🔌',phone:'📞'}).filter(k=>p[k]>0).map(k=>({office:'🖥️',field:'💻',device:'🔌',phone:'📞'})[k]+p[k]).join(' ');
-              return `<div style="position:absolute;left:calc(${p.x*100}% - 12px);top:calc(${p.y*100}% - 24px);display:flex;flex-direction:column;align-items:center;pointer-events:none">
-                <div style="background:#c0392b;color:#fff;border-radius:6px 6px 0 0;padding:2px 5px;font-size:9px;font-weight:600;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.2)">${labels||'?'}</div>
-                <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #c0392b"></div>
-              </div>`;
-            }).join('')}
+            ${(() => {
+              const pins2 = JSON.parse(r.pins||'[]');
+              const threshold = 0.04;
+              const assigned = new Array(pins2.length).fill(false);
+              const groups = [];
+              for (let i = 0; i < pins2.length; i++) {
+                if (assigned[i]) continue;
+                const group = [i]; assigned[i] = true;
+                for (let j = i+1; j < pins2.length; j++) {
+                  if (assigned[j]) continue;
+                  const dx = pins2[i].x - pins2[j].x, dy = pins2[i].y - pins2[j].y;
+                  if (Math.sqrt(dx*dx+dy*dy) < threshold) { group.push(j); assigned[j]=true; }
+                }
+                groups.push(group);
+              }
+              return groups.flatMap(group => {
+                const cx = group.reduce((s,i)=>s+pins2[i].x,0)/group.length;
+                const cy = group.reduce((s,i)=>s+pins2[i].y,0)/group.length;
+                const spread = 0.035;
+                return group.map((pinIdx, no) => {
+                  const p = pins2[pinIdx];
+                  const angle = group.length===1 ? -Math.PI/2 : (2*Math.PI*no/group.length)-Math.PI/2;
+                  const px = group.length===1 ? cx : cx+Math.cos(angle)*spread;
+                  const py = group.length===1 ? cy : cy+Math.sin(angle)*spread;
+                  const labels = Object.keys({office:'🖥️',field:'💻',device:'🔌',phone:'📞'}).filter(k=>p[k]>0).map(k=>({office:'🖥️',field:'💻',device:'🔌',phone:'📞'})[k]+p[k]).join(' ');
+                  const numBadge = group.length>1 ? `<div style="position:absolute;top:-5px;right:-5px;width:14px;height:14px;background:#f97316;border-radius:50%;font-size:8px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff">${no+1}</div>` : '';
+                  return `<div style="position:absolute;left:calc(${px*100}% - 14px);top:calc(${py*100}% - 28px);display:flex;flex-direction:column;align-items:center;pointer-events:none">
+                    <div style="position:relative;background:#c0392b;color:#fff;border-radius:6px 6px 0 0;padding:2px 5px;font-size:9px;font-weight:600;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.2)">${labels||'?'}${numBadge}</div>
+                    <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid #c0392b"></div>
+                  </div>`;
+                });
+              }).join('');
+            })()}
           </div>
         </div>` : ''}
       </div>
@@ -8742,13 +8845,34 @@ function openFloorViewer(id, encodedImg, encodedPins) {
   pinLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none';
 
   img.onload = () => {
-    pinLayer.innerHTML = pins.map(p => {
-      const labels = Object.keys({office:'🖥️',field:'💻',device:'🔌',phone:'📞'})
-        .filter(k=>p[k]>0).map(k=>({office:'🖥️',field:'💻',device:'🔌',phone:'📞'})[k]+p[k]).join(' ');
-      return `<div style="position:absolute;left:calc(${p.x*100}% - 16px);top:calc(${p.y*100}% - 32px);display:flex;flex-direction:column;align-items:center">
-        <div style="background:#c0392b;color:#fff;border-radius:8px 8px 0 0;padding:3px 7px;font-size:10px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${labels||'?'}</div>
-        <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid #c0392b"></div>
-      </div>`;
+    const threshold = 0.04, spread = 0.035;
+    const assigned = new Array(pins.length).fill(false);
+    const groups = [];
+    for (let i = 0; i < pins.length; i++) {
+      if (assigned[i]) continue;
+      const group = [i]; assigned[i] = true;
+      for (let j = i+1; j < pins.length; j++) {
+        if (assigned[j]) continue;
+        const dx = pins[i].x-pins[j].x, dy = pins[i].y-pins[j].y;
+        if (Math.sqrt(dx*dx+dy*dy) < threshold) { group.push(j); assigned[j]=true; }
+      }
+      groups.push(group);
+    }
+    pinLayer.innerHTML = groups.flatMap(group => {
+      const cx = group.reduce((s,i)=>s+pins[i].x,0)/group.length;
+      const cy = group.reduce((s,i)=>s+pins[i].y,0)/group.length;
+      return group.map((pinIdx, no) => {
+        const p = pins[pinIdx];
+        const angle = group.length===1 ? -Math.PI/2 : (2*Math.PI*no/group.length)-Math.PI/2;
+        const px = group.length===1 ? cx : cx+Math.cos(angle)*spread;
+        const py = group.length===1 ? cy : cy+Math.sin(angle)*spread;
+        const labels = Object.keys({office:'🖥️',field:'💻',device:'🔌',phone:'📞'}).filter(k=>p[k]>0).map(k=>({office:'🖥️',field:'💻',device:'🔌',phone:'📞'})[k]+p[k]).join(' ');
+        const numBadge = group.length>1 ? `<div style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;background:#f97316;border-radius:50%;font-size:9px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid #fff">${no+1}</div>` : '';
+        return `<div style="position:absolute;left:calc(${px*100}% - 16px);top:calc(${py*100}% - 32px);display:flex;flex-direction:column;align-items:center">
+          <div style="position:relative;background:#c0392b;color:#fff;border-radius:8px 8px 0 0;padding:3px 7px;font-size:10px;font-weight:600;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${labels||'?'}${numBadge}</div>
+          <div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid #c0392b"></div>
+        </div>`;
+      });
     }).join('');
     applyTransform();
   };
