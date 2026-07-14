@@ -8468,16 +8468,78 @@ function crShowPinPopup(event, pinIdx, pinsArr) {
   }, 50);
 }
 
+// 각 핀의 라벨 방향 계산 (다른 핀과 겹치지 않는 방향)
+// direction: 'right'|'left'|'top'|'bottom'
+function crBestLabelDir(pins, idx) {
+  const pin = pins[idx];
+  // 4방향 후보: right, left, top, bottom
+  const dirs = ['right', 'bottom', 'left', 'top'];
+  // 각 방향에서 라벨 중심 위치 (비율)
+  const labelPos = {
+    right:  { x: pin.x + 0.08, y: pin.y },
+    left:   { x: pin.x - 0.08, y: pin.y },
+    top:    { x: pin.x, y: pin.y - 0.07 },
+    bottom: { x: pin.x, y: pin.y + 0.07 },
+  };
+  // 각 방향의 점수: 다른 핀과의 최소 거리 (클수록 좋음)
+  let best = 'right', bestScore = -Infinity;
+  dirs.forEach(dir => {
+    const lp = labelPos[dir];
+    let minDist = Infinity;
+    pins.forEach((p, j) => {
+      if (j === idx) return;
+      const dx = lp.x - p.x, dy = lp.y - p.y;
+      minDist = Math.min(minDist, Math.sqrt(dx*dx + dy*dy));
+    });
+    // 경계 패널티 (도면 밖으로 나가면 감점)
+    const margin = dir === 'right' ? 1 - pin.x : dir === 'left' ? pin.x : dir === 'top' ? pin.y : 1 - pin.y;
+    const score = minDist + (margin < 0.1 ? -10 : 0);
+    if (score > bestScore) { bestScore = score; best = dir; }
+  });
+  return best;
+}
+
+// 라벨 HTML 생성 (방향에 따라 선 + 박스)
+function crLabelHTML(pin, dir, S) {
+  const lines = Object.keys(CR_USAGE_COLORS).filter(k=>pin[k]>0)
+    .map(k=>`<div style="display:flex;align-items:center;gap:5px;line-height:1.8">
+      <span style="width:8px;height:8px;border-radius:50%;background:${CR_USAGE_COLORS[k]};flex-shrink:0;display:inline-block"></span>
+      <span style="flex:1;white-space:nowrap">${CR_USAGE_LABELS[k]}</span>
+      <span style="font-weight:700;margin-left:6px">${pin[k]}개</span>
+    </div>`).join('');
+  const memo = pin.memo ? `<div style="font-size:9px;color:#9ca3af;margin-top:3px;border-top:1px solid rgba(255,255,255,0.15);padding-top:3px">${pin.memo}</div>` : '';
+  const box = `<div style="background:rgba(26,26,26,0.92);color:#fff;border-radius:7px;padding:6px 10px;font-size:10px;font-weight:500;box-shadow:0 3px 12px rgba(0,0,0,0.35);pointer-events:none;backdrop-filter:blur(2px)">${lines}${memo}</div>`;
+
+  const LINE = 18; // 연결선 길이
+  // 방향별 배치
+  const styles = {
+    right:  `position:absolute;left:${S+4}px;top:${S/2-14}px;display:flex;align-items:center;gap:0`,
+    left:   `position:absolute;right:${S+4}px;top:${S/2-14}px;display:flex;align-items:center;gap:0;flex-direction:row-reverse`,
+    top:    `position:absolute;bottom:${S+2}px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column-reverse;align-items:center;gap:0`,
+    bottom: `position:absolute;top:${S+2}px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:0`,
+  };
+  const lines_svg = {
+    right:  `<svg width="${LINE}" height="2" style="flex-shrink:0;overflow:visible"><line x1="0" y1="1" x2="${LINE}" y2="1" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
+    left:   `<svg width="${LINE}" height="2" style="flex-shrink:0;overflow:visible"><line x1="0" y1="1" x2="${LINE}" y2="1" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
+    top:    `<svg width="2" height="${LINE}" style="flex-shrink:0;overflow:visible"><line x1="1" y1="0" x2="1" y2="${LINE}" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
+    bottom: `<svg width="2" height="${LINE}" style="flex-shrink:0;overflow:visible"><line x1="1" y1="0" x2="1" y2="${LINE}" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
+  };
+  return `<div style="${styles[dir]}">${lines_svg[dir]}${box}</div>`;
+}
+
 function crRenderPins() {
   const layer = document.getElementById('crPinLayer');
   if (!layer) return;
   const S = 20;
   layer.innerHTML = crPins.map((pin, i) => {
+    const dir = crBestLabelDir(crPins, i);
+    const label = crLabelHTML(pin, dir, S);
     return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" onclick="crShowPinPopup(event,${i},crPins)"
-        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">
+      <svg width="${S}" height="${S}" onclick="event.stopPropagation();crOpenPinModal(${i})"
+        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible;position:relative;z-index:2">
         ${crPinSVG(pin, S)}
       </svg>
+      ${label}
     </div>`;
   }).join('');
 }
@@ -8485,24 +8547,26 @@ function crRenderPins() {
 function crRenderPinsPreview() {
   const layer = document.getElementById('crPinLayerPreview');
   if (!layer) return;
-  const S = 16;
-  layer.innerHTML = crPins.map(pin =>
-    `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none">
+  const S = 14;
+  layer.innerHTML = crPins.map((pin, i) => {
+    const dir = crBestLabelDir(crPins, i);
+    const label = crLabelHTML(pin, dir, S);
+    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none;z-index:${10+i};width:${S}px;height:${S}px">
       <svg width="${S}" height="${S}" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.3));display:block">${crPinSVG(pin, S)}</svg>
-    </div>`
-  ).join('');
+      ${label}
+    </div>`;
+  }).join('');
 }
 
 function crStaticPinHTML(pins, S=20) {
-  const pinsJson = JSON.stringify(pins).replace(/'/g,"\'");
-  return pins.map((pin, i) =>
-    `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" onclick="crShowPinPopup(event,${i},${JSON.stringify(pins).replace(/"/g,'&quot;')})"
-        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">
-        ${crPinSVG(pin, S)}
-      </svg>
-    </div>`
-  ).join('');
+  return pins.map((pin, i) => {
+    const dir = crBestLabelDir(pins, i);
+    const label = crLabelHTML(pin, dir, S);
+    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none;z-index:${10+i};width:${S}px;height:${S}px">
+      <svg width="${S}" height="${S}" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">${crPinSVG(pin, S)}</svg>
+      ${label}
+    </div>`;
+  }).join('');
 }
 
 function crOpenFullscreen() {
