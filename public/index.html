@@ -3739,7 +3739,7 @@
 </div>
 
 <!-- ─── 핀 용도 설정 모달 ─── -->
-<div class="modal-overlay" id="crPinModal">
+<div class="modal-overlay" id="crPinModal" style="z-index:20000">
   <div class="modal" style="max-width:420px">
     <div class="modal-head">
       <h2>핀 용도 설정</h2>
@@ -8376,20 +8376,19 @@ function crUpdateRemainingBadges() {
 }
 
 function crAddPin(event) {
-  // 잔여 수량 확인
   const rem = crGetRemaining();
   const totalRemaining = Object.values(rem).reduce((s,v) => s+v, 0);
   if (totalRemaining <= 0) {
     showCenterAlert('✅ 모든 수량이 배정됐습니다');
     return;
   }
-  const wrap = document.getElementById('crCanvasWrap');
+  // 클릭된 wrap 기준으로 좌표 계산 (전체화면 or 미리보기 모두 대응)
+  const wrap = event.currentTarget;
   const rect = wrap.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width;
   const y = (event.clientY - rect.top)  / rect.height;
-  // 핀을 배열에 넣기 전에 모달 먼저 열고 저장 시 추가
   crPendingPin = { x, y, office:0, field:0, device:0, phone:0, memo:'' };
-  crEditingPinIdx = null; // 신규 핀임을 표시
+  crEditingPinIdx = null;
   crOpenNewPinModal();
 }
 
