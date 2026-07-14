@@ -8468,106 +8468,156 @@ function crShowPinPopup(event, pinIdx, pinsArr) {
   }, 50);
 }
 
-// 각 핀의 라벨 방향 계산 (다른 핀과 겹치지 않는 방향)
-// direction: 'right'|'left'|'top'|'bottom'
-function crBestLabelDir(pins, idx) {
-  const pin = pins[idx];
-  // 4방향 후보: right, left, top, bottom
-  const dirs = ['right', 'bottom', 'left', 'top'];
-  // 각 방향에서 라벨 중심 위치 (비율)
-  const labelPos = {
-    right:  { x: pin.x + 0.08, y: pin.y },
-    left:   { x: pin.x - 0.08, y: pin.y },
-    top:    { x: pin.x, y: pin.y - 0.07 },
-    bottom: { x: pin.x, y: pin.y + 0.07 },
-  };
-  // 각 방향의 점수: 다른 핀과의 최소 거리 (클수록 좋음)
-  let best = 'right', bestScore = -Infinity;
-  dirs.forEach(dir => {
-    const lp = labelPos[dir];
-    let minDist = Infinity;
-    pins.forEach((p, j) => {
-      if (j === idx) return;
-      const dx = lp.x - p.x, dy = lp.y - p.y;
-      minDist = Math.min(minDist, Math.sqrt(dx*dx + dy*dy));
-    });
-    // 경계 패널티 (도면 밖으로 나가면 감점)
-    const margin = dir === 'right' ? 1 - pin.x : dir === 'left' ? pin.x : dir === 'top' ? pin.y : 1 - pin.y;
-    const score = minDist + (margin < 0.1 ? -10 : 0);
-    if (score > bestScore) { bestScore = score; best = dir; }
-  });
-  return best;
-}
+// ── 핀 라벨 배치 엔진 ──────────────────────────────────────────
+// 전체 핀을 SVG 오버레이로 한 번에 그림 (점선 연결 + 라벨 겹침 방지)
 
-// 라벨 HTML 생성 (방향에 따라 선 + 박스)
-function crLabelHTML(pin, dir, S) {
-  const lines = Object.keys(CR_USAGE_COLORS).filter(k=>pin[k]>0)
+function crLabelContent(pin) {
+  const rows = Object.keys(CR_USAGE_COLORS).filter(k=>pin[k]>0)
     .map(k=>`<div style="display:flex;align-items:center;gap:5px;line-height:1.8">
       <span style="width:8px;height:8px;border-radius:50%;background:${CR_USAGE_COLORS[k]};flex-shrink:0;display:inline-block"></span>
-      <span style="flex:1;white-space:nowrap">${CR_USAGE_LABELS[k]}</span>
-      <span style="font-weight:700;margin-left:6px">${pin[k]}개</span>
+      <span style="flex:1;white-space:nowrap;font-size:10px">${CR_USAGE_LABELS[k]}</span>
+      <span style="font-weight:700;font-size:10px;margin-left:6px">${pin[k]}개</span>
     </div>`).join('');
-  const memo = pin.memo ? `<div style="font-size:9px;color:#9ca3af;margin-top:3px;border-top:1px solid rgba(255,255,255,0.15);padding-top:3px">${pin.memo}</div>` : '';
-  const box = `<div style="background:rgba(26,26,26,0.92);color:#fff;border-radius:7px;padding:6px 10px;font-size:10px;font-weight:500;box-shadow:0 3px 12px rgba(0,0,0,0.35);pointer-events:none;backdrop-filter:blur(2px)">${lines}${memo}</div>`;
+  const memo = pin.memo ? `<div style="font-size:9px;color:#9ca3af;margin-top:2px;padding-top:2px;border-top:1px solid rgba(255,255,255,0.12)">${pin.memo}</div>` : '';
+  return rows + memo;
+}
 
-  const LINE = 18; // 연결선 길이
-  // 방향별 배치
-  const styles = {
-    right:  `position:absolute;left:${S+4}px;top:${S/2-14}px;display:flex;align-items:center;gap:0`,
-    left:   `position:absolute;right:${S+4}px;top:${S/2-14}px;display:flex;align-items:center;gap:0;flex-direction:row-reverse`,
-    top:    `position:absolute;bottom:${S+2}px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column-reverse;align-items:center;gap:0`,
-    bottom: `position:absolute;top:${S+2}px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:0`,
-  };
-  const lines_svg = {
-    right:  `<svg width="${LINE}" height="2" style="flex-shrink:0;overflow:visible"><line x1="0" y1="1" x2="${LINE}" y2="1" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
-    left:   `<svg width="${LINE}" height="2" style="flex-shrink:0;overflow:visible"><line x1="0" y1="1" x2="${LINE}" y2="1" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
-    top:    `<svg width="2" height="${LINE}" style="flex-shrink:0;overflow:visible"><line x1="1" y1="0" x2="1" y2="${LINE}" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
-    bottom: `<svg width="2" height="${LINE}" style="flex-shrink:0;overflow:visible"><line x1="1" y1="0" x2="1" y2="${LINE}" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="2,2"/></svg>`,
-  };
-  return `<div style="${styles[dir]}">${lines_svg[dir]}${box}</div>`;
+// 두 사각형이 겹치는지 확인
+function crRectsOverlap(a, b, pad=8) {
+  return !(a.x+a.w+pad < b.x || b.x+b.w+pad < a.x || a.y+a.h+pad < b.y || b.y+b.h+pad < a.y);
+}
+
+// 핀 배열로 SVG+HTML 오버레이 생성
+function crBuildPinOverlay(pins, canvasW, canvasH, pinSize, clickable, clickPrefix) {
+  if (!pins.length) return '';
+  const R = pinSize / 2;
+  const LW = 120, LH = 52; // 라벨 추정 크기 (렌더 전이라 고정값)
+
+  // 각 핀의 픽셀 좌표
+  const pinPx = pins.map(p => ({ x: p.x * canvasW, y: p.y * canvasH }));
+
+  // 후보 방향 (각도, 4방향+대각)
+  const angleSteps = [0, Math.PI, Math.PI/2, -Math.PI/2, Math.PI/4, -Math.PI/4, 3*Math.PI/4, -3*Math.PI/4];
+
+  // 각 핀의 라벨 위치 계산
+  const labels = []; // {x, y, w, h, lx, ly, pinIdx}
+  for (let i = 0; i < pins.length; i++) {
+    const px = pinPx[i].x, py = pinPx[i].y;
+    let best = null, bestLen = Infinity;
+
+    for (const angle of angleSteps) {
+      // 최소 거리부터 시작, 겹치면 늘림
+      for (let dist = R + 12; dist <= R + 120; dist += 8) {
+        const lx = px + Math.cos(angle) * dist - LW / 2;
+        const ly = py + Math.sin(angle) * dist - LH / 2;
+        // 캔버스 경계 체크
+        if (lx < 2 || lx + LW > canvasW - 2 || ly < 2 || ly + LH > canvasH - 2) continue;
+        // 기존 배치된 라벨과 겹침 체크
+        const rect = { x: lx, y: ly, w: LW, h: LH };
+        const overlaps = labels.some(l => crRectsOverlap(rect, l));
+        // 다른 핀 점과 겹침 체크
+        const pinOverlap = pinPx.some((p, j) => j !== i && Math.hypot(lx+LW/2-p.x, ly+LH/2-p.y) < R + 10);
+        if (!overlaps && !pinOverlap && dist < bestLen) {
+          best = { x: lx, y: ly, w: LW, h: LH, lx, ly, pinIdx: i };
+          bestLen = dist;
+          break;
+        }
+      }
+      if (best && best.pinIdx === i && bestLen < Infinity) break;
+    }
+    // 못 찾으면 강제 배치
+    if (!best) {
+      best = { x: px + R + 12, y: py - LH/2, w: LW, h: LH, lx: px+R+12, ly: py-LH/2, pinIdx: i };
+    }
+    labels.push(best);
+  }
+
+  // SVG 점선 레이어
+  let svgLines = `<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:5">`;
+  labels.forEach((lb, i) => {
+    const px = pinPx[i].x, py = pinPx[i].y;
+    const tx = lb.lx + LW / 2, ty = lb.ly + LH / 2;
+    // 핀 엣지에서 라벨 엣지까지 선
+    const angle = Math.atan2(ty - py, tx - px);
+    const sx = px + Math.cos(angle) * R;
+    const sy = py + Math.sin(angle) * R;
+    svgLines += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="#333" stroke-width="1.2" stroke-dasharray="3,2" opacity="0.8"/>`;
+  });
+  svgLines += '</svg>';
+
+  // 핀 원 + 라벨 HTML
+  let pinsHtml = pins.map((pin, i) => {
+    const px = pinPx[i].x, py = pinPx[i].y;
+    const onclick = clickable ? `onclick="${clickPrefix}(event,${i})"` : '';
+    const cursor = clickable ? 'cursor:pointer' : 'cursor:default';
+    return `<div style="position:absolute;left:${(px-R).toFixed(1)}px;top:${(py-R).toFixed(1)}px;width:${pinSize}px;height:${pinSize}px;pointer-events:${clickable?'all':'none'};z-index:${20+i}">
+      <svg width="${pinSize}" height="${pinSize}" ${onclick} style="${cursor};filter:drop-shadow(0 2px 5px rgba(0,0,0,0.4));display:block;overflow:visible">
+        ${crPinSVG(pin, pinSize)}
+      </svg>
+    </div>`;
+  }).join('');
+
+  // 라벨 HTML
+  let labelsHtml = labels.map((lb, i) => {
+    const pin = pins[i];
+    return `<div style="position:absolute;left:${lb.lx.toFixed(1)}px;top:${lb.ly.toFixed(1)}px;width:${LW}px;z-index:${30+i};pointer-events:none">
+      <div style="background:rgba(20,20,20,0.92);color:#fff;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:500;box-shadow:0 3px 12px rgba(0,0,0,0.4);backdrop-filter:blur(3px)">
+        ${crLabelContent(pin)}
+      </div>
+    </div>`;
+  }).join('');
+
+  return svgLines + pinsHtml + labelsHtml;
 }
 
 function crRenderPins() {
   const layer = document.getElementById('crPinLayer');
   if (!layer) return;
-  const S = 20;
-  layer.innerHTML = crPins.map((pin, i) => {
-    const dir = crBestLabelDir(crPins, i);
-    const label = crLabelHTML(pin, dir, S);
-    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" onclick="event.stopPropagation();crOpenPinModal(${i})"
-        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible;position:relative;z-index:2">
-        ${crPinSVG(pin, S)}
-      </svg>
-      ${label}
-    </div>`;
-  }).join('');
+  const wrap = document.getElementById('crFsCanvasWrap');
+  const img = document.getElementById('crFsFloorImg');
+  if (!wrap || !img || !img.naturalWidth) {
+    // 이미지 로드 전이면 단순 원만 표시
+    const S = 20;
+    layer.innerHTML = crPins.map((pin, i) =>
+      `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
+        <svg width="${S}" height="${S}" onclick="event.stopPropagation();crOpenPinModal(${i})" style="cursor:pointer;display:block;overflow:visible">${crPinSVG(pin, S)}</svg>
+      </div>`
+    ).join('');
+    return;
+  }
+  const W = img.offsetWidth || wrap.offsetWidth;
+  const H = img.offsetHeight || wrap.offsetHeight;
+  layer.style.cssText = 'position:absolute;inset:0';
+  layer.innerHTML = crBuildPinOverlay(crPins, W, H, 18, true, 'crPinClickHandler');
+
+  // 클릭 핸들러 등록 (전역)
+  window.crPinClickHandler = (event, idx) => { event.stopPropagation(); crOpenPinModal(idx); };
 }
 
 function crRenderPinsPreview() {
   const layer = document.getElementById('crPinLayerPreview');
-  if (!layer) return;
-  const S = 14;
-  layer.innerHTML = crPins.map((pin, i) => {
-    const dir = crBestLabelDir(crPins, i);
-    const label = crLabelHTML(pin, dir, S);
-    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.3));display:block">${crPinSVG(pin, S)}</svg>
-      ${label}
-    </div>`;
-  }).join('');
+  const img = document.getElementById('crFloorImg');
+  if (!layer || !img) return;
+  const W = img.offsetWidth || 400;
+  const H = img.offsetHeight || 300;
+  layer.innerHTML = crBuildPinOverlay(crPins, W, H, 14, false, '');
 }
 
 function crStaticPinHTML(pins, S=20) {
+  // 상세보기/뷰어: 컨테이너 크기를 나중에 알아야 해서 data-pins 속성으로 저장 후 렌더
+  const encoded = encodeURIComponent(JSON.stringify(pins));
+  const uid = 'crpins_' + Math.random().toString(36).slice(2);
+  // 즉시 렌더링 (컨테이너 비율로 근사)
   return pins.map((pin, i) => {
-    const dir = crBestLabelDir(pins, i);
-    const label = crLabelHTML(pin, dir, S);
-    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">${crPinSVG(pin, S)}</svg>
-      ${label}
+    const R = S / 2;
+    const onclick = `crShowPinPopup(event,${i},${JSON.stringify(pins).replace(/"/g,'&quot;')})`;
+    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${R}px);top:calc(${pin.y*100}% - ${R}px);pointer-events:none;z-index:${10+i};width:${S}px;height:${S}px">
+      <svg width="${S}" height="${S}" style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">${crPinSVG(pin, S)}</svg>
     </div>`;
   }).join('');
 }
+// ── 핀 라벨 배치 엔진 끝 ──────────────────────────────────────────
+
 
 function crOpenFullscreen() {
   const overlay = document.getElementById('crFullscreenOverlay');
@@ -8883,7 +8933,9 @@ function openFloorViewer(id, encodedImg, encodedPins) {
   pinLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none';
 
   img.onload = () => {
-    pinLayer.innerHTML = crStaticPinHTML(pins, 24);
+    const W = img.offsetWidth || img.naturalWidth;
+    const H = img.offsetHeight || img.naturalHeight;
+    pinLayer.innerHTML = crBuildPinOverlay(pins, W, H, 22, false, '');
     applyTransform();
   };
 
