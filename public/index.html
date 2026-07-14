@@ -8395,76 +8395,89 @@ function crAddPin(event) {
 // 용도별 색상
 const CR_USAGE_COLORS = { office:'#3b82f6', field:'#ef4444', device:'#22c55e', phone:'#eab308' };
 
-// 파이차트 SVG 생성 (용도별 색상 분할)
+// 파이차트 SVG 생성
 function crPinSVG(pin, size=20) {
   const keys = Object.keys(CR_USAGE_COLORS).filter(k => pin[k] > 0);
   const total = keys.reduce((s,k) => s+(pin[k]||0), 0);
   if (total === 0) return `<circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="#9ca3af" stroke="#fff" stroke-width="2"/>`;
-  if (keys.length === 1) {
-    return `<circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="${CR_USAGE_COLORS[keys[0]]}" stroke="#fff" stroke-width="2"/>`;
-  }
-  // 파이 슬라이스
-  const r = size/2 - 1.5, cx = size/2, cy = size/2;
+  if (keys.length === 1) return `<circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="${CR_USAGE_COLORS[keys[0]]}" stroke="#fff" stroke-width="2"/>`;
+  const r = size/2-1.5, cx = size/2, cy = size/2;
   let startAngle = -Math.PI/2, paths = '';
   keys.forEach(k => {
-    const slice = (pin[k]/total) * 2 * Math.PI;
-    const endAngle = startAngle + slice;
-    const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
-    const x2 = cx + r * Math.cos(endAngle),   y2 = cy + r * Math.sin(endAngle);
-    const large = slice > Math.PI ? 1 : 0;
-    paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${CR_USAGE_COLORS[k]}"/>`;
+    const slice = (pin[k]/total)*2*Math.PI, endAngle = startAngle+slice;
+    const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
+    const x2=cx+r*Math.cos(endAngle),   y2=cy+r*Math.sin(endAngle);
+    paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${slice>Math.PI?1:0},1 ${x2},${y2} Z" fill="${CR_USAGE_COLORS[k]}"/>`;
     startAngle = endAngle;
   });
   return `${paths}<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#fff" stroke-width="2"/>`;
 }
 
-// 겹침 감지 (임계값: x/y 비율 3% 이내)
-function crIsNearby(a, b) {
-  const dx = a.x - b.x, dy = a.y - b.y;
-  return Math.sqrt(dx*dx + dy*dy) < 0.03;
+// 팝업 관리
+let crActivePopup = null;
+function crCloseActivePopup() {
+  if (crActivePopup) { crActivePopup.remove(); crActivePopup = null; }
 }
 
-// 콜아웃 HTML 생성 (점선 + 라벨박스)
-function crCalloutHTML(pin, side='right') {
+function crShowPinPopup(event, pinIdx, pinsArr) {
+  event.stopPropagation();
+  crCloseActivePopup();
+  const pin = typeof pinsArr === 'string' ? JSON.parse(pinsArr)[pinIdx] : pinsArr[pinIdx];
   const lines = Object.keys(CR_USAGE_COLORS).filter(k=>pin[k]>0)
-    .map(k=>`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${CR_USAGE_COLORS[k]};margin-right:4px;vertical-align:middle"></span>${CR_USAGE_LABELS[k]} ${pin[k]}개`).join('<br>');
-  const memo = pin.memo ? `<div style="font-size:9px;color:#9ca3af;margin-top:2px">${pin.memo}</div>` : '';
-  if (side === 'right') {
-    return `<div style="display:flex;align-items:center;gap:0;pointer-events:none">
-      <svg width="36" height="2" style="overflow:visible;flex-shrink:0"><line x1="0" y1="1" x2="36" y2="1" stroke="#555" stroke-width="1.2" stroke-dasharray="3,2"/></svg>
-      <div style="background:#1a1a1a;color:#fff;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:600;white-space:nowrap;line-height:1.6;box-shadow:0 3px 10px rgba(0,0,0,0.3)">${lines}${memo}</div>
-    </div>`;
-  } else {
-    return `<div style="display:flex;align-items:center;gap:0;flex-direction:row-reverse;pointer-events:none">
-      <svg width="36" height="2" style="overflow:visible;flex-shrink:0"><line x1="0" y1="1" x2="36" y2="1" stroke="#555" stroke-width="1.2" stroke-dasharray="3,2"/></svg>
-      <div style="background:#1a1a1a;color:#fff;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:600;white-space:nowrap;line-height:1.6;box-shadow:0 3px 10px rgba(0,0,0,0.3)">${lines}${memo}</div>
-    </div>`;
-  }
+    .map(k=>`<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CR_USAGE_COLORS[k]};flex-shrink:0"></span>
+      <span style="flex:1">${CR_USAGE_LABELS[k]}</span>
+      <span style="font-weight:700;margin-left:8px">${pin[k]}개</span>
+    </div>`).join('');
+  const memo = pin.memo ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.15);font-size:10px;color:#9ca3af">${pin.memo}</div>` : '';
+  if (!lines) return;
+
+  const popup = document.createElement('div');
+  popup.style.cssText = 'position:fixed;z-index:50000;background:#1a1a1a;color:#fff;border-radius:10px;padding:10px 14px;font-size:12px;font-weight:500;min-width:150px;box-shadow:0 6px 24px rgba(0,0,0,0.45);line-height:1.9;pointer-events:none;opacity:0;transition:opacity 0.1s';
+  popup.innerHTML = lines + memo;
+  document.body.appendChild(popup);
+  crActivePopup = popup;
+
+  // 팝업 크기 측정 후 위치 결정
+  requestAnimationFrame(() => {
+    const pw = popup.offsetWidth, ph = popup.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const cx = event.clientX, cy = event.clientY;
+    const G = 14;
+    const candidates = [
+      {x:cx+G,      y:cy+G},
+      {x:cx+G,      y:cy-ph-G},
+      {x:cx-pw-G,   y:cy+G},
+      {x:cx-pw-G,   y:cy-ph-G},
+      {x:cx-pw/2,   y:cy+G},
+      {x:cx-pw/2,   y:cy-ph-G},
+    ];
+    let best = candidates[0];
+    for (const c of candidates) {
+      if (c.x>=4 && c.x+pw<=vw-4 && c.y>=4 && c.y+ph<=vh-4) { best=c; break; }
+    }
+    best.x = Math.max(4, Math.min(vw-pw-4, best.x));
+    best.y = Math.max(4, Math.min(vh-ph-4, best.y));
+    popup.style.left = best.x+'px';
+    popup.style.top  = best.y+'px';
+    popup.style.opacity = '1';
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', crCloseActivePopup, {once:true});
+  }, 50);
 }
 
 function crRenderPins() {
   const layer = document.getElementById('crPinLayer');
   if (!layer) return;
-  const S = 20; // 핀 크기
-
+  const S = 20;
   layer.innerHTML = crPins.map((pin, i) => {
-    const hasNearby = crPins.some((p, j) => j !== i && crIsNearby(pin, p));
-    // 겹치는 핀 중 오른쪽/왼쪽 방향 결정
-    const side = pin.x > 0.6 ? 'left' : 'right';
-    const callout = hasNearby ? crCalloutHTML(pin, side) : '';
-    const calloutStyle = hasNearby
-      ? (side === 'right'
-          ? `position:absolute;left:${S+2}px;top:${S/2-10}px;z-index:20`
-          : `position:absolute;right:${S+2}px;top:${S/2-10}px;z-index:20`)
-      : 'display:none';
-
-    return `<div class="cr-pin-wrap" data-idx="${i}"
-      style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" onclick="event.stopPropagation();crOpenPinModal(${i})"
-        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block">
+    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
+      <svg width="${S}" height="${S}" onclick="crShowPinPopup(event,${i},crPins)"
+        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">
         ${crPinSVG(pin, S)}
       </svg>
-      <div style="${calloutStyle}">${callout}</div>
     </div>`;
   }).join('');
 }
@@ -8473,33 +8486,23 @@ function crRenderPinsPreview() {
   const layer = document.getElementById('crPinLayerPreview');
   if (!layer) return;
   const S = 16;
-  layer.innerHTML = crPins.map((pin, i) => {
-    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none">
-      <svg width="${S}" height="${S}" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.3));display:block">
-        ${crPinSVG(pin, S)}
-      </svg>
-    </div>`;
-  }).join('');
+  layer.innerHTML = crPins.map(pin =>
+    `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none">
+      <svg width="${S}" height="${S}" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.3));display:block">${crPinSVG(pin, S)}</svg>
+    </div>`
+  ).join('');
 }
 
-// 정적 핀 렌더링 (상세보기/뷰어용, pins 배열과 크기 받음)
 function crStaticPinHTML(pins, S=20) {
-  return pins.map((pin, i) => {
-    const hasNearby = pins.some((p, j) => j !== i && crIsNearby(pin, p));
-    const side = pin.x > 0.6 ? 'left' : 'right';
-    const callout = hasNearby ? crCalloutHTML(pin, side) : '';
-    const calloutStyle = hasNearby
-      ? (side === 'right'
-          ? `position:absolute;left:${S+2}px;top:${S/2-10}px;z-index:20;pointer-events:none`
-          : `position:absolute;right:${S+2}px;top:${S/2-10}px;z-index:20;pointer-events:none`)
-      : 'display:none';
-    return `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:none;z-index:${10+i};width:${S}px;height:${S}px">
-      <svg width="${S}" height="${S}" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block">
+  const pinsJson = JSON.stringify(pins).replace(/'/g,"\'");
+  return pins.map((pin, i) =>
+    `<div style="position:absolute;left:calc(${pin.x*100}% - ${S/2}px);top:calc(${pin.y*100}% - ${S/2}px);pointer-events:all;z-index:${10+i};width:${S}px;height:${S}px">
+      <svg width="${S}" height="${S}" onclick="crShowPinPopup(event,${i},${JSON.stringify(pins).replace(/"/g,'&quot;')})"
+        style="cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));display:block;overflow:visible">
         ${crPinSVG(pin, S)}
       </svg>
-      <div style="${calloutStyle}">${callout}</div>
-    </div>`;
-  }).join('');
+    </div>`
+  ).join('');
 }
 
 function crOpenFullscreen() {
@@ -8513,13 +8516,12 @@ function crOpenFullscreen() {
 }
 
 function crCloseFullscreen() {
+  crCloseActivePopup();
   document.getElementById('crFullscreenOverlay').style.display = 'none';
   crRenderPinsPreview();
   crUpdateRemainingBadges();
   crRenderPinList();
 }
-
-
 
 function crUpdateFsRemainingBadges() {
   const rem = crGetRemaining();
