@@ -8507,7 +8507,7 @@ function crBuildPinOverlay(pins, canvasW, canvasH, pinSize, clickable, clickPref
 
     for (const angle of angleSteps) {
       // 최소 거리부터 시작, 겹치면 늘림
-      for (let dist = R + 12; dist <= R + 120; dist += 8) {
+      for (let dist = R + 36; dist <= R + 160; dist += 8) {
         const lx = px + Math.cos(angle) * dist - LW / 2;
         const ly = py + Math.sin(angle) * dist - LH / 2;
         // 캔버스 경계 체크
@@ -8527,7 +8527,7 @@ function crBuildPinOverlay(pins, canvasW, canvasH, pinSize, clickable, clickPref
     }
     // 못 찾으면 강제 배치
     if (!best) {
-      best = { x: px + R + 12, y: py - LH/2, w: LW, h: LH, lx: px+R+12, ly: py-LH/2, pinIdx: i };
+      best = { x: px + R + 36, y: py - LH/2, w: LW, h: LH, lx: px+R+36, ly: py-LH/2, pinIdx: i };
     }
     labels.push(best);
   }
