@@ -2051,4 +2051,80 @@ app.get('/api/net-devices/:id/snmp', authMiddleware, (req, res) => {
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
+// ── 백업 / 복구 ──────────────────────────────────────────
+
+const BACKUP_TABLES = [
+  'users', 'locations', 'networks',
+  'constructions', 'construction_files', 'history',
+  'firewall_requests', 'incidents', 'conreq',
+  'ip_subnets', 'ip_assets', 'ip_tags', 'ip_tag_ranges',
+  'net_devices',
+];
+
+// 백업 내려받기 (admin만)
+app.get('/api/backup/export', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const backup = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      app: 'KSM-construction-app',
+      data: {},
+    };
+    for (const table of BACKUP_TABLES) {
+      try { backup.data[table] = queryAll(`SELECT * FROM ${table}`); }
+      catch(e) { backup.data[table] = []; }
+    }
+    const json = JSON.stringify(backup, null, 2);
+    const filename = `ksm-backup-${new Date().toISOString().slice(0,10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(json);
+  } catch(e) {
+    res.status(500).json({ error: '백업 실패: ' + e.message });
+  }
+});
+
+// 복구 (admin만) — 같은 JSON 포맷이면 SQLite↔MariaDB 간에도 동작
+app.post('/api/backup/restore', upload.single('file'), authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const json = req.file.buffer.toString('utf8');
+    const backup = JSON.parse(json);
+    if (backup.app !== 'KSM-construction-app') {
+      return res.status(400).json({ error: '올바른 백업 파일이 아닙니다' });
+    }
+
+    const stats = {};
+    const RESTORE_ORDER = [
+      'users', 'locations', 'networks',
+      'constructions', 'construction_files', 'history',
+      'firewall_requests', 'incidents', 'conreq',
+      'ip_subnets', 'ip_assets', 'ip_tags', 'ip_tag_ranges',
+      'net_devices',
+    ];
+
+    for (const table of RESTORE_ORDER) {
+      const rows = backup.data[table];
+      if (!rows || !rows.length) { stats[table] = 0; continue; }
+      try { db.run(`DELETE FROM ${table}`); } catch(e) {}
+      let inserted = 0;
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        const vals = Object.values(row).map(v => v === undefined ? null : v);
+        const placeholders = cols.map(() => '?').join(',');
+        try {
+          db.run(`INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`, vals);
+          inserted++;
+        } catch(e) {
+          console.warn(`[복구] ${table} 행 실패:`, e.message);
+        }
+      }
+      stats[table] = inserted;
+    }
+    saveDB();
+    res.json({ success: true, stats, exported_at: backup.exported_at });
+  } catch(e) {
+    res.status(500).json({ error: '복구 실패: ' + e.message });
+  }
+});
+
 initDB().then(() => app.listen(PORT, () => console.log(`✅ 서버 실행 중: http://localhost:${PORT}`)));
