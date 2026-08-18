@@ -2049,8 +2049,6 @@ app.get('/api/net-devices/:id/snmp', authMiddleware, (req, res) => {
   });
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-
 // ── 백업 / 복구 ──────────────────────────────────────────
 
 const BACKUP_TABLES = [
@@ -2130,5 +2128,7 @@ app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res, next) =
     }
   });
 });
+
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 initDB().then(() => app.listen(PORT, () => console.log(`✅ 서버 실행 중: http://localhost:${PORT}`)));
