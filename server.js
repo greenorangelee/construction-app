@@ -9,7 +9,7 @@ const fs = require('fs');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB
 const { execSync } = require('child_process');
 const https = require('https');
 
@@ -2085,46 +2085,50 @@ app.get('/api/backup/export', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // 복구 (admin만) — 같은 JSON 포맷이면 SQLite↔MariaDB 간에도 동작
-app.post('/api/backup/restore', upload.single('file'), authMiddleware, requireAdmin, (req, res) => {
-  try {
-    const json = req.file.buffer.toString('utf8');
-    const backup = JSON.parse(json);
-    if (backup.app !== 'KSM-construction-app') {
-      return res.status(400).json({ error: '올바른 백업 파일이 아닙니다' });
-    }
-
-    const stats = {};
-    const RESTORE_ORDER = [
-      'users', 'locations', 'networks',
-      'constructions', 'construction_files', 'history',
-      'firewall_requests', 'incidents', 'conreq',
-      'ip_subnets', 'ip_assets', 'ip_tags', 'ip_tag_ranges',
-      'net_devices',
-    ];
-
-    for (const table of RESTORE_ORDER) {
-      const rows = backup.data[table];
-      if (!rows || !rows.length) { stats[table] = 0; continue; }
-      try { db.run(`DELETE FROM ${table}`); } catch(e) {}
-      let inserted = 0;
-      for (const row of rows) {
-        const cols = Object.keys(row);
-        const vals = Object.values(row).map(v => v === undefined ? null : v);
-        const placeholders = cols.map(() => '?').join(',');
-        try {
-          db.run(`INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`, vals);
-          inserted++;
-        } catch(e) {
-          console.warn(`[복구] ${table} 행 실패:`, e.message);
-        }
+app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: '파일 업로드 실패: ' + err.message });
+    if (!req.file) return res.status(400).json({ error: '파일이 없습니다' });
+    try {
+      const json = req.file.buffer.toString('utf8');
+      const backup = JSON.parse(json);
+      if (backup.app !== 'KSM-construction-app') {
+        return res.status(400).json({ error: '올바른 백업 파일이 아닙니다' });
       }
-      stats[table] = inserted;
+
+      const stats = {};
+      const RESTORE_ORDER = [
+        'users', 'locations', 'networks',
+        'constructions', 'construction_files', 'history',
+        'firewall_requests', 'incidents', 'conreq',
+        'ip_subnets', 'ip_assets', 'ip_tags', 'ip_tag_ranges',
+        'net_devices',
+      ];
+
+      for (const table of RESTORE_ORDER) {
+        const rows = backup.data[table];
+        if (!rows || !rows.length) { stats[table] = 0; continue; }
+        try { db.run(`DELETE FROM ${table}`); } catch(e) {}
+        let inserted = 0;
+        for (const row of rows) {
+          const cols = Object.keys(row);
+          const vals = Object.values(row).map(v => v === undefined ? null : v);
+          const placeholders = cols.map(() => '?').join(',');
+          try {
+            db.run(`INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`, vals);
+            inserted++;
+          } catch(e) {
+            console.warn(`[복구] ${table} 행 실패:`, e.message);
+          }
+        }
+        stats[table] = inserted;
+      }
+      saveDB();
+      res.json({ success: true, stats, exported_at: backup.exported_at });
+    } catch(e) {
+      res.status(500).json({ error: '복구 실패: ' + e.message });
     }
-    saveDB();
-    res.json({ success: true, stats, exported_at: backup.exported_at });
-  } catch(e) {
-    res.status(500).json({ error: '복구 실패: ' + e.message });
-  }
+  });
 });
 
 initDB().then(() => app.listen(PORT, () => console.log(`✅ 서버 실행 중: http://localhost:${PORT}`)));
