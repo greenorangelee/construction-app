@@ -1,17 +1,24 @@
 name: Build & Push to Docker Hub
-
 on:
   push:
     branches:
       - main
-
+      - mariadb
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+
+      - name: 이미지 태그 결정
+        id: tag
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker Hub 로그인
         uses: docker/login-action@v3
@@ -25,4 +32,4 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: green0ran9e/construction-app:latest
+          tags: green0ran9e/construction-app:${{ steps.tag.outputs.tag }}
