@@ -4188,6 +4188,49 @@
       </div>
     </div>
 
+    <!-- 💾 백업 / 복구 (관리자만) -->
+    <div style="margin-top:28px" id="backupSection" style="display:none">
+      <div class="settings-header">
+        <h2>💾 백업 / 복구</h2>
+        <span style="font-size:12px;color:#9ca3af">모든 데이터와 설정을 파일로 내보내거나 복구합니다</span>
+      </div>
+      <div class="settings-panel" style="max-width:800px">
+        <div class="settings-panel-head"><span>데이터 백업 / 복구</span></div>
+        <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- 백업 -->
+          <div style="background:#f9fafb;border-radius:10px;padding:20px;border:1.5px solid #e5e7eb">
+            <div style="font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:6px">📤 백업 내려받기</div>
+            <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-bottom:16px">
+              현재 모든 데이터와 설정을 JSON 파일로 내려받습니다.<br>
+              SQLite → MariaDB 이전 시에도 이 파일을 사용하세요.
+            </div>
+            <button onclick="doBackupExport()" style="width:100%;padding:11px;background:#c0392b;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif">
+              💾 백업 파일 내려받기
+            </button>
+          </div>
+
+          <!-- 복구 -->
+          <div style="background:#f9fafb;border-radius:10px;padding:20px;border:1.5px solid #e5e7eb">
+            <div style="font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:6px">📥 백업에서 복구</div>
+            <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-bottom:16px">
+              백업 파일을 업로드하면 모든 데이터가 복구됩니다.<br>
+              <span style="color:#ef4444;font-weight:600">⚠️ 기존 데이터는 모두 삭제됩니다.</span>
+            </div>
+            <label style="display:block;width:100%;box-sizing:border-box">
+              <div style="width:100%;padding:11px;background:#fff;color:#374151;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;text-align:center">
+                📂 백업 파일 선택 & 복구
+              </div>
+              <input type="file" accept=".json" style="display:none" onchange="doBackupRestore(this)" />
+            </label>
+          </div>
+        </div>
+
+        <!-- 복구 결과 -->
+        <div id="backupRestoreResult" style="display:none;margin:0 16px 16px;padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#166534"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -4492,9 +4535,10 @@ function showApp() {
   if (currentUser.role === 'read') {
     document.querySelectorAll('.write-only').forEach(el => el.style.display = 'none');
   }
-  // 관리자면 사용자 관리 섹션 표시
+  // 관리자면 사용자 관리 + 백업 섹션 표시
   if (currentUser.role === 'admin') {
     document.getElementById('userMgmtSection').style.display = 'block';
+    document.getElementById('backupSection').style.display = 'block';
   }
   switchTab('main');
 }
@@ -4568,6 +4612,77 @@ async function api(method, path, body) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
   return data;
+}
+
+// ── 백업 / 복구 ──────────────────────────────────────────
+
+async function doBackupExport() {
+  try {
+    const res = await fetch('/api/backup/export', {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    if (!res.ok) { const e = await res.json(); showToast('백업 실패: ' + e.error, true); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const filename = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+      || `ksm-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    showToast('✓ 백업 파일이 내려받아졌습니다');
+  } catch(e) { showToast('오류: ' + e.message, true); }
+}
+
+async function doBackupRestore(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  if (!confirm(
+    `백업 파일: ${file.name}\n\n` +
+    '⚠️ 현재 모든 데이터가 백업 파일로 교체됩니다.\n' +
+    '계속하시겠습니까?'
+  )) { input.value = ''; return; }
+
+  const resultEl = document.getElementById('backupRestoreResult');
+  resultEl.style.display = 'block';
+  resultEl.style.background = '#eff6ff';
+  resultEl.style.borderColor = '#bfdbfe';
+  resultEl.style.color = '#1e40af';
+  resultEl.textContent = '복구 중입니다. 잠시 기다려주세요...';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/backup/restore', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const tableLines = Object.entries(data.stats)
+      .filter(([,n]) => n > 0)
+      .map(([t,n]) => `${t}: ${n}건`)
+      .join(' · ');
+
+    resultEl.style.background = '#f0fdf4';
+    resultEl.style.borderColor = '#86efac';
+    resultEl.style.color = '#166534';
+    resultEl.innerHTML = `✅ 복구 완료 (백업일: ${data.exported_at?.slice(0,10) || '-'})<br><span style="font-size:11px;opacity:0.8">${tableLines}</span>`;
+
+    // 데이터 새로고침
+    setTimeout(() => {
+      loadStats();
+      loadData();
+    }, 500);
+  } catch(e) {
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.borderColor = '#fecaca';
+    resultEl.style.color = '#991b1b';
+    resultEl.textContent = '❌ 복구 실패: ' + e.message;
+  }
+  input.value = '';
 }
 
 // ── 사용자 관리 ──────────────────────────────────────────
