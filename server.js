@@ -561,7 +561,7 @@ app.get('/api/incidents/:id', authMiddleware, async (req, res) => {
 
 app.post('/api/incidents', authMiddleware, requireWrite, async (req, res) => {
   const d = req.body;
-  const lastNo = (queryOne('SELECT MAX(no) as m FROM incidents').m || 0) + 1;
+  const lastNo = ((await queryOne('SELECT MAX(no) as m FROM incidents')).m || 0) + 1;
   const result = await dbRun(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [d.no||lastNo,s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),
@@ -721,11 +721,11 @@ app.delete('/api/firewall/:id', authMiddleware, requireWrite, async (req, res) =
 
 
 app.get('/api/stats/monthly', authMiddleware, async (req, res) => {
-  // req_date 형식: YY.MM.DD → 연도/월 추출
+  // req_date 형식: YY.MM.DD (예: 25.03.15)
   const rows = await queryAll(`
     SELECT
-      CAST('20' || SUBSTRING(req_date, 1, 2) AS INTEGER) as year,
-      CAST(SUBSTRING(req_date, 4, 2) AS INTEGER) as month,
+      CAST(CONCAT('20', SUBSTRING(req_date, 1, 2)) AS UNSIGNED) as year,
+      CAST(SUBSTRING(req_date, 4, 2) AS UNSIGNED) as month,
       gubun,
       COUNT(*) as cnt
     FROM constructions
@@ -737,12 +737,23 @@ app.get('/api/stats/monthly', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/stats', authMiddleware, async (req, res) => {
-  const g = q => queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`).cnt;
+  const g = async q => (await queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`)).cnt || 0;
   res.json({
-    total: g('1=1'), done: g("status='완료'"), inprogress: g("status='진행중'"), holding: g("status='Holding'"),
-    self: g("gubun='자체공사'"), outsource: g("gubun='외주공사'"), payment: g("gubun='지급'"), purchase: g("gubun='구매'"), temp: g("gubun='임시포설'"), received: g("gubun='접수'"),
-    corp_ksm: g("corp='KSM'"), corp_fksm: g("corp='FKSM'"), corp_ksmc: g("corp='KSMC'"),
-    corp_yhe: g("corp='YHE'"), corp_ksmf: g("corp='KSMF'")
+    total:      await g('1=1'),
+    done:       await g("status='완료'"),
+    inprogress: await g("status='진행중'"),
+    holding:    await g("status='Holding'"),
+    self:       await g("gubun='자체공사'"),
+    outsource:  await g("gubun='외주공사'"),
+    payment:    await g("gubun='지급'"),
+    purchase:   await g("gubun='구매'"),
+    temp:       await g("gubun='임시포설'"),
+    received:   await g("gubun='접수'"),
+    corp_ksm:   await g("corp='KSM'"),
+    corp_fksm:  await g("corp='FKSM'"),
+    corp_ksmc:  await g("corp='KSMC'"),
+    corp_yhe:   await g("corp='YHE'"),
+    corp_ksmf:  await g("corp='KSMF'"),
   });
 });
 
@@ -755,7 +766,7 @@ app.get('/api/constructions/:id', authMiddleware, async (req, res) => {
 app.post('/api/constructions', authMiddleware, requireWrite, async (req, res) => {
   try {
     const d = req.body;
-    const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
+    const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0);
     const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [lastNo+1,s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
@@ -879,13 +890,21 @@ async function nacFetchAuto(endpoint) {
 // 서브넷 목록
 app.get('/api/ip/subnets', authMiddleware, async (req, res) => {
   const subnets = await queryAll('SELECT * FROM ip_subnets ORDER BY network');
-  res.json(subnets.map(s => ({
-    ...s,
-    total: Math.pow(2, 32 - s.prefix) - 2,
-    used: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="used"', [s.id]).cnt,
-    unused: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="unused"', [s.id]).cnt,
-    reserved: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="reserved"', [s.id]).cnt,
-  })));
+  const result = await Promise.all(subnets.map(async s => {
+    const [used, unused, reserved] = await Promise.all([
+      queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="used"',     [s.id]),
+      queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="unused"',   [s.id]),
+      queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="reserved"', [s.id]),
+    ]);
+    return {
+      ...s,
+      total:    Math.pow(2, 32 - s.prefix) - 2,
+      used:     used?.cnt     || 0,
+      unused:   unused?.cnt   || 0,
+      reserved: reserved?.cnt || 0,
+    };
+  }));
+  res.json(result);
 });
 
 app.post('/api/ip/subnets', authMiddleware, requireWrite, async (req, res) => {
@@ -1249,11 +1268,12 @@ app.put('/api/constructions/:id/group', authMiddleware, requireWrite, async (req
 app.get('/api/groups/list', authMiddleware, async (req, res) => {
   const rows = await queryAll('SELECT DISTINCT group_id FROM constructions WHERE group_id IS NOT NULL ORDER BY group_id');
   const GROUP_COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6'];
-  res.json(rows.map((r, i) => ({
+  const result = await Promise.all(rows.map(async (r, i) => ({
     group_id: r.group_id,
     color: GROUP_COLORS[i % GROUP_COLORS.length],
-    members: queryAll('SELECT id, work_name FROM constructions WHERE group_id=?', [r.group_id])
+    members: await queryAll('SELECT id, work_name FROM constructions WHERE group_id=?', [r.group_id])
   })));
+  res.json(result);
 });
 
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
@@ -1629,14 +1649,14 @@ app.post('/api/import', upload.single('file'), authMiddleware, requireWrite, asy
       } else {
         // No. 없는 행 → 공사명으로 중복 체크
         const existing = fields.work_name
-          ? queryOne('SELECT id FROM constructions WHERE work_name = ? AND req_date = ?', [fields.work_name, fields.req_date])
+          ? await queryOne('SELECT id FROM constructions WHERE work_name = ? AND req_date = ?', [fields.work_name, fields.req_date])
           : null;
         if (existing) {
           const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
           await dbRun(`UPDATE constructions SET ${sets} WHERE id = ?`, [...Object.values(fields), existing.id]);
           updated++;
         } else {
-          const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0) + 1;
+          const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0) + 1;
           const cols = ['no', ...Object.keys(fields)].join(', ');
           const placeholders = Array(Object.keys(fields).length + 1).fill('?').join(', ');
           await dbRun(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [lastNo, ...Object.values(fields)]);
