@@ -4561,7 +4561,7 @@ async function doLogin() {
     currentUser = data.user;
     showApp();
     loadStats();
-    loadData().then(() => initColResize());
+    loadData().then(() => initAllColResize());
     loadLocations();
     loadNetworks();
     loadMonthlyChart();
@@ -4588,7 +4588,7 @@ async function checkAuth() {
     currentUser = await res.json();
     showApp();
     loadStats();
-    loadData().then(() => initColResize());
+    loadData().then(() => initAllColResize());
     loadLocations();
     loadNetworks();
     loadMonthlyChart();
@@ -4922,11 +4922,11 @@ async function loadData() {
   // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
   if (isGroupView) {
     renderGroupedTable(data, totalCols);
-    setTimeout(initColResize, 0);
+    setTimeout(initAllColResize, 0);
     return;
   }
 
-  setTimeout(initColResize, 0);
+  setTimeout(initAllColResize, 0);
   tbody.innerHTML = data.map(r => `
     <tr>
       <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
@@ -7940,10 +7940,10 @@ function switchTab(tab) {
   if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
-  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
-  if (tab === 'fw') { loadFwList(); updateFwUIByRole(); }
-  if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); }
-  if (tab === 'conbox') { loadConBox(); }
+  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; setTimeout(()=>initColResize(document.querySelector('#devicesPage table'),'colWidths_dev'),100); }
+  if (tab === 'fw') { loadFwList(); updateFwUIByRole(); setTimeout(()=>initColResize(document.querySelector('#firewallPage table'),'colWidths_fw'),100); }
+  if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); setTimeout(()=>initColResize(document.querySelector('#incidentPage table'),'colWidths_inc'),100); }
+  if (tab === 'conbox') { loadConBox(); setTimeout(()=>initColResize(document.querySelector('#conboxPage table'),'colWidths_conbox'),100); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -8279,27 +8279,29 @@ function initBeta() {
 
 // ── COLUMN RESIZE ──────────────────────────────────────────
 
-function initColResize() {
-  const table = document.querySelector('table');
+function initColResize(tableEl, storageKey) {
+  // tableEl: 대상 table 요소 (없으면 첫 번째 table)
+  // storageKey: localStorage 키 (없으면 'colWidths')
+  const table = tableEl || document.querySelector('table');
   if (!table) return;
+  const key = storageKey || 'colWidths';
+
+  // 기존 리사이저 제거 (중복 방지)
+  table.querySelectorAll('.col-resizer').forEach(r => r.remove());
 
   // 저장된 너비 복원
-  const saved = (() => { try { return JSON.parse(localStorage.getItem('colWidths') || '{}'); } catch { return {}; } })();
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } })();
 
   const ths = table.querySelectorAll('thead th');
   ths.forEach((th, i) => {
     th.classList.add('resizable');
-
-    // 저장된 너비 적용
     if (saved[i]) th.style.width = saved[i] + 'px';
 
-    // 리사이저 핸들 추가
     const resizer = document.createElement('div');
     resizer.className = 'col-resizer';
     th.appendChild(resizer);
 
     let startX, startW;
-
     resizer.addEventListener('mousedown', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -8308,31 +8310,46 @@ function initColResize() {
       resizer.classList.add('resizing');
 
       const onMove = e => {
-        const newW = Math.max(50, startW + e.clientX - startX);
-        th.style.width = newW + 'px';
+        th.style.width = Math.max(50, startW + e.clientX - startX) + 'px';
       };
-
       const onUp = () => {
         resizer.classList.remove('resizing');
-        // 너비 저장
         const widths = {};
         table.querySelectorAll('thead th').forEach((t, idx) => {
           if (t.style.width) widths[idx] = parseInt(t.style.width);
         });
-        localStorage.setItem('colWidths', JSON.stringify(widths));
+        localStorage.setItem(key, JSON.stringify(widths));
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
   });
 }
 
+// 탭별 테이블에 리사이즈 초기화
+function initAllColResize() {
+  // 공사이력
+  const mainTable = document.querySelector('#mainPage table');
+  if (mainTable) initColResize(mainTable, 'colWidths_main');
+  // 방화벽
+  const fwTable = document.querySelector('#firewallPage table');
+  if (fwTable) initColResize(fwTable, 'colWidths_fw');
+  // 장애이력
+  const incTable = document.querySelector('#incidentPage table');
+  if (incTable) initColResize(incTable, 'colWidths_inc');
+  // 공사요청함
+  const conboxTable = document.querySelector('#conboxPage table');
+  if (conboxTable) initColResize(conboxTable, 'colWidths_conbox');
+  // 네트워크장비
+  const devTable = document.querySelector('#devicesPage table');
+  if (devTable) initColResize(devTable, 'colWidths_dev');
+}
+
 // 너비 초기화 버튼
 function resetColWidths() {
-  localStorage.removeItem('colWidths');
+  ['colWidths_main','colWidths_fw','colWidths_inc','colWidths_conbox','colWidths_dev','colWidths'].forEach(k => localStorage.removeItem(k));
   document.querySelectorAll('thead th').forEach(th => { th.style.width = ''; });
   showToast('컬럼 너비가 초기화됐습니다');
 }
