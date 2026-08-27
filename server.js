@@ -478,7 +478,7 @@ app.delete('/api/users/:id', authMiddleware, requireAdmin, async (req, res) => {
 
 app.get('/api/conreq', authMiddleware, async (req, res) => {
   const { search, status } = req.query;
-  let sql = 'SELECT * FROM conreq WHERE 1=1';
+  let sql = "SELECT *, DATE_FORMAT(req_date, '%Y-%m-%d') as req_date FROM conreq WHERE 1=1";
   const params = [];
   if (search) {
     sql += ' AND (requester LIKE ? OR dept LIKE ? OR title LIKE ? OR memo LIKE ?)';
@@ -491,7 +491,7 @@ app.get('/api/conreq', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/conreq/:id', authMiddleware, async (req, res) => {
-  const row = await queryOne('SELECT * FROM conreq WHERE id=?', [req.params.id]);
+  const row = await queryOne("SELECT *, DATE_FORMAT(req_date, '%Y-%m-%d') as req_date FROM conreq WHERE id=?", [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
 });
