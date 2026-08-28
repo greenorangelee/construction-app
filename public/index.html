@@ -4001,6 +4001,14 @@
           <input type="text" id="fw-worker" placeholder="작업자 이름" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
         </div>
         <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">요청 기간</label>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">
+            <input type="text" id="fw-period_from" class="datepicker-input" placeholder="시작일 선택" readonly style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer;background:#fff" />
+            <span style="color:#9ca3af;font-size:13px;text-align:center">~</span>
+            <input type="text" id="fw-period_to" class="datepicker-input" placeholder="종료일 선택" readonly style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer;background:#fff" />
+          </div>
+        </div>
+        <div style="grid-column:1/-1">
           <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">품의명</label>
           <input type="text" id="fw-title" placeholder="품의명 입력" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
         </div>
@@ -4450,6 +4458,19 @@
         </div>
       </div>
 
+      <!-- 품의서 자동입력 -->
+      <div style="margin-top:20px;border-top:2px solid #f3f4f6;padding-top:20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:700;color:#374151">📋 품의서 자동입력</span>
+          <span style="font-size:11px;color:#9ca3af">구매품의서 내용을 그대로 붙여넣으면 항목이 자동으로 채워집니다</span>
+        </div>
+        <textarea id="purchaseDocPaste" rows="6"
+          placeholder="구매품의서 텍스트를 여기에 붙여넣기 하세요 (Ctrl+V)..."
+          style="width:100%;box-sizing:border-box;padding:12px;border:1.5px dashed #e5e7eb;border-radius:10px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical;color:#374151;background:#fafafa;line-height:1.6"
+          oninput="parsePurchaseDoc(this.value)"></textarea>
+        <div id="purchaseDocResult" style="display:none;margin-top:8px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#166534"></div>
+      </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('formModal')">취소</button>
@@ -4612,6 +4633,87 @@ async function api(method, path, body) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
   return data;
+}
+
+// ── 품의서 자동입력 ──────────────────────────────────────────
+
+function parsePurchaseDoc(text) {
+  if (!text.trim()) {
+    document.getElementById('purchaseDocResult').style.display = 'none';
+    return;
+  }
+
+  const filled = {};
+
+  // 법인 매핑 (첫 줄 또는 전체 텍스트에서 회사명 감지)
+  const corpMap = [
+    { keywords: ['케이에스엠컴포넌트', 'KSMC', 'ksmc'], corp: 'KSMC' },
+    { keywords: ['케이에스엠페로텍', 'KSMF', 'ksmf'], corp: 'KSMF' },
+    { keywords: ['한국씰마스타', 'FKSM', 'fksm'], corp: 'FKSM' },
+    { keywords: ['와이에이치이', 'YHE', 'yhe'], corp: 'YHE' },
+    { keywords: ['케이에스엠', 'KSM', '케이.에스.엠'], corp: 'KSM' },
+  ];
+  for (const { keywords, corp } of corpMap) {
+    if (keywords.some(k => text.includes(k))) {
+      filled.corp = corp;
+      document.getElementById('f-corp').value = corp;
+      break;
+    }
+  }
+
+  // 문서번호 → 구매품의서
+  const docNoMatch = text.match(/문서번호[\s\t]+([^\n\r\t]+)/);
+  if (docNoMatch) {
+    const docNo = docNoMatch[1].trim();
+    filled.purchase_doc = docNo;
+    document.getElementById('f-purchase_doc').value = docNo;
+  }
+
+  // 기안일자 → 요청일 (YY.MM.DD 형식으로 변환)
+  const dateMatch = text.match(/기안일자[\s\t]+(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (dateMatch) {
+    const yy = dateMatch[1].slice(2);
+    const mm = dateMatch[2].padStart(2, '0');
+    const dd = dateMatch[3].padStart(2, '0');
+    const dateStr = `${yy}.${mm}.${dd}`;
+    filled.req_date = dateStr;
+    document.getElementById('f-req_date').value = dateStr;
+  }
+
+  // 기안자 (이름/직급 → 이름만)
+  const authorMatch = text.match(/기\s*안\s*자[\s\t]+([^\n\r\t\/]+)/);
+  if (authorMatch) {
+    const author = authorMatch[1].trim().split('/')[0].split('　')[0].trim();
+    if (author && author.length <= 10) {
+      filled.requester = author;
+      document.getElementById('f-requester').value = author;
+    }
+  }
+
+  // 제 목 → 공사명
+  const titleMatch = text.match(/제\s{0,5}목[\s\t]+([^\n\r]+)/);
+  if (titleMatch) {
+    const title = titleMatch[1].trim();
+    if (title) {
+      filled.work_name = title;
+      document.getElementById('f-work_name').value = title;
+    }
+  }
+
+  // 결과 표시
+  const resultEl = document.getElementById('purchaseDocResult');
+  const keys = Object.keys(filled);
+  if (keys.length > 0) {
+    const labels = { corp:'법인', purchase_doc:'구매품의서', req_date:'요청일', requester:'요청자', work_name:'공사명', gubun:'구분' };
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `✅ 자동입력 완료: ${keys.map(k => `<b>${labels[k]||k}</b>`).join(', ')}`;
+  } else {
+    resultEl.style.display = 'block';
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.borderColor = '#fecaca';
+    resultEl.style.color = '#991b1b';
+    resultEl.textContent = '⚠️ 인식된 항목이 없습니다. 구매품의서 텍스트인지 확인해주세요.';
+  }
 }
 
 // ── 백업 / 복구 ──────────────────────────────────────────
@@ -5059,12 +5161,14 @@ function openNewModal() {
   FIELDS.forEach(f => {
     const el = document.getElementById('f-' + f);
     if (!el) return;
-    if (el.tagName === 'SELECT') {
-      el.selectedIndex = 0;
-    } else {
-      el.value = '';
-    }
+    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else el.value = '';
   });
+  // 품의서 붙여넣기 영역 초기화
+  const pasteEl = document.getElementById('purchaseDocPaste');
+  const resultEl = document.getElementById('purchaseDocResult');
+  if (pasteEl) pasteEl.value = '';
+  if (resultEl) { resultEl.style.display = 'none'; resultEl.style.background = '#f0fdf4'; resultEl.style.borderColor = '#86efac'; resultEl.style.color = '#166534'; }
   populateLocDropdowns();
   openModal('formModal');
 }
@@ -9476,20 +9580,22 @@ async function openFwModal(id = null) {
   document.getElementById('fwModalId').value = id || '';
   if (id) {
     const r = await api('GET', `/api/firewall/${id}`);
-    document.getElementById('fw-req_date').value = r.req_date || '';
-    document.getElementById('fw-corp').value = r.corp || '';
-    document.getElementById('fw-dept').value = r.dept || '';
-    document.getElementById('fw-requester').value = r.requester || '';
-    document.getElementById('fw-status').value = r.status || '결재 대기중';
-    document.getElementById('fw-title').value = r.title || '';
-    document.getElementById('fw-worker').value = r.worker || '';
-    document.getElementById('fw-doc').value = r.doc || '';
-    document.getElementById('fw-memo').value = r.memo || '';
+    document.getElementById('fw-req_date').value    = r.req_date    || '';
+    document.getElementById('fw-corp').value        = r.corp        || '';
+    document.getElementById('fw-dept').value        = r.dept        || '';
+    document.getElementById('fw-requester').value   = r.requester   || '';
+    document.getElementById('fw-status').value      = r.status      || '결재 대기중';
+    document.getElementById('fw-title').value       = r.title       || '';
+    document.getElementById('fw-worker').value      = r.worker      || '';
+    document.getElementById('fw-doc').value         = r.doc         || '';
+    document.getElementById('fw-memo').value        = r.memo        || '';
+    document.getElementById('fw-period_from').value = r.period_from || '';
+    document.getElementById('fw-period_to').value   = r.period_to   || '';
   } else {
-    ['req_date','corp','dept','requester','title','worker','doc','memo'].forEach(f => {
-      const el = document.getElementById('fw-'+f);
-      if (el) el.value = f === 'status' ? '결재 대기중' : '';
+    ['req_date','dept','requester','title','worker','doc','memo','period_from','period_to'].forEach(f => {
+      const el = document.getElementById('fw-'+f); if (el) el.value = '';
     });
+    document.getElementById('fw-corp').value   = '';
     document.getElementById('fw-status').value = '결재 대기중';
   }
   openModal('fwModal');
@@ -9498,24 +9604,21 @@ async function openFwModal(id = null) {
 async function saveFwRequest() {
   const id = document.getElementById('fwModalId').value;
   const body = {
-    req_date:  document.getElementById('fw-req_date').value.trim(),
-    corp:      document.getElementById('fw-corp').value,
-    dept:      document.getElementById('fw-dept').value.trim(),
-    requester: document.getElementById('fw-requester').value.trim(),
-    status:    document.getElementById('fw-status').value,
-    title:     document.getElementById('fw-title').value.trim(),
-    worker:    document.getElementById('fw-worker').value.trim(),
-    doc:       document.getElementById('fw-doc').value.trim(),
-    memo:      document.getElementById('fw-memo').value.trim(),
+    req_date:    document.getElementById('fw-req_date').value.trim(),
+    corp:        document.getElementById('fw-corp').value,
+    dept:        document.getElementById('fw-dept').value.trim(),
+    requester:   document.getElementById('fw-requester').value.trim(),
+    status:      document.getElementById('fw-status').value,
+    title:       document.getElementById('fw-title').value.trim(),
+    worker:      document.getElementById('fw-worker').value.trim(),
+    doc:         document.getElementById('fw-doc').value.trim(),
+    memo:        document.getElementById('fw-memo').value.trim(),
+    period_from: document.getElementById('fw-period_from').value.trim(),
+    period_to:   document.getElementById('fw-period_to').value.trim(),
   };
   try {
-    if (id) {
-      await api('PUT', `/api/firewall/${id}`, body);
-      showToast('수정됐습니다');
-    } else {
-      await api('POST', '/api/firewall', body);
-      showToast('등록됐습니다');
-    }
+    if (id) { await api('PUT', `/api/firewall/${id}`, body); showToast('수정됐습니다'); }
+    else    { await api('POST', '/api/firewall', body); showToast('등록됐습니다'); }
     closeModal('fwModal');
     loadFwList();
   } catch(e) { showToast(e.message, true); }
