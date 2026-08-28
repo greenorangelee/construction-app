@@ -4700,11 +4700,21 @@ function parsePurchaseDoc(text) {
     }
   }
 
+  // 기안부서 → 부서
+  const deptMatch = text.match(/기안부서[\s\t]+([^\n\r\t]+)/);
+  if (deptMatch) {
+    const dept = deptMatch[1].trim();
+    if (dept) {
+      filled.dept = dept;
+      document.getElementById('f-dept').value = dept;
+    }
+  }
+
   // 결과 표시
   const resultEl = document.getElementById('purchaseDocResult');
   const keys = Object.keys(filled);
   if (keys.length > 0) {
-    const labels = { corp:'법인', purchase_doc:'구매품의서', req_date:'요청일', requester:'요청자', work_name:'공사명', gubun:'구분' };
+    const labels = { corp:'법인', purchase_doc:'구매품의서', req_date:'요청일', requester:'요청자', work_name:'공사명', dept:'부서' };
     resultEl.style.display = 'block';
     resultEl.innerHTML = `✅ 자동입력 완료: ${keys.map(k => `<b>${labels[k]||k}</b>`).join(', ')}`;
   } else {
