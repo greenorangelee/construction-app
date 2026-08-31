@@ -2386,6 +2386,11 @@
       style="white-space:nowrap;display:flex;align-items:center;gap:5px">
       <span id="groupViewIcon">⊞</span> 그룹 묶어보기
     </button>
+    <button id="bulkGroupBtn" class="btn btn-outline btn-sm write-only"
+      onclick="applyBulkGroup()"
+      style="display:none;white-space:nowrap;align-items:center;gap:5px;border-color:#c0392b;color:#c0392b">
+      🔗 선택 묶기 (<span id="bulkGroupCount">0</span>)
+    </button>
   </div>
 
   <!-- TABLE -->
@@ -2844,7 +2849,7 @@
       </div>
       <div>
         <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">묶을 공사 선택 (복수 가능)</div>
-        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명, 위치, 요청자 검색..."
+        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명, 구매품의서, 위치, 요청자 검색..."
           style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif;box-sizing:border-box;margin-bottom:8px"
           oninput="renderGroupLinkList(this.value)" />
         <div id="groupLinkList"
@@ -5558,6 +5563,10 @@ function onRowCheck() {
   const all = document.querySelectorAll('.row-checkbox[value]');
   const checkAll = document.getElementById('checkAll');
   if (checkAll) checkAll.checked = ids.length === all.length && all.length > 0;
+  // 선택 묶기 버튼 업데이트
+  bulkSelected.clear();
+  ids.forEach(id => bulkSelected.add(parseInt(id)));
+  updateBulkGroupBtn();
 }
 
 function toggleCheckAll(el) {
@@ -8158,6 +8167,69 @@ async function showHistory(id, workName) {
 
 
 
+// ── 체크박스 선택 묶기 ──────────────────────────────────────────
+
+const bulkSelected = new Set();
+
+function toggleBulkSelect(id, checked) {
+  if (checked) bulkSelected.add(id);
+  else bulkSelected.delete(id);
+  updateBulkGroupBtn();
+}
+
+function toggleBulkSelectAll(checked) {
+  const boxes = document.querySelectorAll('.row-checkbox');
+  boxes.forEach(cb => {
+    const id = parseInt(cb.dataset.id);
+    cb.checked = checked;
+    if (checked) bulkSelected.add(id);
+    else bulkSelected.delete(id);
+  });
+  updateBulkGroupBtn();
+}
+
+function updateBulkGroupBtn() {
+  const btn = document.getElementById('bulkGroupBtn');
+  const cnt = document.getElementById('bulkGroupCount');
+  if (!btn) return;
+  if (bulkSelected.size >= 2) {
+    btn.style.display = 'flex';
+    cnt.textContent = bulkSelected.size;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+async function applyBulkGroup() {
+  if (bulkSelected.size < 2) {
+    showCenterAlert('2개 이상 선택해야 묶을 수 있습니다');
+    return;
+  }
+  if (!confirm(`선택한 ${bulkSelected.size}개 공사를 묶을까요?`)) return;
+
+  const ids = [...bulkSelected];
+  // 선택된 공사 중 기존 group_id가 있으면 재사용, 없으면 새로 발급
+  const existingGroup = allData.find(r => ids.includes(r.id) && r.group_id);
+  let group_id = existingGroup?.group_id;
+  if (!group_id) {
+    const res = await api('POST', '/api/groups/new');
+    group_id = res.group_id;
+  }
+
+  for (const id of ids) {
+    await api('PUT', `/api/constructions/${id}/group`, { group_id });
+  }
+
+  bulkSelected.clear();
+  updateBulkGroupBtn();
+  // 전체선택 체크박스 해제
+  const allBox = document.getElementById('selectAllCheckbox');
+  if (allBox) allBox.checked = false;
+
+  showToast(`✓ ${ids.length}개 공사가 묶였습니다`);
+  await loadData();
+}
+
 // ── 그룹 묶어보기 ──────────────────────────────────────────
 
 let isGroupView = false;
@@ -8296,7 +8368,15 @@ function renderGroupLinkList(search) {
 
   const candidates = allData.filter(r =>
     r.id !== groupLinkBaseId &&
-    (!keyword || (r.work_name || '').toLowerCase().includes(keyword) || (r.requester || '').toLowerCase().includes(keyword) || (r.loc_region || '').toLowerCase().includes(keyword) || (r.loc_dong || '').toLowerCase().includes(keyword) || (r.loc_floor || '').toLowerCase().includes(keyword) || (r.loc_detail || '').toLowerCase().includes(keyword))
+    (!keyword ||
+      (r.work_name    || '').toLowerCase().includes(keyword) ||
+      (r.requester    || '').toLowerCase().includes(keyword) ||
+      (r.loc_region   || '').toLowerCase().includes(keyword) ||
+      (r.loc_dong     || '').toLowerCase().includes(keyword) ||
+      (r.loc_floor    || '').toLowerCase().includes(keyword) ||
+      (r.loc_detail   || '').toLowerCase().includes(keyword) ||
+      (r.purchase_doc || '').toLowerCase().includes(keyword)   // 구매품의서 검색 추가
+    )
   );
 
   el.innerHTML = candidates.length ? candidates.map(r => {
@@ -8305,9 +8385,12 @@ function renderGroupLinkList(search) {
     return `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;background:${sameGroup?'#eff6ff':checked?'#f0fdf4':'#f9fafb'};border:1px solid ${sameGroup?'#bfdbfe':checked?'#bbf7d0':'transparent'}">
       <input type="checkbox" ${checked||sameGroup?'checked':''} ${sameGroup?'disabled':''} onchange="toggleGroupSelect(${r.id},this.checked)"
         style="accent-color:#c0392b;width:14px;height:14px;cursor:pointer;flex-shrink:0" />
-      <span style="flex:1;font-size:12px;color:#374151">${r.work_name || '-'}</span>
-      <span style="font-size:10px;color:#9ca3af">${r.req_date||''} ${r.corp||''}</span>
-      ${sameGroup ? '<span style="font-size:10px;color:#2563eb">현재 묶음</span>' : ''}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.work_name || '-'}</div>
+        ${r.purchase_doc ? `<div style="font-size:10px;color:#9ca3af">${r.purchase_doc}</div>` : ''}
+      </div>
+      <span style="font-size:10px;color:#9ca3af;white-space:nowrap">${r.req_date||''} ${r.corp||''}</span>
+      ${sameGroup ? '<span style="font-size:10px;color:#2563eb;white-space:nowrap">현재 묶음</span>' : ''}
     </label>`;
   }).join('') : '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px">검색 결과 없음</div>';
 }
