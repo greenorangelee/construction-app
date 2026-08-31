@@ -1,5 +1,5 @@
 const express = require('express');
-const initSqlJs = require('sql.js');
+const mysql = require('mysql2/promise');
 const snmp = require('net-snmp');
 const QRCode = require('qrcode');
 const XLSX = require('xlsx');
@@ -9,7 +9,7 @@ const fs = require('fs');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB
+const upload = multer({ storage: multer.memoryStorage() });
 const { execSync } = require('child_process');
 const https = require('https');
 
@@ -17,14 +17,29 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ksm-nw-secret-2024-xkf92mz';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'construction.db');
 
-const FLOOR_IMG_DIR = path.join(path.dirname(DB_PATH), 'floorplans');
-const FILES_DIR = path.join(path.dirname(DB_PATH), 'construction_files');
+// MariaDB 연결 설정
+const DB_CONFIG = {
+  host:     process.env.DB_HOST     || 'mariadb',
+  port:     parseInt(process.env.DB_PORT || '3306'),
+  user:     process.env.DB_USER     || 'ksmapp',
+  password: process.env.DB_PASSWORD || 'KsmApp2024!',
+  database: process.env.DB_NAME     || 'ksmdb',
+  charset:  'utf8mb4',
+  waitForConnections: true,
+  connectionLimit: 10,
+  timezone: '+09:00',
+};
+
+let pool;
+
+const DATA_DIR  = process.env.DATA_DIR || path.join(__dirname, 'data');
+const FLOOR_IMG_DIR = path.join(DATA_DIR, 'floorplans');
+const FILES_DIR = path.join(DATA_DIR, 'construction_files');
 if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR, { recursive: true });
+if (!fs.existsSync(FLOOR_IMG_DIR)) fs.mkdirSync(FLOOR_IMG_DIR, { recursive: true });
 const NAC_HOST = process.env.NAC_HOST || 'https://172.16.1.11:8443';
 const NAC_API_KEY = process.env.NAC_API_KEY || '';
-if (!fs.existsSync(FLOOR_IMG_DIR)) fs.mkdirSync(FLOOR_IMG_DIR, { recursive: true });
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
@@ -55,87 +70,78 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-let db;
 
 async function initDB() {
-  const SQL = await initSqlJs();
-  if (fs.existsSync(DB_PATH)) {
-    db = new SQL.Database(fs.readFileSync(DB_PATH));
-  } else {
-    db = new SQL.Database();
+  pool = mysql.createPool(DB_CONFIG);
+
+  // 연결 테스트
+  let retries = 10;
+  while (retries-- > 0) {
+    try { await pool.query('SELECT 1'); break; }
+    catch(e) { console.log('DB 연결 대기 중...', e.message); await new Promise(r=>setTimeout(r,3000)); }
   }
+  console.log('MariaDB 연결 성공');
 
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'read',
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  const run = (sql) => pool.query(sql);
 
-  const userCount = queryOne('SELECT COUNT(*) as cnt FROM users');
-  if (userCount.cnt === 0) {
+  await run(`CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'read',
+    created_at DATETIME DEFAULT NOW(),
+    updated_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  const [[{cnt}]] = await pool.query('SELECT COUNT(*) as cnt FROM users');
+  if (cnt === 0) {
     const hash = bcrypt.hashSync('zpdldptmdpa2@', 10);
-    db.run("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)",
+    await pool.query("INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)",
       ['ksm00', hash, '관리자', 'admin']);
-    saveDB();
   }
 
-  db.run(`CREATE TABLE IF NOT EXISTS history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    construction_id INTEGER, action TEXT, changed_by TEXT,
-    changed_at TEXT DEFAULT (datetime('now','localtime')), diff TEXT
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    construction_id INT, action TEXT, changed_by TEXT,
+    changed_at DATETIME DEFAULT NOW(), diff TEXT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS networks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL, color TEXT NOT NULL, shape TEXT DEFAULT 'circle',
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS networks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL, color VARCHAR(20) NOT NULL, shape VARCHAR(20) DEFAULT 'circle',
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  const netCount = queryOne('SELECT COUNT(*) as cnt FROM networks');
-  if (netCount.cnt === 0) {
-    db.run("INSERT INTO networks (name, color, shape) VALUES ('DA', '#FF0000', 'circle')");
-    db.run("INSERT INTO networks (name, color, shape) VALUES ('VP', '#FFD700', 'circle')");
-    saveDB();
+  const [[{ncnt}]] = await pool.query('SELECT COUNT(*) as ncnt FROM networks');
+  if (ncnt === 0) {
+    await pool.query("INSERT INTO networks (name, color, shape) VALUES ('DA', '#FF0000', 'circle')");
+    await pool.query("INSERT INTO networks (name, color, shape) VALUES ('VP', '#FFD700', 'circle')");
   }
 
-  db.run(`CREATE TABLE IF NOT EXISTS floorplans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    location_id INTEGER, region TEXT, dong TEXT, floor TEXT, filename TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS floorplans (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    location_id INT, region VARCHAR(100), dong VARCHAR(100), floor VARCHAR(50), filename VARCHAR(255),
+    dxf_minx REAL, dxf_miny REAL, dxf_maxx REAL, dxf_maxy REAL, dxf_labels TEXT,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS cables (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    floorplan_id INTEGER, cable_no TEXT, construction_no TEXT,
-    x REAL, y REAL, color TEXT DEFAULT '#e74c3c', shape TEXT DEFAULT 'circle', memo TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS cables (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    floorplan_id INT, cable_no VARCHAR(100), construction_no VARCHAR(100),
+    x REAL, y REAL, dxf_x REAL, dxf_y REAL,
+    color VARCHAR(20) DEFAULT '#e74c3c', shape VARCHAR(20) DEFAULT 'circle', memo TEXT,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  try { db.run('ALTER TABLE cables ADD COLUMN x REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE cables ADD COLUMN y REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE cables ADD COLUMN shape TEXT'); } catch(e) {}
-  try { db.run('ALTER TABLE constructions ADD COLUMN group_id INTEGER'); } catch(e) {}
-  try { db.run('ALTER TABLE construction_files ADD COLUMN group_id INTEGER'); } catch(e) {}
-  try { db.run('ALTER TABLE cables ADD COLUMN dxf_x REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE cables ADD COLUMN dxf_y REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_minx REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_miny REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_maxx REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_maxy REAL'); } catch(e) {}
-  try { db.run('ALTER TABLE floorplans ADD COLUMN dxf_labels TEXT'); } catch(e) {}
+  await run(`CREATE TABLE IF NOT EXISTS locations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    region VARCHAR(100) NOT NULL, dong VARCHAR(100) NOT NULL, floors TEXT NOT NULL,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS locations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    region TEXT NOT NULL, dong TEXT NOT NULL, floors TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-
-  const locCount = queryOne('SELECT COUNT(*) as cnt FROM locations');
-  if (locCount.cnt === 0) {
+  const [[{lcnt}]] = await pool.query('SELECT COUNT(*) as lcnt FROM locations');
+  if (lcnt === 0) {
     const defaultLocs = [
       ['대곶', 'HO동', JSON.stringify(['1F','2F','3F','4F'])],
       ['대곶', 'B1동', JSON.stringify(['1F','2F'])],
@@ -145,171 +151,161 @@ async function initDB() {
       ['대포', '본관', JSON.stringify(['1F','2F','3F'])],
     ];
     for (const [region, dong, floors] of defaultLocs) {
-      db.run('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)', [region, dong, floors]);
+      await pool.query('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)', [region, dong, floors]);
     }
-    saveDB();
   }
 
-  db.run(`CREATE TABLE IF NOT EXISTS ip_subnets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,          -- 예) 사무망, 생산망
-    network TEXT NOT NULL,       -- 예) 10.100.100.0
-    prefix INTEGER NOT NULL,     -- 예) 24
-    gateway TEXT,
-    dns TEXT,
-    vlan TEXT,
+  await run(`CREATE TABLE IF NOT EXISTS ip_subnets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    network VARCHAR(50) NOT NULL,
+    prefix INT NOT NULL,
+    gateway VARCHAR(50),
+    dns VARCHAR(100),
+    vlan VARCHAR(50),
     description TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS ip_assets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subnet_id INTEGER,
-    ip TEXT NOT NULL UNIQUE,
-    mac TEXT,
-    hostname TEXT,
-    user_name TEXT,
-    dept TEXT,
-    device_type TEXT,    -- PC, 서버, 프린터, AP, 기타
-    os TEXT,
-    status TEXT DEFAULT 'unused',  -- used, unused, reserved
-    nac_status TEXT,     -- NAC에서 가져온 상태
-    last_seen TEXT,      -- NAC 마지막 접속
+  await run(`CREATE TABLE IF NOT EXISTS ip_assets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subnet_id INT,
+    ip VARCHAR(50) NOT NULL UNIQUE,
+    mac VARCHAR(50),
+    hostname VARCHAR(255),
+    user_name VARCHAR(100),
+    dept VARCHAR(100),
+    device_type VARCHAR(50),
+    os VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'unused',
+    nac_status TEXT,
+    last_seen TEXT,
     location TEXT,
     description TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+    tag_id INT,
+    created_at DATETIME DEFAULT NOW(),
+    updated_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  try { db.run('ALTER TABLE ip_assets ADD COLUMN nac_status TEXT'); } catch(e) {}
-  try { db.run('ALTER TABLE ip_assets ADD COLUMN last_seen TEXT'); } catch(e) {}
-  try { db.run('ALTER TABLE ip_assets ADD COLUMN tag_id INTEGER'); } catch(e) {}
+  await run(`CREATE TABLE IF NOT EXISTS ip_tags (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subnet_id INT,
+    name VARCHAR(100) NOT NULL,
+    color VARCHAR(20) NOT NULL DEFAULT '#3b82f6',
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS ip_tags (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subnet_id INTEGER,
-    name TEXT NOT NULL,
-    color TEXT NOT NULL DEFAULT '#3b82f6',
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS ip_tag_ranges (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tag_id INT NOT NULL,
+    subnet_id INT NOT NULL,
+    ip_start VARCHAR(50) NOT NULL,
+    ip_end VARCHAR(50) NOT NULL,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS ip_tag_ranges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tag_id INTEGER NOT NULL,
-    subnet_id INTEGER NOT NULL,
-    ip_start TEXT NOT NULL,   -- 시작 IP
-    ip_end TEXT NOT NULL,     -- 끝 IP
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS constructions (
+    id INT AUTO_INCREMENT PRIMARY KEY, no INT, gubun VARCHAR(50), req_date VARCHAR(20),
+    corp VARCHAR(100), dept VARCHAR(100), requester VARCHAR(100), work_name TEXT,
+    loc_region VARCHAR(100), loc_dong VARCHAR(100), loc_floor VARCHAR(50), loc_detail TEXT,
+    move_region VARCHAR(100), move_dong VARCHAR(100), move_floor VARCHAR(50), move_detail TEXT,
+    demolish_region VARCHAR(100), demolish_dong VARCHAR(100), demolish_floor VARCHAR(50), demolish_detail TEXT,
+    status VARCHAR(50), deadline VARCHAR(20), complete_date VARCHAR(20),
+    purchase_doc VARCHAR(255), payment_doc VARCHAR(255), related_doc VARCHAR(255),
+    it_manager VARCHAR(100), worker VARCHAR(100), memo TEXT,
+    group_id INT,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS constructions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, no INTEGER, gubun TEXT, req_date TEXT,
-    corp TEXT, dept TEXT, requester TEXT, work_name TEXT,
-    loc_region TEXT, loc_dong TEXT, loc_floor TEXT, loc_detail TEXT,
-    move_region TEXT, move_dong TEXT, move_floor TEXT, move_detail TEXT,
-    demolish_region TEXT, demolish_dong TEXT, demolish_floor TEXT, demolish_detail TEXT,
-    status TEXT, deadline TEXT, complete_date TEXT,
-    purchase_doc TEXT, payment_doc TEXT, related_doc TEXT,
-    it_manager TEXT, worker TEXT, memo TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS firewall_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    req_date TEXT, corp TEXT, dept TEXT, requester TEXT,
-    status TEXT DEFAULT '결재 대기중',
-    title TEXT, worker TEXT, doc TEXT, memo TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+  await run(`CREATE TABLE IF NOT EXISTS firewall_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    req_date VARCHAR(20), corp VARCHAR(100), dept VARCHAR(100), requester VARCHAR(100),
+    status VARCHAR(50) DEFAULT '결재 대기중',
+    title TEXT, worker VARCHAR(100), doc VARCHAR(255), memo TEXT,
+    period_from VARCHAR(20), period_to VARCHAR(20),
+    created_at DATETIME DEFAULT NOW(),
+    updated_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS construction_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    construction_id INTEGER NOT NULL,
-    file_type TEXT NOT NULL,   -- 'estimate'(견적서), 'transaction'(거래명세서), 'layout'(레이아웃), 'other'(기타)
-    original_name TEXT NOT NULL,
-    filename TEXT NOT NULL,
-    file_size INTEGER,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS net_devices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    ip TEXT DEFAULT '',
-    snmp_community TEXT NOT NULL DEFAULT 'public',
-    snmp_port INTEGER NOT NULL DEFAULT 161,
+  // 기존 테이블에 컬럼 추가 (이미 있으면 무시)
+  await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_from VARCHAR(20)").catch(()=>{});
+  await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_to VARCHAR(20)").catch(()=>{});
+
+  await run(`CREATE TABLE IF NOT EXISTS construction_files (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    construction_id INT NOT NULL,
+    file_type VARCHAR(50) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    file_size INT,
+    group_id INT,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  await run(`CREATE TABLE IF NOT EXISTS net_devices (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip VARCHAR(50) DEFAULT '',
+    snmp_community VARCHAR(100) NOT NULL DEFAULT 'public',
+    snmp_port INT NOT NULL DEFAULT 161,
     location TEXT DEFAULT '',
     location_detail TEXT DEFAULT '',
-    network_type TEXT DEFAULT '',
-    vendor TEXT DEFAULT '',
-    model TEXT DEFAULT '',
-    serial TEXT DEFAULT '',
-    mac TEXT DEFAULT '',
+    network_type VARCHAR(100) DEFAULT '',
+    vendor VARCHAR(100) DEFAULT '',
+    model VARCHAR(100) DEFAULT '',
+    serial VARCHAR(100) DEFAULT '',
+    mac VARCHAR(50) DEFAULT '',
     interfaces TEXT DEFAULT '[]',
-    purchase_date TEXT DEFAULT '',
+    purchase_date VARCHAR(20) DEFAULT '',
     description TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
-  // 기존 DB 호환: 신규 컬럼 없으면 추가
-  const netDevCols = ['network_type','vendor','model','serial','mac','interfaces','purchase_date','location_detail'];
-  netDevCols.forEach(col => {
-    const dflt = col === 'interfaces' ? "'[]'" : "''";
-    try { db.run(`ALTER TABLE net_devices ADD COLUMN ${col} TEXT DEFAULT ${dflt}`); } catch(e) {}
-  });
-  // ip NOT NULL 해제는 SQLite에서 직접 불가 → 기존 행 빈값 허용은 앱 레벨에서 처리
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS conreq (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    requester TEXT NOT NULL,
-    dept TEXT NOT NULL,
+  await run(`CREATE TABLE IF NOT EXISTS conreq (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    requester VARCHAR(100) NOT NULL,
+    dept VARCHAR(100) NOT NULL,
     title TEXT NOT NULL,
-    due_date TEXT,
+    due_date VARCHAR(20),
     location TEXT,
-    qty_office INTEGER DEFAULT 0,
-    qty_field INTEGER DEFAULT 0,
-    qty_device INTEGER DEFAULT 0,
-    qty_phone INTEGER DEFAULT 0,
+    qty_office INT DEFAULT 0,
+    qty_field INT DEFAULT 0,
+    qty_device INT DEFAULT 0,
+    qty_phone INT DEFAULT 0,
     memo TEXT,
-    status TEXT DEFAULT '대기중',
-    pins TEXT,
-    floor_img TEXT,
-    req_date TEXT DEFAULT (date('now','localtime')),
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+    status VARCHAR(20) DEFAULT '대기중',
+    pins LONGTEXT,
+    floor_img LONGTEXT,
+    req_date DATE DEFAULT (CURDATE()),
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  try { db.run('ALTER TABLE conreq ADD COLUMN pins TEXT'); } catch(e) {}
-  try { db.run('ALTER TABLE conreq ADD COLUMN floor_img TEXT'); } catch(e) {}
-
-  db.run(`CREATE TABLE IF NOT EXISTS incidents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    no INTEGER,
-    category TEXT,
+  await run(`CREATE TABLE IF NOT EXISTS incidents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    no INT,
+    category VARCHAR(100),
     summary TEXT,
-    inc_date TEXT,
-    region TEXT,
+    inc_date VARCHAR(20),
+    region VARCHAR(100),
     location TEXT,
-    reporter TEXT,
-    start_time TEXT,
-    end_time TEXT,
-    duration_min INTEGER,
-    content TEXT,
-    action TEXT,
-    cause TEXT,
+    reporter VARCHAR(100),
+    start_time VARCHAR(10),
+    end_time VARCHAR(10),
+    duration_min INT,
+    content LONGTEXT,
+    action LONGTEXT,
+    cause LONGTEXT,
     memo TEXT,
-    level INTEGER DEFAULT 3,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
-  )`);
+    level INT DEFAULT 3,
+    created_at DATETIME DEFAULT NOW(),
+    updated_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  try { db.run('ALTER TABLE firewall_requests ADD COLUMN period_from TEXT'); } catch(e) {}
-  try { db.run('ALTER TABLE firewall_requests ADD COLUMN period_to TEXT'); } catch(e) {}
-
-  saveDB();
+  console.log('DB 초기화 완료');
 }
 
-function saveDB() {
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
-}
+
+function saveDB() { /* MariaDB - no-op */ }
 
 const FIELD_LABELS = {
   'gubun':'구분','req_date':'요청일','corp':'법인','dept':'부서','requester':'요청자','work_name':'공사명',
@@ -321,8 +317,8 @@ const FIELD_LABELS = {
   'it_manager':'IT담당자','worker':'작업자','memo':'메모'
 };
 
-function recordHistory(constructionId, action, changedBy, diff) {
-  db.run(`INSERT INTO history (construction_id, action, changed_by, diff) VALUES (?,?,?,?)`,
+async function recordHistory(constructionId, action, changedBy, diff) {
+  await dbRun(`INSERT INTO history (construction_id, action, changed_by, diff) VALUES (?,?,?,?)`,
     [constructionId, action, changedBy || '시스템', JSON.stringify(diff)]);
 }
 
@@ -338,16 +334,21 @@ function diffRecords(before, after) {
 
 function s(v) { return (v === undefined || v === null) ? '' : String(v).trim(); }
 
-function queryAll(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const rows = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
+async function queryAll(sql, params = []) {
+  // SQLite ? 를 그대로 쓰므로 MariaDB도 ? 지원
+  const [rows] = await pool.query(sql, params);
   return rows;
 }
 
-function queryOne(sql, params = []) { return queryAll(sql, params)[0] || null; }
+async function queryOne(sql, params = []) {
+  const rows = await queryAll(sql, params);
+  return rows[0] || null;
+}
+
+async function dbRun(sql, params = []) {
+  const [result] = await pool.query(sql, params);
+  return result;
+}
 
 // IP 범위 유틸
 function ipToInt(ip) {
@@ -362,8 +363,8 @@ function isIpInRange(ip, start, end) {
 
 
 // DXF 좌표 기반 핀 재매핑
-function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
-  const cables = queryAll('SELECT * FROM cables WHERE floorplan_id=?', [floorplanId]);
+async function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
+  const cables = await queryAll('SELECT * FROM cables WHERE floorplan_id=?', [floorplanId]);
   if (!cables.length) return;
 
   const oldW = (oldFp.dxf_maxx || 1) - (oldFp.dxf_minx || 0);
@@ -377,7 +378,7 @@ function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
       // DXF 실제 좌표로 새 도면에서 비율 재계산
       const newX = (cable.dxf_x - newCoords.minx) / newW;
       const newY = 1 - ((cable.dxf_y - newCoords.miny) / newH); // Y축 반전
-      db.run('UPDATE cables SET x=?, y=? WHERE id=?', [newX, newY, cable.id]);
+      await dbRun('UPDATE cables SET x=?, y=? WHERE id=?', [newX, newY, cable.id]);
       remapped++;
     }
   }
@@ -388,7 +389,7 @@ function remapCablesToNewDxf(floorplanId, oldFp, newCoords) {
 
 // ── 공사 이력 API ──────────────────────────────────────────
 
-app.get('/api/constructions', authMiddleware, (req, res) => {
+app.get('/api/constructions', authMiddleware, async (req, res) => {
   const { search, gubun, status, corp } = req.query;
   let sql = 'SELECT * FROM constructions WHERE 1=1';
   const params = [];
@@ -403,7 +404,7 @@ app.get('/api/constructions', authMiddleware, (req, res) => {
   if (status && status !== '전체') { sql += ' AND status = ?'; params.push(status); }
   if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
   sql += ' ORDER BY id DESC';
-  const raw = queryAll(sql, params);
+  const raw = await queryAll(sql, params);
   // group_id별로 자동 색상 부여 (이름/색 설정 없이)
   const GROUP_COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6'];
   const gids = [...new Set(raw.filter(r => r.group_id).map(r => r.group_id))];
@@ -416,63 +417,63 @@ app.get('/api/constructions', authMiddleware, (req, res) => {
 });
 
 // ── 인증 API ──────────────────────────────────────────
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: '아이디와 비밀번호를 입력하세요' });
-  const user = queryOne('SELECT * FROM users WHERE username=?', [username]);
+  const user = await queryOne('SELECT * FROM users WHERE username=?', [username]);
   if (!user || !bcrypt.compareSync(password, user.password))
     return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다' });
   const token = jwt.sign({ id: user.id, username: user.username, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
   res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
 });
 
-app.get('/api/auth/me', authMiddleware, (req, res) => {
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
   res.json(req.user);
 });
 
 // ── 사용자 관리 API (관리자 전용) ──────────────────────────────────────────
-app.get('/api/users', authMiddleware, requireAdmin, (req, res) => {
-  const users = queryAll('SELECT id, username, name, role, created_at, updated_at FROM users ORDER BY id');
+app.get('/api/users', authMiddleware, requireAdmin, async (req, res) => {
+  const users = await queryAll('SELECT id, username, name, role, created_at, updated_at FROM users ORDER BY id');
   res.json(users);
 });
 
-app.post('/api/users', authMiddleware, requireAdmin, (req, res) => {
+app.post('/api/users', authMiddleware, requireAdmin, async (req, res) => {
   const { username, password, name, role } = req.body;
   if (!username || !password || !name || !role) return res.status(400).json({ error: '모든 필드를 입력하세요' });
   if (!['read','write','admin'].includes(role)) return res.status(400).json({ error: '올바른 권한을 선택하세요' });
-  const exists = queryOne('SELECT id FROM users WHERE username=?', [username]);
+  const exists = await queryOne('SELECT id FROM users WHERE username=?', [username]);
   if (exists) return res.status(409).json({ error: '이미 존재하는 아이디입니다' });
   const hash = bcrypt.hashSync(password, 10);
-  db.run('INSERT INTO users (username, password, name, role) VALUES (?,?,?,?)', [username, hash, name, role]);
-  const newUser = queryOne('SELECT id, username, name, role, created_at FROM users WHERE username=?', [username]);
+  await dbRun('INSERT INTO users (username, password, name, role) VALUES (?,?,?,?)', [username, hash, name, role]);
+  const newUser = await queryOne('SELECT id, username, name, role, created_at FROM users WHERE username=?', [username]);
   saveDB();
   res.json(newUser);
 });
 
-app.put('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
+app.put('/api/users/:id', authMiddleware, requireAdmin, async (req, res) => {
   const { name, role, password } = req.body;
   if (!name || !role) return res.status(400).json({ error: '이름과 권한은 필수입니다' });
   if (!['read','write','admin'].includes(role)) return res.status(400).json({ error: '올바른 권한을 선택하세요' });
   // 마지막 관리자 보호
   if (role !== 'admin') {
-    const adminCount = queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
+    const adminCount = await queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
     if (adminCount.cnt === 0) return res.status(400).json({ error: '관리자 계정이 최소 1개는 있어야 합니다' });
   }
   if (password) {
     const hash = bcrypt.hashSync(password, 10);
-    db.run("UPDATE users SET name=?, role=?, password=?, updated_at=datetime('now','localtime') WHERE id=?", [name, role, hash, req.params.id]);
+    await dbRun("UPDATE users SET name=?, role=?, password=?, updated_at=NOW() WHERE id=?", [name, role, hash, req.params.id]);
   } else {
-    db.run("UPDATE users SET name=?, role=?, updated_at=datetime('now','localtime') WHERE id=?", [name, role, req.params.id]);
+    await dbRun("UPDATE users SET name=?, role=?, updated_at=NOW() WHERE id=?", [name, role, req.params.id]);
   }
   saveDB();
   res.json({ success: true });
 });
 
-app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
+app.delete('/api/users/:id', authMiddleware, requireAdmin, async (req, res) => {
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: '자신의 계정은 삭제할 수 없습니다' });
-  const adminCount = queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
+  const adminCount = await queryOne("SELECT COUNT(*) as cnt FROM users WHERE role='admin' AND id!=?", [req.params.id]);
   if (adminCount.cnt === 0) return res.status(400).json({ error: '관리자 계정이 최소 1개는 있어야 합니다' });
-  db.run('DELETE FROM users WHERE id=?', [req.params.id]);
+  await dbRun('DELETE FROM users WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
@@ -480,9 +481,9 @@ app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
 
 // ── 공사 요청 API ──────────────────────────────────────────
 
-app.get('/api/conreq', authMiddleware, (req, res) => {
+app.get('/api/conreq', authMiddleware, async (req, res) => {
   const { search, status } = req.query;
-  let sql = 'SELECT * FROM conreq WHERE 1=1';
+  let sql = "SELECT *, DATE_FORMAT(req_date, '%Y-%m-%d') as req_date FROM conreq WHERE 1=1";
   const params = [];
   if (search) {
     sql += ' AND (requester LIKE ? OR dept LIKE ? OR title LIKE ? OR memo LIKE ?)';
@@ -491,43 +492,43 @@ app.get('/api/conreq', authMiddleware, (req, res) => {
   }
   if (status) { sql += ' AND status=?'; params.push(status); }
   sql += ' ORDER BY id DESC';
-  res.json(queryAll(sql, params));
+  res.json(await queryAll(sql, params));
 });
 
-app.get('/api/conreq/:id', authMiddleware, (req, res) => {
-  const row = queryOne('SELECT * FROM conreq WHERE id=?', [req.params.id]);
+app.get('/api/conreq/:id', authMiddleware, async (req, res) => {
+  const row = await queryOne("SELECT *, DATE_FORMAT(req_date, '%Y-%m-%d') as req_date FROM conreq WHERE id=?", [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
 });
 
-app.post('/api/conreq', authMiddleware, (req, res) => {
+app.post('/api/conreq', authMiddleware, async (req, res) => {
   const { requester, dept, title, due_date, location, qty_office, qty_field, qty_device, qty_phone, memo, pins, floor_img } = req.body;
   if (!requester || !dept || !title) return res.status(400).json({ error: '필수값 누락' });
-  db.run(`INSERT INTO conreq (requester,dept,title,due_date,location,qty_office,qty_field,qty_device,qty_phone,memo,pins,floor_img)
+  const result = await dbRun(`INSERT INTO conreq (requester,dept,title,due_date,location,qty_office,qty_field,qty_device,qty_phone,memo,pins,floor_img)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [s(requester),s(dept),s(title),s(due_date),s(location),
      parseInt(qty_office)||0, parseInt(qty_field)||0, parseInt(qty_device)||0, parseInt(qty_phone)||0,
      s(memo), pins||null, floor_img||null]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/conreq/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/conreq/:id', authMiddleware, requireWrite, async (req, res) => {
   const { status } = req.body;
-  db.run('UPDATE conreq SET status=? WHERE id=?', [status, req.params.id]);
+  await dbRun('UPDATE conreq SET status=? WHERE id=?', [status, req.params.id]);
   saveDB();
   res.json({ success: true });
 });
 
-app.delete('/api/conreq/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM conreq WHERE id=?', [req.params.id]);
+app.delete('/api/conreq/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM conreq WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
 
 // ── 장애 이력 API ──────────────────────────────────────────
 
-app.get('/api/incidents', authMiddleware, (req, res) => {
+app.get('/api/incidents', authMiddleware, async (req, res) => {
   const { search, year, month, level } = req.query;
   let sql = 'SELECT * FROM incidents WHERE 1=1';
   const params = [];
@@ -536,50 +537,50 @@ app.get('/api/incidents', authMiddleware, (req, res) => {
     const kw = `%${search}%`;
     params.push(kw,kw,kw,kw,kw,kw);
   }
-  if (year)  { sql += ' AND SUBSTR(inc_date,1,4)=?'; params.push(year); }
-  if (month) { sql += ' AND SUBSTR(inc_date,6,2)=?'; params.push(String(month).padStart(2,'0')); }
+  if (year)  { sql += ' AND YEAR(inc_date)=?'; params.push(year); }
+  if (month) { sql += ' AND MONTH(STR_TO_DATE(inc_date, \'%Y-%m-%d\'))=?'; params.push(parseInt(month)); }
   if (level) { sql += ' AND level=?'; params.push(parseInt(level)); }
   sql += ' ORDER BY inc_date DESC, start_time DESC';
-  res.json(queryAll(sql, params));
+  res.json(await queryAll(sql, params));
 });
 
-app.get('/api/incidents/stats', authMiddleware, (req, res) => {
-  const monthly = queryAll(`
+app.get('/api/incidents/stats', authMiddleware, async (req, res) => {
+  const monthly = await queryAll(`
     SELECT
-      SUBSTR(inc_date,1,7) as ym,
+      DATE_FORMAT(inc_date, '%Y-%m') as ym,
       COUNT(*) as cnt,
       SUM(duration_min) as total_min
     FROM incidents
     WHERE inc_date IS NOT NULL AND inc_date != '' AND level > 0
     GROUP BY ym ORDER BY ym
   `);
-  const total = queryOne('SELECT COUNT(*) as cnt, SUM(duration_min) as total_min FROM incidents WHERE level > 0');
+  const total = await queryOne('SELECT COUNT(*) as cnt, SUM(duration_min) as total_min FROM incidents WHERE level > 0');
   res.json({ monthly, total });
 });
 
-app.get('/api/incidents/:id', authMiddleware, (req, res) => {
-  const row = queryOne('SELECT * FROM incidents WHERE id=?', [req.params.id]);
+app.get('/api/incidents/:id', authMiddleware, async (req, res) => {
+  const row = await queryOne('SELECT * FROM incidents WHERE id=?', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
 });
 
-app.post('/api/incidents', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/incidents', authMiddleware, requireWrite, async (req, res) => {
   const d = req.body;
-  const lastNo = (queryOne('SELECT MAX(no) as m FROM incidents').m || 0) + 1;
-  db.run(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
+  const lastNo = ((await queryOne('SELECT MAX(no) as m FROM incidents')).m || 0) + 1;
+  const result = await dbRun(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [d.no||lastNo,s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),
      s(d.reporter),s(d.start_time),s(d.end_time),parseInt(d.duration_min)||0,
      s(d.content),s(d.action),s(d.cause),s(d.memo),d.level!=null?parseInt(d.level):3]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/incidents/:id', authMiddleware, requireWrite, async (req, res) => {
   const d = req.body;
-  db.run(`UPDATE incidents SET category=?,summary=?,inc_date=?,region=?,location=?,reporter=?,
+  await dbRun(`UPDATE incidents SET category=?,summary=?,inc_date=?,region=?,location=?,reporter=?,
     start_time=?,end_time=?,duration_min=?,content=?,action=?,cause=?,memo=?,level=?,
-    updated_at=datetime('now','localtime') WHERE id=?`,
+    updated_at=NOW() WHERE id=?`,
     [s(d.category),s(d.summary),s(d.inc_date),s(d.region),s(d.location),s(d.reporter),
      s(d.start_time),s(d.end_time),parseInt(d.duration_min)||0,
      s(d.content),s(d.action),s(d.cause),s(d.memo),d.level!=null?parseInt(d.level):3,req.params.id]);
@@ -587,14 +588,14 @@ app.put('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/incidents/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM incidents WHERE id=?', [req.params.id]);
+app.delete('/api/incidents/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM incidents WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
 
 // 엑셀 import
-app.post('/api/incidents/import', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
+app.post('/api/incidents/import', upload.single('file'), authMiddleware, requireWrite, async (req, res) => {
   try {
     const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -656,16 +657,16 @@ app.post('/api/incidents/import', upload.single('file'), authMiddleware, require
         memo:       String(row[14]||'').trim(),
         level:      3,
       };
-      const existing = queryOne('SELECT id FROM incidents WHERE no=?', [no]);
+      const existing = await queryOne('SELECT id FROM incidents WHERE no=?', [no]);
       if (existing) {
-        db.run(`UPDATE incidents SET category=?,summary=?,inc_date=?,region=?,location=?,reporter=?,
+        await dbRun(`UPDATE incidents SET category=?,summary=?,inc_date=?,region=?,location=?,reporter=?,
           start_time=?,end_time=?,duration_min=?,content=?,action=?,cause=?,memo=? WHERE no=?`,
           [fields.category,fields.summary,fields.inc_date,fields.region,fields.location,
            fields.reporter,fields.start_time,fields.end_time,fields.duration_min,
            fields.content,fields.action,fields.cause,fields.memo,no]);
         updated++;
       } else {
-        db.run(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
+        await dbRun(`INSERT INTO incidents (no,category,summary,inc_date,region,location,reporter,start_time,end_time,duration_min,content,action,cause,memo,level)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           [fields.no,fields.category,fields.summary,fields.inc_date,fields.region,fields.location,
            fields.reporter,fields.start_time,fields.end_time,fields.duration_min,
@@ -680,7 +681,7 @@ app.post('/api/incidents/import', upload.single('file'), authMiddleware, require
 
 
 
-app.get('/api/firewall', authMiddleware, (req, res) => {
+app.get('/api/firewall', authMiddleware, async (req, res) => {
   const { search, status, corp } = req.query;
   let sql = 'SELECT * FROM firewall_requests WHERE 1=1';
   const params = [];
@@ -692,44 +693,44 @@ app.get('/api/firewall', authMiddleware, (req, res) => {
   if (status) { sql += ' AND status=?'; params.push(status); }
   if (corp)   { sql += ' AND corp=?';   params.push(corp); }
   sql += ' ORDER BY id DESC';
-  res.json(queryAll(sql, params));
+  res.json(await queryAll(sql, params));
 });
 
-app.get('/api/firewall/:id', authMiddleware, (req, res) => {
-  const row = queryOne('SELECT * FROM firewall_requests WHERE id=?', [req.params.id]);
+app.get('/api/firewall/:id', authMiddleware, async (req, res) => {
+  const row = await queryOne('SELECT * FROM firewall_requests WHERE id=?', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
 });
 
-app.post('/api/firewall', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/firewall', authMiddleware, requireWrite, async (req, res) => {
   const { req_date, corp, dept, requester, status, title, worker, doc, memo, period_from, period_to } = req.body;
-  db.run('INSERT INTO firewall_requests (req_date,corp,dept,requester,status,title,worker,doc,memo,period_from,period_to) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+  const result = await dbRun('INSERT INTO firewall_requests (req_date,corp,dept,requester,status,title,worker,doc,memo,period_from,period_to) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     [s(req_date),s(corp),s(dept),s(requester),status||'결재 대기중',s(title),s(worker),s(doc),s(memo),s(period_from),s(period_to)]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/firewall/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/firewall/:id', authMiddleware, requireWrite, async (req, res) => {
   const { req_date, corp, dept, requester, status, title, worker, doc, memo, period_from, period_to } = req.body;
-  db.run("UPDATE firewall_requests SET req_date=?,corp=?,dept=?,requester=?,status=?,title=?,worker=?,doc=?,memo=?,period_from=?,period_to=?,updated_at=datetime('now','localtime') WHERE id=?",
+  await dbRun("UPDATE firewall_requests SET req_date=?,corp=?,dept=?,requester=?,status=?,title=?,worker=?,doc=?,memo=?,period_from=?,period_to=?,updated_at=NOW() WHERE id=?",
     [s(req_date),s(corp),s(dept),s(requester),status||'결재 대기중',s(title),s(worker),s(doc),s(memo),s(period_from),s(period_to),req.params.id]);
   saveDB();
   res.json({ success: true });
 });
 
-app.delete('/api/firewall/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM firewall_requests WHERE id=?', [req.params.id]);
+app.delete('/api/firewall/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM firewall_requests WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
 
 
-app.get('/api/stats/monthly', authMiddleware, (req, res) => {
-  // req_date 형식: YY.MM.DD → 연도/월 추출
-  const rows = queryAll(`
+app.get('/api/stats/monthly', authMiddleware, async (req, res) => {
+  // req_date 형식: YY.MM.DD (예: 25.03.15)
+  const rows = await queryAll(`
     SELECT
-      CAST('20' || SUBSTR(req_date, 1, 2) AS INTEGER) as year,
-      CAST(SUBSTR(req_date, 4, 2) AS INTEGER) as month,
+      CAST(CONCAT('20', SUBSTRING(req_date, 1, 2)) AS UNSIGNED) as year,
+      CAST(SUBSTRING(req_date, 4, 2) AS UNSIGNED) as month,
       gubun,
       COUNT(*) as cnt
     FROM constructions
@@ -740,27 +741,38 @@ app.get('/api/stats/monthly', authMiddleware, (req, res) => {
   res.json(rows);
 });
 
-app.get('/api/stats', authMiddleware, (req, res) => {
-  const g = q => queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`).cnt;
+app.get('/api/stats', authMiddleware, async (req, res) => {
+  const g = async q => (await queryOne(`SELECT COUNT(*) as cnt FROM constructions WHERE ${q}`)).cnt || 0;
   res.json({
-    total: g('1=1'), done: g("status='완료'"), inprogress: g("status='진행중'"), holding: g("status='Holding'"),
-    self: g("gubun='자체공사'"), outsource: g("gubun='외주공사'"), payment: g("gubun='지급'"), purchase: g("gubun='구매'"), temp: g("gubun='임시포설'"), received: g("gubun='접수'"),
-    corp_ksm: g("corp='KSM'"), corp_fksm: g("corp='FKSM'"), corp_ksmc: g("corp='KSMC'"),
-    corp_yhe: g("corp='YHE'"), corp_ksmf: g("corp='KSMF'")
+    total:      await g('1=1'),
+    done:       await g("status='완료'"),
+    inprogress: await g("status='진행중'"),
+    holding:    await g("status='Holding'"),
+    self:       await g("gubun='자체공사'"),
+    outsource:  await g("gubun='외주공사'"),
+    payment:    await g("gubun='지급'"),
+    purchase:   await g("gubun='구매'"),
+    temp:       await g("gubun='임시포설'"),
+    received:   await g("gubun='접수'"),
+    corp_ksm:   await g("corp='KSM'"),
+    corp_fksm:  await g("corp='FKSM'"),
+    corp_ksmc:  await g("corp='KSMC'"),
+    corp_yhe:   await g("corp='YHE'"),
+    corp_ksmf:  await g("corp='KSMF'"),
   });
 });
 
-app.get('/api/constructions/:id', authMiddleware, (req, res) => {
-  const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
+app.get('/api/constructions/:id', authMiddleware, async (req, res) => {
+  const row = await queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
 });
 
-app.post('/api/constructions', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/constructions', authMiddleware, requireWrite, async (req, res) => {
   try {
     const d = req.body;
-    const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0);
-    db.run(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0);
+    const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [lastNo+1,s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
@@ -768,20 +780,19 @@ app.post('/api/constructions', authMiddleware, requireWrite, (req, res) => {
        s(d.status),s(d.deadline),s(d.complete_date),
        s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo)]);
     saveDB();
-    const newId = queryOne('SELECT last_insert_rowid() as id').id;
+    const newId = result.insertId;
     recordHistory(newId, 'create', d.changed_by, [{ field: 'work_name', label: '공사명', before: '', after: d.work_name }]);
     saveDB();
     res.json({ id: newId, no: lastNo+1 });
   } catch(e) { console.error('POST error:', e); res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/constructions/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/constructions/:id', authMiddleware, requireWrite, async (req, res) => {
   try {
     const d = req.body;
-    const before = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
-    // group_id가 요청에 명시적으로 포함된 경우만 변경, 없으면 기존 값 유지
+    const before = await queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
     const gid = d.hasOwnProperty('group_id') ? (d.group_id ? parseInt(d.group_id) : null) : before?.group_id;
-    db.run(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,group_id=? WHERE id=?`,
+    await dbRun(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,group_id=? WHERE id=?`,
       [s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
@@ -795,17 +806,17 @@ app.put('/api/constructions/:id', authMiddleware, requireWrite, (req, res) => {
   } catch(e) { console.error('PUT error:', e); res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/constructions/:id', authMiddleware, requireWrite, (req, res) => {
-  const row = queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
+app.delete('/api/constructions/:id', authMiddleware, requireWrite, async (req, res) => {
+  const row = await queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
   if (row) {
     const groupId = row.group_id;
     recordHistory(req.params.id, 'delete', null, [{ field: 'work_name', label: '공사명', before: row.work_name, after: '' }]);
-    db.run('DELETE FROM constructions WHERE id = ?', [req.params.id]);
+    await dbRun('DELETE FROM constructions WHERE id = ?', [req.params.id]);
     // 삭제 후 같은 그룹에 1개만 남으면 자동 해제
     if (groupId) {
-      const cnt = queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [groupId]);
+      const cnt = await queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [groupId]);
       if (cnt && cnt.cnt === 1) {
-        db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [groupId]);
+        await dbRun('UPDATE constructions SET group_id=NULL WHERE group_id=?', [groupId]);
       }
     }
   }
@@ -813,8 +824,8 @@ app.delete('/api/constructions/:id', authMiddleware, requireWrite, (req, res) =>
   res.json({ success: true });
 });
 
-app.get('/api/history/:id', authMiddleware, (req, res) => {
-  const rows = queryAll('SELECT * FROM history WHERE construction_id = ? ORDER BY id DESC', [req.params.id]);
+app.get('/api/history/:id', authMiddleware, async (req, res) => {
+  const rows = await queryAll('SELECT * FROM history WHERE construction_id = ? ORDER BY id DESC', [req.params.id]);
   res.json(rows.map(r => ({ ...r, diff: JSON.parse(r.diff || '[]') })));
 });
 
@@ -882,41 +893,49 @@ async function nacFetchAuto(endpoint) {
 // ── IP 대장 API ──────────────────────────────────────────
 
 // 서브넷 목록
-app.get('/api/ip/subnets', authMiddleware, (req, res) => {
-  const subnets = queryAll('SELECT * FROM ip_subnets ORDER BY network');
-  res.json(subnets.map(s => ({
-    ...s,
-    total: Math.pow(2, 32 - s.prefix) - 2,
-    used: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="used"', [s.id]).cnt,
-    unused: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="unused"', [s.id]).cnt,
-    reserved: queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="reserved"', [s.id]).cnt,
-  })));
+app.get('/api/ip/subnets', authMiddleware, async (req, res) => {
+  const subnets = await queryAll('SELECT * FROM ip_subnets ORDER BY network');
+  const result = await Promise.all(subnets.map(async s => {
+    const [used, unused, reserved] = await Promise.all([
+      queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="used"',     [s.id]),
+      queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="unused"',   [s.id]),
+      queryOne('SELECT COUNT(*) as cnt FROM ip_assets WHERE subnet_id=? AND status="reserved"', [s.id]),
+    ]);
+    return {
+      ...s,
+      total:    Math.pow(2, 32 - s.prefix) - 2,
+      used:     used?.cnt     || 0,
+      unused:   unused?.cnt   || 0,
+      reserved: reserved?.cnt || 0,
+    };
+  }));
+  res.json(result);
 });
 
-app.post('/api/ip/subnets', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/ip/subnets', authMiddleware, requireWrite, async (req, res) => {
   const { name, network, prefix, gateway, dns, vlan, description } = req.body;
   if (!name || !network || !prefix) return res.status(400).json({ error: '필수값 누락' });
-  db.run('INSERT INTO ip_subnets (name,network,prefix,gateway,dns,vlan,description) VALUES (?,?,?,?,?,?,?)',
+  const result = await dbRun('INSERT INTO ip_subnets (name,network,prefix,gateway,dns,vlan,description) VALUES (?,?,?,?,?,?,?)',
     [name, network, parseInt(prefix), gateway||'', dns||'', vlan||'', description||'']);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/ip/subnets/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/ip/subnets/:id', authMiddleware, requireWrite, async (req, res) => {
   const { name, network, prefix, gateway, dns, vlan, description } = req.body;
-  db.run('UPDATE ip_subnets SET name=?,network=?,prefix=?,gateway=?,dns=?,vlan=?,description=? WHERE id=?',
+  await dbRun('UPDATE ip_subnets SET name=?,network=?,prefix=?,gateway=?,dns=?,vlan=?,description=? WHERE id=?',
     [name, network, parseInt(prefix), gateway||'', dns||'', vlan||'', description||'', req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/ip/subnets/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM ip_subnets WHERE id=?', [req.params.id]);
-  db.run('DELETE FROM ip_assets WHERE subnet_id=?', [req.params.id]);
+app.delete('/api/ip/subnets/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM ip_subnets WHERE id=?', [req.params.id]);
+  await dbRun('DELETE FROM ip_assets WHERE subnet_id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // IP 목록
-app.get('/api/ip/assets', authMiddleware, (req, res) => {
+app.get('/api/ip/assets', authMiddleware, async (req, res) => {
   const { subnet_id, status, search } = req.query;
   let sql = 'SELECT a.*, t.name as tag_name, t.color as tag_color FROM ip_assets a LEFT JOIN ip_tags t ON a.tag_id=t.id WHERE 1=1';
   const params = [];
@@ -924,39 +943,39 @@ app.get('/api/ip/assets', authMiddleware, (req, res) => {
   if (status && status !== '전체') { sql += ' AND status=?'; params.push(status); }
   if (search) { sql += ' AND (ip LIKE ? OR hostname LIKE ? OR user_name LIKE ? OR dept LIKE ? OR mac LIKE ?)'; const kw = `%${search}%`; params.push(kw,kw,kw,kw,kw); }
   const ipToInt = ip => { const p=(ip||'').split('.').map(Number); return ((p[0]||0)<<24)|((p[1]||0)<<16)|((p[2]||0)<<8)|(p[3]||0); };
-  const rows = queryAll(sql, params);
+  const rows = await queryAll(sql, params);
   rows.sort((a,b) => ipToInt(a.ip) - ipToInt(b.ip));
   res.json(rows);
 });
 
 // IP 개별 등록/수정/삭제
-app.post('/api/ip/assets', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/ip/assets', authMiddleware, requireWrite, async (req, res) => {
   const { subnet_id, ip, mac, hostname, user_name, dept, device_type, os, status, location, description } = req.body;
   const tag_id = req.body.tag_id || null;
   if (!ip) return res.status(400).json({ error: 'IP 필수' });
   try {
-    db.run('INSERT INTO ip_assets (subnet_id,ip,mac,hostname,user_name,dept,device_type,os,status,tag_id,location,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    const result = await dbRun('INSERT IGNORE INTO ip_assets (subnet_id,ip,mac,hostname,user_name,dept,device_type,os,status,tag_id,location,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
       [subnet_id||null, s(ip), s(mac), s(hostname), s(user_name), s(dept), s(device_type)||'PC', s(os), status||'used', tag_id, s(location), s(description)]);
     saveDB();
-    res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+    res.json({ id: result.insertId });
   } catch(e) { res.status(400).json({ error: 'IP 중복 또는 오류: ' + e.message }); }
 });
 
-app.put('/api/ip/assets/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/ip/assets/:id', authMiddleware, requireWrite, async (req, res) => {
   const { mac, hostname, user_name, dept, device_type, os, status, tag_id, location, description } = req.body;
-  db.run('UPDATE ip_assets SET mac=?,hostname=?,user_name=?,dept=?,device_type=?,os=?,status=?,tag_id=?,location=?,description=?,updated_at=datetime("now","localtime") WHERE id=?',
+  await dbRun('UPDATE ip_assets SET mac=?,hostname=?,user_name=?,dept=?,device_type=?,os=?,status=?,tag_id=?,location=?,description=?,updated_at=datetime("now","localtime") WHERE id=?',
     [s(mac),s(hostname),s(user_name),s(dept),s(device_type),s(os),status||'used',tag_id||null,s(location),s(description),req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/ip/assets/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM ip_assets WHERE id=?', [req.params.id]);
+app.delete('/api/ip/assets/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM ip_assets WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // 서브넷 전체 IP 자동 생성
-app.post('/api/ip/subnets/:id/generate', authMiddleware, requireWrite, (req, res) => {
-  const subnet = queryOne('SELECT * FROM ip_subnets WHERE id=?', [req.params.id]);
+app.post('/api/ip/subnets/:id/generate', authMiddleware, requireWrite, async (req, res) => {
+  const subnet = await queryOne('SELECT * FROM ip_subnets WHERE id=?', [req.params.id]);
   if (!subnet) return res.status(404).json({ error: '서브넷 없음' });
   const parts = subnet.network.split('.').map(Number);
   const total = Math.pow(2, 32 - subnet.prefix) - 2;
@@ -964,7 +983,7 @@ app.post('/api/ip/subnets/:id/generate', authMiddleware, requireWrite, (req, res
   for (let i = 1; i <= total; i++) {
     const ip = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3] + i}`;
     try {
-      db.run('INSERT OR IGNORE INTO ip_assets (subnet_id,ip,status) VALUES (?,?,?)', [subnet.id, ip, 'unused']);
+      await dbRun('INSERT OR IGNORE INTO ip_assets (subnet_id,ip,status) VALUES (?,?,?)', [subnet.id, ip, 'unused']);
       added++;
     } catch(e) {}
   }
@@ -1022,7 +1041,7 @@ app.post('/api/nac/sync', authMiddleware, requireWrite, async (req, res) => {
   if (!NAC_API_KEY) return res.status(503).json({ error: 'NAC API Key 미설정' });
   try {
     // 등록된 서브넷 목록
-    const subnets = queryAll('SELECT * FROM ip_subnets');
+    const subnets = await queryAll('SELECT * FROM ip_subnets');
     if (!subnets.length) return res.status(400).json({ error: '먼저 서브넷을 등록해주세요' });
 
     // IP가 등록된 서브넷 대역에 속하는지 확인
@@ -1060,12 +1079,12 @@ app.post('/api/nac/sync', authMiddleware, requireWrite, async (req, res) => {
         const matched_subnet_id = findSubnet(ip);
         if (!matched_subnet_id) { skipped++; continue; }
         if (!ip) continue;
-        const existing = queryOne('SELECT id FROM ip_assets WHERE ip=?', [ip]);
+        const existing = await queryOne('SELECT id FROM ip_assets WHERE ip=?', [ip]);
         if (existing) {
-          db.run('UPDATE ip_assets SET subnet_id=COALESCE(subnet_id,?),mac=?,hostname=?,user_name=?,dept=?,os=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
+          await dbRun('UPDATE ip_assets SET subnet_id=COALESCE(subnet_id,?),mac=?,hostname=?,user_name=?,dept=?,os=?,nac_status=?,last_seen=?,status="used",updated_at=datetime("now","localtime") WHERE ip=?',
             [matched_subnet_id, mac, hostname, user_name, dept, os, nacStatus, lastSeen, ip]);
         } else {
-          db.run('INSERT OR IGNORE INTO ip_assets (subnet_id,ip,mac,hostname,user_name,dept,os,nac_status,last_seen,status) VALUES (?,?,?,?,?,?,?,?,?,"used")',
+          await dbRun('INSERT OR IGNORE INTO ip_assets (subnet_id,ip,mac,hostname,user_name,dept,os,nac_status,last_seen,status) VALUES (?,?,?,?,?,?,?,?,?,"used")',
             [matched_subnet_id, ip, mac, hostname, user_name, dept, os, nacStatus, lastSeen]);
         }
         synced++;
@@ -1082,58 +1101,58 @@ app.post('/api/nac/sync', authMiddleware, requireWrite, async (req, res) => {
 });
 
 // 빈 IP 추천
-app.get('/api/ip/available', authMiddleware, (req, res) => {
+app.get('/api/ip/available', authMiddleware, async (req, res) => {
   const { subnet_id, count = 5 } = req.query;
   let sql = 'SELECT ip FROM ip_assets WHERE status="unused"';
   const params = [];
   if (subnet_id) { sql += ' AND subnet_id=?'; params.push(subnet_id); }
   sql += " ORDER BY CAST(SUBSTR(ip,1,INSTR(ip,'.')-1) AS INT), CAST(SUBSTR(ip,INSTR(ip,'.')+1,INSTR(ip,'.',INSTR(ip,'.')+1)-INSTR(ip,'.')-1) AS INT), CAST(SUBSTR(ip,INSTR(ip,'.',INSTR(ip,'.')+1)+1,INSTR(ip,'.',INSTR(ip,'.',INSTR(ip,'.')+1)+1)-INSTR(ip,'.',INSTR(ip,'.')+1)-1) AS INT), CAST(SUBSTR(ip,INSTR(ip,'.',INSTR(ip,'.',INSTR(ip,'.')+1)+1)+1) AS INT) LIMIT ?";
   params.push(parseInt(count));
-  res.json(queryAll(sql, params).map(r => r.ip));
+  res.json(await queryAll(sql, params).map(r => r.ip));
 });
 
 
 // IP 태그 관리
-app.get('/api/ip/tags', authMiddleware, (req, res) => {
+app.get('/api/ip/tags', authMiddleware, async (req, res) => {
   const { subnet_id } = req.query;
   let sql = 'SELECT * FROM ip_tags';
   const params = [];
   if (subnet_id) { sql += ' WHERE subnet_id=?'; params.push(subnet_id); }
-  res.json(queryAll(sql + ' ORDER BY id', params));
+  res.json(await queryAll(sql + ' ORDER BY id', params));
 });
 
-app.post('/api/ip/tags', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/ip/tags', authMiddleware, requireWrite, async (req, res) => {
   const { subnet_id, name, color } = req.body;
   if (!name) return res.status(400).json({ error: '이름 필수' });
-  db.run('INSERT INTO ip_tags (subnet_id,name,color) VALUES (?,?,?)', [subnet_id||null, name, color||'#3b82f6']);
+  const result = await dbRun('INSERT INTO ip_tags (subnet_id,name,color) VALUES (?,?,?)', [subnet_id||null, name, color||'#3b82f6']);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/ip/tags/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/ip/tags/:id', authMiddleware, requireWrite, async (req, res) => {
   const { name, color } = req.body;
-  db.run('UPDATE ip_tags SET name=?,color=? WHERE id=?', [name, color, req.params.id]);
+  await dbRun('UPDATE ip_tags SET name=?,color=? WHERE id=?', [name, color, req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/ip/tags/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('UPDATE ip_assets SET tag_id=NULL WHERE tag_id=?', [req.params.id]);
-  db.run('DELETE FROM ip_tags WHERE id=?', [req.params.id]);
+app.delete('/api/ip/tags/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('UPDATE ip_assets SET tag_id=NULL WHERE tag_id=?', [req.params.id]);
+  await dbRun('DELETE FROM ip_tags WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // IP에 태그 지정
-app.put('/api/ip/assets/:id/tag', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/ip/assets/:id/tag', authMiddleware, requireWrite, async (req, res) => {
   const { tag_id } = req.body;
-  db.run('UPDATE ip_assets SET tag_id=? WHERE id=?', [tag_id||null, req.params.id]);
+  await dbRun('UPDATE ip_assets SET tag_id=? WHERE id=?', [tag_id||null, req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 
 // IP 태그 범위 관리
-app.get('/api/ip/tag-ranges', authMiddleware, (req, res) => {
+app.get('/api/ip/tag-ranges', authMiddleware, async (req, res) => {
   const { subnet_id } = req.query;
-  res.json(queryAll(
+  res.json(await queryAll(
     `SELECT r.*, t.name as tag_name, t.color as tag_color
      FROM ip_tag_ranges r JOIN ip_tags t ON r.tag_id=t.id
      WHERE r.subnet_id=? ORDER BY r.ip_start`,
@@ -1141,17 +1160,17 @@ app.get('/api/ip/tag-ranges', authMiddleware, (req, res) => {
   ));
 });
 
-app.post('/api/ip/tag-ranges', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/ip/tag-ranges', authMiddleware, requireWrite, async (req, res) => {
   const { tag_id, subnet_id, ip_start, ip_end } = req.body;
   if (!tag_id || !ip_start || !ip_end) return res.status(400).json({ error: '필수값 누락' });
-  db.run('INSERT INTO ip_tag_ranges (tag_id,subnet_id,ip_start,ip_end) VALUES (?,?,?,?)',
+  const result = await dbRun('INSERT INTO ip_tag_ranges (tag_id,subnet_id,ip_start,ip_end) VALUES (?,?,?,?)',
     [tag_id, subnet_id, ip_start, ip_end]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.delete('/api/ip/tag-ranges/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM ip_tag_ranges WHERE id=?', [req.params.id]);
+app.delete('/api/ip/tag-ranges/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM ip_tag_ranges WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
@@ -1165,11 +1184,11 @@ app.get('/api/ip/assets-with-tags', authMiddleware, async (req, res) => {
   if (status && status !== '전체') { sql += ' AND a.status=?'; params.push(status); }
   if (search) { sql += ' AND (a.ip LIKE ? OR a.hostname LIKE ? OR a.user_name LIKE ? OR a.dept LIKE ? OR a.mac LIKE ?)'; const kw='%'+search+'%'; params.push(kw,kw,kw,kw,kw); }
   const ipToIntA = ip => { const p=(ip||'').split('.').map(Number); return ((p[0]||0)<<24)|((p[1]||0)<<16)|((p[2]||0)<<8)|(p[3]||0); };
-  let assets = queryAll(sql, params);
+  let assets = await queryAll(sql, params);
   assets.sort((a,b) => ipToIntA(a.ip) - ipToIntA(b.ip));
 
   // 범위 태그 적용 (개별 tag_id 없는 IP에 범위 태그 적용)
-  const ranges = queryAll('SELECT r.*,t.name as tag_name,t.color as tag_color FROM ip_tag_ranges r JOIN ip_tags t ON r.tag_id=t.id WHERE r.subnet_id=?', [subnet_id]);
+  const ranges = await queryAll('SELECT r.*,t.name as tag_name,t.color as tag_color FROM ip_tag_ranges r JOIN ip_tags t ON r.tag_id=t.id WHERE r.subnet_id=?', [subnet_id]);
   assets = assets.map(a => {
     if (a.tag_id) return a; // 개별 태그 우선
     const matched = ranges.find(r => isIpInRange(a.ip, r.ip_start, r.ip_end));
@@ -1181,9 +1200,9 @@ app.get('/api/ip/assets-with-tags', authMiddleware, async (req, res) => {
 
 
 // subnet_id null인 IP 자산을 서브넷 대역 기준으로 재매핑
-app.post('/api/ip/remap-subnets', authMiddleware, requireWrite, (req, res) => {
-  const subnets = queryAll('SELECT * FROM ip_subnets');
-  const assets = queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
+app.post('/api/ip/remap-subnets', authMiddleware, requireWrite, async (req, res) => {
+  const subnets = await queryAll('SELECT * FROM ip_subnets');
+  const assets = await queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
   let updated = 0;
   for (const asset of assets) {
     const ipParts = (asset.ip||'').split('.').map(Number);
@@ -1194,7 +1213,7 @@ app.post('/api/ip/remap-subnets', authMiddleware, requireWrite, (req, res) => {
       const snInt = ((snParts[0]<<24)|(snParts[1]<<16)|(snParts[2]<<8)|snParts[3]) >>> 0;
       const mask = (0xFFFFFFFF << (32 - sn.prefix)) >>> 0;
       if ((ipInt & mask) === (snInt & mask)) {
-        db.run('UPDATE ip_assets SET subnet_id=? WHERE id=?', [sn.id, asset.id]);
+        await dbRun('UPDATE ip_assets SET subnet_id=? WHERE id=?', [sn.id, asset.id]);
         updated++;
         break;
       }
@@ -1206,12 +1225,12 @@ app.post('/api/ip/remap-subnets', authMiddleware, requireWrite, (req, res) => {
 
 
 // 서브넷에 속하지 않는 IP 자산 삭제
-app.delete('/api/ip/cleanup-unmatched', authMiddleware, requireWrite, (req, res) => {
-  const subnets = queryAll('SELECT * FROM ip_subnets');
-  const assets = queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
+app.delete('/api/ip/cleanup-unmatched', authMiddleware, requireWrite, async (req, res) => {
+  const subnets = await queryAll('SELECT * FROM ip_subnets');
+  const assets = await queryAll('SELECT id, ip FROM ip_assets WHERE subnet_id IS NULL');
   let deleted = 0;
   for (const asset of assets) {
-    db.run('DELETE FROM ip_assets WHERE id=?', [asset.id]);
+    await dbRun('DELETE FROM ip_assets WHERE id=?', [asset.id]);
     deleted++;
   }
   saveDB();
@@ -1224,25 +1243,25 @@ app.delete('/api/ip/cleanup-unmatched', authMiddleware, requireWrite, (req, res)
 // ── 공사 그룹 묶기 API ──────────────────────────────────────────
 
 // 새 group_id 발급 (MAX+1)
-app.post('/api/groups/new', authMiddleware, requireWrite, (req, res) => {
-  const row = queryOne('SELECT MAX(group_id) as m FROM constructions');
+app.post('/api/groups/new', authMiddleware, requireWrite, async (req, res) => {
+  const row = await queryOne('SELECT MAX(group_id) as m FROM constructions');
   const newGid = (row.m || 0) + 1;
   res.json({ group_id: newGid });
 });
 
 // 공사에 group_id 지정
-app.put('/api/constructions/:id/group', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/constructions/:id/group', authMiddleware, requireWrite, async (req, res) => {
   const { group_id } = req.body;
-  const oldRow = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
+  const oldRow = await queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
   const oldGid = oldRow?.group_id;
 
-  db.run('UPDATE constructions SET group_id=? WHERE id=?', [group_id || null, req.params.id]);
+  await dbRun('UPDATE constructions SET group_id=? WHERE id=?', [group_id || null, req.params.id]);
 
   // 이전 그룹에서 빠졌을 때 남은 멤버가 1명이면 자동 해제
   if (oldGid && oldGid !== group_id) {
-    const cnt = queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [oldGid]);
+    const cnt = await queryOne('SELECT COUNT(*) as cnt FROM constructions WHERE group_id=?', [oldGid]);
     if (cnt && cnt.cnt === 1) {
-      db.run('UPDATE constructions SET group_id=NULL WHERE group_id=?', [oldGid]);
+      await dbRun('UPDATE constructions SET group_id=NULL WHERE group_id=?', [oldGid]);
     }
   }
 
@@ -1251,29 +1270,30 @@ app.put('/api/constructions/:id/group', authMiddleware, requireWrite, (req, res)
 });
 
 // 현재 존재하는 그룹 목록 (공사 선택용)
-app.get('/api/groups/list', authMiddleware, (req, res) => {
-  const rows = queryAll('SELECT DISTINCT group_id FROM constructions WHERE group_id IS NOT NULL ORDER BY group_id');
+app.get('/api/groups/list', authMiddleware, async (req, res) => {
+  const rows = await queryAll('SELECT DISTINCT group_id FROM constructions WHERE group_id IS NOT NULL ORDER BY group_id');
   const GROUP_COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6'];
-  res.json(rows.map((r, i) => ({
+  const result = await Promise.all(rows.map(async (r, i) => ({
     group_id: r.group_id,
     color: GROUP_COLORS[i % GROUP_COLORS.length],
-    members: queryAll('SELECT id, work_name FROM constructions WHERE group_id=?', [r.group_id])
+    members: await queryAll('SELECT id, work_name FROM constructions WHERE group_id=?', [r.group_id])
   })));
+  res.json(result);
 });
 
 // ── 공사 파일 첨부 API ──────────────────────────────────────────
 
-app.get('/api/constructions/:id/files', authMiddleware, (req, res) => {
-  const constr = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
+app.get('/api/constructions/:id/files', authMiddleware, async (req, res) => {
+  const constr = await queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
   const gid = constr?.group_id;
 
   // 내 파일
-  const myFiles = queryAll('SELECT *, 0 as shared FROM construction_files WHERE construction_id=? ORDER BY file_type, created_at', [req.params.id]);
+  const myFiles = await queryAll('SELECT *, 0 as shared FROM construction_files WHERE construction_id=? ORDER BY file_type, created_at', [req.params.id]);
 
   // 같은 그룹의 다른 공사 파일 (group_id 있을 때만)
   let sharedFiles = [];
   if (gid) {
-    sharedFiles = queryAll(
+    sharedFiles = await queryAll(
       `SELECT f.*, 1 as shared, c.work_name as from_work_name
        FROM construction_files f
        JOIN constructions c ON f.construction_id = c.id
@@ -1290,7 +1310,7 @@ app.get('/api/constructions/:id/files', authMiddleware, (req, res) => {
   res.json([...myFiles, ...deduped]);
 });
 
-app.post('/api/constructions/:id/files', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
+app.post('/api/constructions/:id/files', upload.single('file'), authMiddleware, requireWrite, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일 없음' });
   const { file_type } = req.body;
   // multer는 파일명을 latin1으로 받으므로 utf8로 변환
@@ -1299,17 +1319,17 @@ app.post('/api/constructions/:id/files', upload.single('file'), authMiddleware, 
   const filename = `${req.params.id}_${file_type}_${Date.now()}${ext}`;
   const dest = path.join(FILES_DIR, filename);
   fs.writeFileSync(dest, req.file.buffer);
-  const constr = queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
-  db.run('INSERT INTO construction_files (construction_id,file_type,original_name,filename,file_size,group_id) VALUES (?,?,?,?,?,?)',
+  const constr = await queryOne('SELECT group_id FROM constructions WHERE id=?', [req.params.id]);
+  const result = await dbRun('INSERT INTO construction_files (construction_id,file_type,original_name,filename,file_size,group_id) VALUES (?,?,?,?,?,?)',
     [req.params.id, file_type, originalName, filename, req.file.size, constr?.group_id || null]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename, original_name: originalName });
+  res.json({ id: result.insertId, filename, original_name: originalName });
 });
 
-app.get('/api/constructions/files/:filename', authMiddleware, (req, res) => {
+app.get('/api/constructions/files/:filename', authMiddleware, async (req, res) => {
   const filepath = path.join(FILES_DIR, req.params.filename);
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: '파일 없음' });
-  const file = queryOne('SELECT original_name FROM construction_files WHERE filename=?', [req.params.filename]);
+  const file = await queryOne('SELECT original_name FROM construction_files WHERE filename=?', [req.params.filename]);
   const originalName = file?.original_name || req.params.filename;
   // RFC 5987 방식으로 한글 파일명 인코딩
   const encodedName = encodeURIComponent(originalName).replace(/'/g, '%27');
@@ -1318,42 +1338,42 @@ app.get('/api/constructions/files/:filename', authMiddleware, (req, res) => {
   res.sendFile(filepath);
 });
 
-app.delete('/api/constructions/files/:id', authMiddleware, requireWrite, (req, res) => {
-  const file = queryOne('SELECT * FROM construction_files WHERE id=?', [req.params.id]);
+app.delete('/api/constructions/files/:id', authMiddleware, requireWrite, async (req, res) => {
+  const file = await queryOne('SELECT * FROM construction_files WHERE id=?', [req.params.id]);
   if (!file) return res.status(404).json({ error: '파일 없음' });
   const filepath = path.join(FILES_DIR, file.filename);
   if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
-  db.run('DELETE FROM construction_files WHERE id=?', [req.params.id]);
+  await dbRun('DELETE FROM construction_files WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
 
 // ── 망 관리 API ──────────────────────────────────────────
 
-app.get('/api/networks', authMiddleware, (req, res) => res.json(queryAll('SELECT * FROM networks ORDER BY id')));
+app.get('/api/networks', authMiddleware, async (req, res) => res.json(await queryAll('SELECT * FROM networks ORDER BY id')));
 
-app.post('/api/networks', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/networks', authMiddleware, requireWrite, async (req, res) => {
   const { name, color, shape } = req.body;
   if (!name || !color) return res.status(400).json({ error: '필수값 누락' });
-  db.run('INSERT INTO networks (name, color, shape) VALUES (?,?,?)', [name.trim().toUpperCase(), color, shape||'circle']);
+  const result = await dbRun('INSERT INTO networks (name, color, shape) VALUES (?,?,?)', [name.trim().toUpperCase(), color, shape||'circle']);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/networks/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/networks/:id', authMiddleware, requireWrite, async (req, res) => {
   const { name, color, shape } = req.body;
-  db.run('UPDATE networks SET name=?,color=?,shape=? WHERE id=?', [name.trim().toUpperCase(), color, shape||'circle', req.params.id]);
+  await dbRun('UPDATE networks SET name=?,color=?,shape=? WHERE id=?', [name.trim().toUpperCase(), color, shape||'circle', req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/networks/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM networks WHERE id=?', [req.params.id]);
+app.delete('/api/networks/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM networks WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // ── 선번 관리 API ──────────────────────────────────────────
 
-app.post('/api/floorplan/upload', upload.single('image'), authMiddleware, requireWrite, (req, res) => {
+app.post('/api/floorplan/upload', upload.single('image'), authMiddleware, requireWrite, async (req, res) => {
   try {
     const { region, dong, floor } = req.body;
     if (!req.file) return res.status(400).json({ error: '파일 없음' });
@@ -1428,14 +1448,14 @@ app.post('/api/floorplan/upload', upload.single('image'), authMiddleware, requir
       finalFilename = base + '.' + ext;
       fs.writeFileSync(path.join(FLOOR_IMG_DIR, finalFilename), req.file.buffer);
     }
-    const existing = queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
+    const existing = await queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
     const dxfMin = dxfCoords?.minx, dxfMax = dxfCoords?.maxx;
     const labelsJson = dxfCoords ? JSON.stringify(dxfCoords.labels) : null;
 
     if (existing) {
       // 신 도면 업로드 시 기존 핀 DXF 좌표로 재매핑
       if (dxfCoords) {
-        const oldFp = queryOne('SELECT * FROM floorplans WHERE id=?', [existing.id]);
+        const oldFp = await queryOne('SELECT * FROM floorplans WHERE id=?', [existing.id]);
         if (oldFp?.dxf_minx !== null && oldFp?.dxf_minx !== undefined) {
           remapCablesToNewDxf(existing.id, oldFp, dxfCoords);
         }
@@ -1445,7 +1465,7 @@ app.post('/api/floorplan/upload', upload.single('image'), authMiddleware, requir
         dxfCoords?.maxx ?? null, dxfCoords?.maxy ?? null,
         labelsJson ?? null
       ];
-      db.run('UPDATE floorplans SET filename=?,dxf_minx=?,dxf_miny=?,dxf_maxx=?,dxf_maxy=?,dxf_labels=? WHERE id=?',
+      await dbRun('UPDATE floorplans SET filename=?,dxf_minx=?,dxf_miny=?,dxf_maxx=?,dxf_maxy=?,dxf_labels=? WHERE id=?',
         [finalFilename, ...dxVals, existing.id]);
       res.json({ id: existing.id, filename: finalFilename, dxfCoords: dxfCoords || null });
     } else {
@@ -1454,20 +1474,20 @@ app.post('/api/floorplan/upload', upload.single('image'), authMiddleware, requir
         dxfCoords?.maxx ?? null, dxfCoords?.maxy ?? null,
         labelsJson ?? null
       ];
-      db.run('INSERT INTO floorplans (region,dong,floor,filename,dxf_minx,dxf_miny,dxf_maxx,dxf_maxy,dxf_labels) VALUES (?,?,?,?,?,?,?,?,?)',
+      const result = await dbRun('INSERT INTO floorplans (region,dong,floor,filename,dxf_minx,dxf_miny,dxf_maxx,dxf_maxy,dxf_labels) VALUES (?,?,?,?,?,?,?,?,?)',
         [region, dong, floor, finalFilename, ...dxVals2]);
-      res.json({ id: queryOne('SELECT last_insert_rowid() as id').id, filename: finalFilename, dxfCoords: dxfCoords || null });
+      res.json({ id: result.insertId, filename: finalFilename, dxfCoords: dxfCoords || null });
     }
     saveDB();
   } catch(e) { console.error('Upload error:', e); res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/floorplan', authMiddleware, (req, res) => {
+app.get('/api/floorplan', authMiddleware, async (req, res) => {
   const { region, dong, floor } = req.query;
-  res.json(queryOne('SELECT * FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]) || null);
+  res.json(await queryOne('SELECT * FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]) || null);
 });
 
-app.get('/api/floorplan/image/:filename', authMiddleware, (req, res) => {
+app.get('/api/floorplan/image/:filename', authMiddleware, async (req, res) => {
   const filepath = path.join(FLOOR_IMG_DIR, req.params.filename);
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: '없음' });
   res.sendFile(filepath);
@@ -1475,19 +1495,19 @@ app.get('/api/floorplan/image/:filename', authMiddleware, (req, res) => {
 
 
 // 재매핑 후 신 도면을 실제 위치에 저장
-app.post('/api/floorplan/remap-finalize', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/floorplan/remap-finalize', authMiddleware, requireWrite, async (req, res) => {
   try {
     const { tmpId, region, dong, floor } = req.body;
-    const tmpFp = queryOne('SELECT * FROM floorplans WHERE id=?', [tmpId]);
+    const tmpFp = await queryOne('SELECT * FROM floorplans WHERE id=?', [tmpId]);
     if (!tmpFp) return res.status(404).json({ error: '임시 도면 없음' });
 
     // 기존 도면 교체
-    const existing = queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
+    const existing = await queryOne('SELECT id FROM floorplans WHERE region=? AND dong=? AND floor=?', [region, dong, floor]);
     if (existing) {
-      db.run('UPDATE floorplans SET filename=? WHERE id=?', [tmpFp.filename, existing.id]);
-      db.run('DELETE FROM floorplans WHERE id=?', [tmpId]);
+      await dbRun('UPDATE floorplans SET filename=? WHERE id=?', [tmpFp.filename, existing.id]);
+      await dbRun('DELETE FROM floorplans WHERE id=?', [tmpId]);
     } else {
-      db.run('UPDATE floorplans SET region=?,dong=?,floor=? WHERE id=?', [region, dong, floor, tmpId]);
+      await dbRun('UPDATE floorplans SET region=?,dong=?,floor=? WHERE id=?', [region, dong, floor, tmpId]);
     }
     saveDB();
     res.json({ success: true });
@@ -1496,16 +1516,16 @@ app.post('/api/floorplan/remap-finalize', authMiddleware, requireWrite, (req, re
   }
 });
 
-app.get('/api/cables', authMiddleware, (req, res) => {
-  res.json(queryAll('SELECT * FROM cables WHERE floorplan_id=? ORDER BY id DESC', [req.query.floorplan_id]));
+app.get('/api/cables', authMiddleware, async (req, res) => {
+  res.json(await queryAll('SELECT * FROM cables WHERE floorplan_id=? ORDER BY id DESC', [req.query.floorplan_id]));
 });
 
-app.post('/api/cables', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/cables', authMiddleware, requireWrite, async (req, res) => {
   const { floorplan_id, cable_no, construction_no, x, y, color, shape, memo } = req.body;
 
   // DXF 좌표 역산 (픽셀 비율 → DXF 실좌표)
   let dxf_x = null, dxf_y = null;
-  const fp = queryOne('SELECT * FROM floorplans WHERE id=?', [floorplan_id]);
+  const fp = await queryOne('SELECT * FROM floorplans WHERE id=?', [floorplan_id]);
   if (fp?.dxf_minx !== null && fp?.dxf_minx !== undefined) {
     const w = fp.dxf_maxx - fp.dxf_minx;
     const h = fp.dxf_maxy - fp.dxf_miny;
@@ -1513,54 +1533,54 @@ app.post('/api/cables', authMiddleware, requireWrite, (req, res) => {
     dxf_y = fp.dxf_miny + (1 - y) * h; // Y축 반전
   }
 
-  db.run('INSERT INTO cables (floorplan_id,cable_no,construction_no,x,y,dxf_x,dxf_y,color,shape,memo) VALUES (?,?,?,?,?,?,?,?,?,?)',
+  const result = await dbRun('INSERT INTO cables (floorplan_id,cable_no,construction_no,x,y,dxf_x,dxf_y,color,shape,memo) VALUES (?,?,?,?,?,?,?,?,?,?)',
     [floorplan_id, s(cable_no), s(construction_no), x, y, dxf_x, dxf_y, color||'#e74c3c', shape||'circle', s(memo)]);
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/cables/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/cables/:id', authMiddleware, requireWrite, async (req, res) => {
   const { cable_no, construction_no, color, shape, memo, x, y } = req.body;
   if (x !== undefined && y !== undefined) {
-    db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=?,x=?,y=? WHERE id=?',
+    await dbRun('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=?,x=?,y=? WHERE id=?',
       [s(cable_no), s(construction_no), color||'#e74c3c', shape||'circle', s(memo), x, y, req.params.id]);
   } else {
-    db.run('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=? WHERE id=?',
+    await dbRun('UPDATE cables SET cable_no=?,construction_no=?,color=?,shape=?,memo=? WHERE id=?',
       [s(cable_no), s(construction_no), color||'#e74c3c', shape||'circle', s(memo), req.params.id]);
   }
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/cables/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM cables WHERE id=?', [req.params.id]);
+app.delete('/api/cables/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM cables WHERE id=?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // ── 위치 관리 API ──────────────────────────────────────────
 
-app.get('/api/locations', authMiddleware, (req, res) => res.json(queryAll('SELECT * FROM locations ORDER BY region, dong')));
+app.get('/api/locations', authMiddleware, async (req, res) => res.json(await queryAll('SELECT * FROM locations ORDER BY region, dong')));
 
-app.post('/api/locations', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/locations', authMiddleware, requireWrite, async (req, res) => {
   const { region, dong, floors } = req.body;
   if (!region || !dong || !floors) return res.status(400).json({ error: '필수값 누락' });
-  db.run('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)', [region.trim(), dong.trim(), JSON.stringify(floors)]);
-  saveDB(); res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  const result = await dbRun('INSERT INTO locations (region, dong, floors) VALUES (?,?,?)', [region.trim(), dong.trim(), JSON.stringify(floors)]);
+  saveDB(); res.json({ id: result.insertId });
 });
 
-app.put('/api/locations/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/locations/:id', authMiddleware, requireWrite, async (req, res) => {
   const { region, dong, floors } = req.body;
-  db.run('UPDATE locations SET region=?,dong=?,floors=? WHERE id=?', [region.trim(), dong.trim(), JSON.stringify(floors), req.params.id]);
+  await dbRun('UPDATE locations SET region=?,dong=?,floors=? WHERE id=?', [region.trim(), dong.trim(), JSON.stringify(floors), req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
-app.delete('/api/locations/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM locations WHERE id = ?', [req.params.id]);
+app.delete('/api/locations/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM locations WHERE id = ?', [req.params.id]);
   saveDB(); res.json({ success: true });
 });
 
 // ── 엑셀 ──────────────────────────────────────────
 
-app.get('/api/template', authMiddleware, (req, res) => {
+app.get('/api/template', authMiddleware, async (req, res) => {
   const h1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
   const h2 = ['','','','','부서','이름','','지역','동','층','상세위치','지역','동','층','상세위치','상태','기한일','작업 완료일','구매품의서','지출품의서','연관품의서','','',''];
   const ex = ['','자체공사','26.03.01','KSM','IT관리팀','김준기','HO동 3층 서버실 케이블 포설','대곶','HO','3F','서버실','','','','','완료','26.03.10','26.03.09','경영-구품-26-0001','경영-지품-26-0001','','이준성','김준기, 이준성','특이사항 없음'];
@@ -1574,7 +1594,7 @@ app.get('/api/template', authMiddleware, (req, res) => {
   res.send(buf);
 });
 
-app.post('/api/import', upload.single('file'), authMiddleware, requireWrite, (req, res) => {
+app.post('/api/import', upload.single('file'), authMiddleware, requireWrite, async (req, res) => {
   try {
     const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -1618,33 +1638,33 @@ app.post('/api/import', upload.single('file'), authMiddleware, requireWrite, (re
 
       // No. 값이 있으면 기존 레코드 존재 여부 확인 후 upsert
       if (no) {
-        const existing = queryOne('SELECT id FROM constructions WHERE no = ?', [no]);
+        const existing = await queryOne('SELECT id FROM constructions WHERE no = ?', [no]);
         if (existing) {
           // 기존 레코드 업데이트
           const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
-          db.run(`UPDATE constructions SET ${sets} WHERE no = ?`, [...Object.values(fields), no]);
+          await dbRun(`UPDATE constructions SET ${sets} WHERE no = ?`, [...Object.values(fields), no]);
           updated++;
         } else {
           // 신규 삽입 (no 포함)
           const cols = ['no', ...Object.keys(fields)].join(', ');
           const placeholders = Array(Object.keys(fields).length + 1).fill('?').join(', ');
-          db.run(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [no, ...Object.values(fields)]);
+          await dbRun(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [no, ...Object.values(fields)]);
           inserted++;
         }
       } else {
         // No. 없는 행 → 공사명으로 중복 체크
         const existing = fields.work_name
-          ? queryOne('SELECT id FROM constructions WHERE work_name = ? AND req_date = ?', [fields.work_name, fields.req_date])
+          ? await queryOne('SELECT id FROM constructions WHERE work_name = ? AND req_date = ?', [fields.work_name, fields.req_date])
           : null;
         if (existing) {
           const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
-          db.run(`UPDATE constructions SET ${sets} WHERE id = ?`, [...Object.values(fields), existing.id]);
+          await dbRun(`UPDATE constructions SET ${sets} WHERE id = ?`, [...Object.values(fields), existing.id]);
           updated++;
         } else {
-          const lastNo = (queryOne('SELECT MAX(no) as m FROM constructions').m || 0) + 1;
+          const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0) + 1;
           const cols = ['no', ...Object.keys(fields)].join(', ');
           const placeholders = Array(Object.keys(fields).length + 1).fill('?').join(', ');
-          db.run(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [lastNo, ...Object.values(fields)]);
+          await dbRun(`INSERT INTO constructions (${cols}) VALUES (${placeholders})`, [lastNo, ...Object.values(fields)]);
           inserted++;
         }
       }
@@ -1655,8 +1675,8 @@ app.post('/api/import', upload.single('file'), authMiddleware, requireWrite, (re
   } catch(e) { res.status(500).json({ error: '파일 처리 중 오류: ' + e.message }); }
 });
 
-app.get('/api/export', authMiddleware, (req, res) => {
-  const rows = queryAll('SELECT * FROM constructions ORDER BY no ASC');
+app.get('/api/export', authMiddleware, async (req, res) => {
+  const rows = await queryAll('SELECT * FROM constructions ORDER BY no ASC');
   const now = new Date();
   const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
   const h1 = ['No.','구분','요청일','법인','요청자','','공사명','작업 위치','','','','작업 위치 (이동 전)','','','','완료','','','품의','','','IT관리팀 담당자','작업자','비고'];
@@ -1674,8 +1694,8 @@ app.get('/api/export', authMiddleware, (req, res) => {
 
 // ── 네트워크 장비 관리 API ──────────────────────────────────────────
 
-app.get('/api/net-devices/export', authMiddleware, (req, res) => {
-  const rows = queryAll('SELECT * FROM net_devices ORDER BY id');
+app.get('/api/net-devices/export', authMiddleware, async (req, res) => {
+  const rows = await queryAll('SELECT * FROM net_devices ORDER BY id');
   const now = new Date();
   const dateStr = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}`;
 
@@ -1749,25 +1769,25 @@ app.get('/api/net-devices/export', authMiddleware, (req, res) => {
   res.send(buf);
 });
 
-app.get('/api/net-devices', authMiddleware, (req, res) => {
-  res.json(queryAll('SELECT * FROM net_devices ORDER BY id'));
+app.get('/api/net-devices', authMiddleware, async (req, res) => {
+  res.json(await queryAll('SELECT * FROM net_devices ORDER BY id'));
 });
 
-app.post('/api/net-devices', authMiddleware, requireWrite, (req, res) => {
+app.post('/api/net-devices', authMiddleware, requireWrite, async (req, res) => {
   const { name, ip, snmp_community, snmp_port, location, location_detail, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
   if (!name) return res.status(400).json({ error: '장비명은 필수입니다' });
-  db.run(
+  const result = await dbRun(
     'INSERT INTO net_devices (name,ip,snmp_community,snmp_port,location,location_detail,network_type,vendor,model,serial,mac,interfaces,purchase_date,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', location_detail||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'']
   );
   saveDB();
-  res.json({ id: queryOne('SELECT last_insert_rowid() as id').id });
+  res.json({ id: result.insertId });
 });
 
-app.put('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
+app.put('/api/net-devices/:id', authMiddleware, requireWrite, async (req, res) => {
   const { name, ip, snmp_community, snmp_port, location, location_detail, network_type, vendor, model, serial, mac, interfaces, purchase_date, description } = req.body;
   if (!name) return res.status(400).json({ error: '장비명은 필수입니다' });
-  db.run(
+  await dbRun(
     'UPDATE net_devices SET name=?,ip=?,snmp_community=?,snmp_port=?,location=?,location_detail=?,network_type=?,vendor=?,model=?,serial=?,mac=?,interfaces=?,purchase_date=?,description=? WHERE id=?',
     [name.trim(), (ip||'').trim(), snmp_community||'public', parseInt(snmp_port)||161, location||'', location_detail||'', network_type||'', vendor||'', model||'', serial||'', mac||'', JSON.stringify(interfaces||[]), purchase_date||'', description||'', req.params.id]
   );
@@ -1775,8 +1795,8 @@ app.put('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/net-devices/:id', authMiddleware, requireWrite, (req, res) => {
-  db.run('DELETE FROM net_devices WHERE id=?', [req.params.id]);
+app.delete('/api/net-devices/:id', authMiddleware, requireWrite, async (req, res) => {
+  await dbRun('DELETE FROM net_devices WHERE id=?', [req.params.id]);
   saveDB();
   res.json({ success: true });
 });
@@ -1804,7 +1824,7 @@ function buildDeviceInfoLines(device) {
 
 // QR 코드 생성 API  (URL 방식 전용 — 사내망 접속으로 장비 상세페이지 이동)
 app.get('/api/net-devices/:id/qr', authMiddleware, async (req, res) => {
-  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
+  const device = await queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
   if (!device) return res.status(404).json({ error: '장비를 찾을 수 없습니다' });
 
   const baseUrl = (req.query.baseUrl || '').replace(/\/$/, '');
@@ -1832,7 +1852,7 @@ app.post('/api/net-devices/qr-batch', authMiddleware, async (req, res) => {
   const cleanBase = (baseUrl || '').replace(/\/$/, '');
   const results = [];
   for (const id of ids) {
-    const device = queryOne('SELECT * FROM net_devices WHERE id=?', [id]);
+    const device = await queryOne('SELECT * FROM net_devices WHERE id=?', [id]);
     if (!device) continue;
     const qrUrl  = cleanBase ? `${cleanBase}/device/${device.id}` : `http://localhost:3000/device/${device.id}`;
     const qrText = buildDeviceInfoLines(device).join('\n');
@@ -1846,7 +1866,7 @@ app.post('/api/net-devices/qr-batch', authMiddleware, async (req, res) => {
 
 // 장비 상세 페이지 (URL 모드 QR 스캔 시 열리는 페이지 - 사내망 필요)
 app.get('/device/:id', async (req, res) => {
-  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
+  const device = await queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
   if (!device) return res.status(404).send(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>오류</title></head><body style="font-family:sans-serif;padding:32px;text-align:center"><h2 style="color:#c0392b">장비를 찾을 수 없습니다</h2></body></html>`);
 
   // 인터페이스 테이블 HTML
@@ -1920,8 +1940,8 @@ app.get('/device/:id', async (req, res) => {
 });
 
 // SNMP 조회 API
-app.get('/api/net-devices/:id/snmp', authMiddleware, (req, res) => {
-  const device = queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
+app.get('/api/net-devices/:id/snmp', authMiddleware, async (req, res) => {
+  const device = await queryOne('SELECT * FROM net_devices WHERE id=?', [req.params.id]);
   if (!device) return res.status(404).json({ error: '장비를 찾을 수 없습니다' });
 
   const session = snmp.createSession(device.ip, device.snmp_community, {
@@ -2063,8 +2083,7 @@ const BACKUP_TABLES = [
   'net_devices',
 ];
 
-// 백업 내려받기 (admin만)
-app.get('/api/backup/export', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/backup/export', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const backup = {
       version: '1.0',
@@ -2073,7 +2092,7 @@ app.get('/api/backup/export', authMiddleware, requireAdmin, (req, res) => {
       data: {},
     };
     for (const table of BACKUP_TABLES) {
-      try { backup.data[table] = queryAll(`SELECT * FROM ${table}`); }
+      try { backup.data[table] = await queryAll(`SELECT * FROM ${table}`); }
       catch(e) { backup.data[table] = []; }
     }
     const json = JSON.stringify(backup, null, 2);
@@ -2086,9 +2105,8 @@ app.get('/api/backup/export', authMiddleware, requireAdmin, (req, res) => {
   }
 });
 
-// 복구 (admin만) — 같은 JSON 포맷이면 SQLite↔MariaDB 간에도 동작
-app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
+app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: '파일 업로드 실패: ' + err.message });
     if (!req.file) return res.status(400).json({ error: '파일이 없습니다' });
     try {
@@ -2098,7 +2116,6 @@ app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res, next) =
         return res.status(400).json({ error: '올바른 백업 파일이 아닙니다' });
       }
 
-      const stats = {};
       const RESTORE_ORDER = [
         'users', 'locations', 'networks',
         'constructions', 'construction_files', 'history',
@@ -2107,25 +2124,39 @@ app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res, next) =
         'net_devices',
       ];
 
-      for (const table of RESTORE_ORDER) {
-        const rows = backup.data[table];
-        if (!rows || !rows.length) { stats[table] = 0; continue; }
-        try { db.run(`DELETE FROM ${table}`); } catch(e) {}
-        let inserted = 0;
-        for (const row of rows) {
-          const cols = Object.keys(row);
-          const vals = Object.values(row).map(v => v === undefined ? null : v);
-          const placeholders = cols.map(() => '?').join(',');
-          try {
-            db.run(`INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`, vals);
-            inserted++;
-          } catch(e) {
-            console.warn(`[복구] ${table} 행 실패:`, e.message);
+      const stats = {};
+      const conn = await pool.getConnection();
+      await conn.beginTransaction();
+      try {
+        for (const table of RESTORE_ORDER) {
+          const rows = backup.data[table];
+          if (!rows || !rows.length) { stats[table] = 0; continue; }
+          await conn.query(`DELETE FROM \`${table}\``);
+          await conn.query(`ALTER TABLE \`${table}\` AUTO_INCREMENT = 1`).catch(() => {});
+          let inserted = 0;
+          for (const row of rows) {
+            const cols = Object.keys(row);
+            const vals = Object.values(row).map(v => v === undefined ? null : v);
+            const placeholders = cols.map(() => '?').join(',');
+            try {
+              await conn.query(
+                `INSERT INTO \`${table}\` (${cols.map(c => '`'+c+'`').join(',')}) VALUES (${placeholders})`,
+                vals
+              );
+              inserted++;
+            } catch(e) {
+              console.warn(`[복구] ${table} 행 실패:`, e.message);
+            }
           }
+          stats[table] = inserted;
         }
-        stats[table] = inserted;
+        await conn.commit();
+      } catch(e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
       }
-      saveDB();
       res.json({ success: true, stats, exported_at: backup.exported_at });
     } catch(e) {
       res.status(500).json({ error: '복구 실패: ' + e.message });
