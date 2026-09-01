@@ -2358,15 +2358,25 @@
   <!-- FILTERS -->
   <div class="filter-bar">
     <input type="text" id="searchInput" placeholder="🔍  스페이스로 AND 검색  예) B1 1F" oninput="loadData()" />
-    <select id="filterGubun" onchange="loadData()">
-      <option value="전체">전체 구분</option>
-      <option>자체공사</option>
-      <option>외주공사</option>
-      <option>지급</option>
-      <option>구매</option>
-      <option>임시포설</option>
-      <option>접수</option>
-    </select>
+    <div style="position:relative" id="gubunDropdownWrap">
+      <button onclick="toggleGubunDropdown()" id="gubunDropdownBtn"
+        style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;background:#fff;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:110px;justify-content:space-between">
+        <span id="gubunDropdownLabel">전체 구분</span>
+        <span style="color:#9ca3af;font-size:10px">▼</span>
+      </button>
+      <div id="gubunDropdownPanel"
+        style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:1000;padding:8px;min-width:130px">
+        <label style="display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;margin-bottom:2px" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox" id="gubunAll" checked onchange="onGubunAllChange(this)" style="accent-color:#c0392b;width:14px;height:14px" /> 전체
+        </label>
+        <div style="border-top:1px solid #f3f4f6;margin:4px 0"></div>
+        ${['자체공사','외주공사','지급','구매','임시포설','접수'].map(g =>
+          `<label style="display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+            <input type="checkbox" class="gubun-chk" value="${g}" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:14px;height:14px" /> ${g}
+          </label>`
+        ).join('')}
+      </div>
+    </div>
     <select id="filterStatus" onchange="loadData()">
       <option value="전체">전체 상태</option>
       <option>완료</option>
@@ -4900,7 +4910,7 @@ async function loadStats() {
 
 function updateActiveCards() {
   const status = document.getElementById('filterStatus').value;
-  const gubun  = document.getElementById('filterGubun').value;
+  const gubun  = getSelectedGubuns().length === document.querySelectorAll('.gubun-chk').length ? '전체' : getSelectedGubuns()[0] || '전체';
   const corp   = document.getElementById('filterCorp').value;
 
   // 상태 카드
@@ -4927,7 +4937,7 @@ function updateActiveCards() {
 
 function resetFilters() {
   document.getElementById('searchInput').value = '';
-  document.getElementById('filterGubun').value = '전체';
+  resetGubunFilter();
   document.getElementById('filterStatus').value = '전체';
   document.getElementById('filterCorp').value = '전체';
   document.querySelectorAll('th.sortable').forEach(th => th.classList.remove('asc','desc'));
@@ -4944,8 +4954,12 @@ function filterByStatus(val) {
 }
 
 function filterByGubun(val) {
-  const sel = document.getElementById('filterGubun');
-  sel.value = sel.value === val ? '전체' : val;
+  // 통계 카드 클릭 시 해당 구분만 선택
+  document.querySelectorAll('.gubun-chk').forEach(cb => {
+    cb.checked = cb.value === val;
+  });
+  document.getElementById('gubunAll').checked = false;
+  updateGubunLabel();
   updateActiveCards();
   loadData();
 }
@@ -4977,7 +4991,8 @@ function sortBy(key) {
 
 async function loadData() {
   const search = document.getElementById('searchInput').value;
-  const gubun = document.getElementById('filterGubun').value;
+  const selectedGubuns = getSelectedGubuns();
+  const gubun = selectedGubuns.length === document.querySelectorAll('.gubun-chk').length ? '전체' : selectedGubuns.join(',');
   const status = document.getElementById('filterStatus').value;
   const corp = document.getElementById('filterCorp').value;
   const params = new URLSearchParams({ search, gubun, status, corp });
@@ -8178,7 +8193,65 @@ async function showHistory(id, workName) {
 
 
 
-// ── 체크박스 선택 묶기 ──────────────────────────────────────────
+// ── 구분 다중선택 드롭다운 ──────────────────────────────────────────
+
+function toggleGubunDropdown() {
+  const panel = document.getElementById('gubunDropdownPanel');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    // 외부 클릭 시 닫기
+    setTimeout(() => {
+      document.addEventListener('click', closeGubunDropdown, { once: true });
+    }, 50);
+  }
+}
+
+function closeGubunDropdown(e) {
+  const wrap = document.getElementById('gubunDropdownWrap');
+  if (!wrap?.contains(e.target)) {
+    document.getElementById('gubunDropdownPanel').style.display = 'none';
+  } else {
+    // 패널 안 클릭이면 다시 등록
+    document.addEventListener('click', closeGubunDropdown, { once: true });
+  }
+}
+
+function getSelectedGubuns() {
+  return [...document.querySelectorAll('.gubun-chk:checked')].map(cb => cb.value);
+}
+
+function onGubunAllChange(el) {
+  document.querySelectorAll('.gubun-chk').forEach(cb => cb.checked = el.checked);
+  updateGubunLabel();
+  loadData();
+}
+
+function onGubunChange() {
+  const all = document.querySelectorAll('.gubun-chk');
+  const checked = document.querySelectorAll('.gubun-chk:checked');
+  document.getElementById('gubunAll').checked = all.length === checked.length;
+  updateGubunLabel();
+  loadData();
+}
+
+function updateGubunLabel() {
+  const selected = getSelectedGubuns();
+  const all = document.querySelectorAll('.gubun-chk');
+  const label = document.getElementById('gubunDropdownLabel');
+  if (selected.length === 0) label.textContent = '구분 없음';
+  else if (selected.length === all.length) label.textContent = '전체 구분';
+  else if (selected.length === 1) label.textContent = selected[0];
+  else label.textContent = `${selected[0]} 외 ${selected.length - 1}`;
+}
+
+function resetGubunFilter() {
+  document.querySelectorAll('.gubun-chk').forEach(cb => cb.checked = true);
+  document.getElementById('gubunAll').checked = true;
+  updateGubunLabel();
+}
+
+
 
 const bulkSelected = new Set();
 
