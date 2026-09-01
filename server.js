@@ -20,15 +20,19 @@ const PORT = process.env.PORT || 3000;
 
 // MariaDB 연결 설정
 const DB_CONFIG = {
-  host:     process.env.DB_HOST     || 'mariadb',
-  port:     parseInt(process.env.DB_PORT || '3306'),
-  user:     process.env.DB_USER     || 'ksmapp',
-  password: process.env.DB_PASSWORD || 'KsmApp2024!',
-  database: process.env.DB_NAME     || 'ksmdb',
-  charset:  'utf8mb4',
+  host:               process.env.DB_HOST     || 'mariadb',
+  port:               parseInt(process.env.DB_PORT || '3306'),
+  user:               process.env.DB_USER     || 'ksmapp',
+  password:           process.env.DB_PASSWORD || 'KsmApp2024!',
+  database:           process.env.DB_NAME     || 'ksmdb',
+  charset:            'utf8mb4',
   waitForConnections: true,
-  connectionLimit: 10,
-  timezone: '+09:00',
+  connectionLimit:    10,
+  queueLimit:         0,
+  timezone:           '+09:00',
+  enableKeepAlive:    true,
+  keepAliveInitialDelay: 30000,
+  connectTimeout:     10000,
 };
 
 let pool;
@@ -335,9 +339,18 @@ function diffRecords(before, after) {
 function s(v) { return (v === undefined || v === null) ? '' : String(v).trim(); }
 
 async function queryAll(sql, params = []) {
-  // SQLite ? 를 그대로 쓰므로 MariaDB도 ? 지원
-  const [rows] = await pool.query(sql, params);
-  return rows;
+  try {
+    const [rows] = await pool.query(sql, params);
+    return rows;
+  } catch(e) {
+    // 연결 끊김 오류 시 1회 재시도
+    if (e.code === 'ECONNRESET' || e.code === 'PROTOCOL_CONNECTION_LOST' || e.code === 'ECONNREFUSED') {
+      console.warn('[DB] 연결 재시도:', e.code);
+      const [rows] = await pool.query(sql, params);
+      return rows;
+    }
+    throw e;
+  }
 }
 
 async function queryOne(sql, params = []) {
@@ -346,8 +359,17 @@ async function queryOne(sql, params = []) {
 }
 
 async function dbRun(sql, params = []) {
-  const [result] = await pool.query(sql, params);
-  return result;
+  try {
+    const [result] = await pool.query(sql, params);
+    return result;
+  } catch(e) {
+    if (e.code === 'ECONNRESET' || e.code === 'PROTOCOL_CONNECTION_LOST' || e.code === 'ECONNREFUSED') {
+      console.warn('[DB] 연결 재시도:', e.code);
+      const [result] = await pool.query(sql, params);
+      return result;
+    }
+    throw e;
+  }
 }
 
 // IP 범위 유틸
