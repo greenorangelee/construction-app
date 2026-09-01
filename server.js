@@ -422,7 +422,15 @@ app.get('/api/constructions', authMiddleware, async (req, res) => {
       params.push(`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`);
     }
   }
-  if (gubun && gubun !== '전체') { sql += ' AND gubun = ?'; params.push(gubun); }
+  if (gubun && gubun !== '전체') {
+    const gubuns = gubun.split(',').map(g => g.trim()).filter(Boolean);
+    if (gubuns.length === 1) {
+      sql += ' AND gubun = ?'; params.push(gubuns[0]);
+    } else if (gubuns.length > 1) {
+      sql += ` AND gubun IN (${gubuns.map(() => '?').join(',')})`;
+      params.push(...gubuns);
+    }
+  }
   if (status && status !== '전체') { sql += ' AND status = ?'; params.push(status); }
   if (corp && corp !== '전체') { sql += ' AND corp = ?'; params.push(corp); }
   sql += ' ORDER BY id DESC';
