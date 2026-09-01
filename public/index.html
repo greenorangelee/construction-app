@@ -64,6 +64,13 @@
       -webkit-user-select: text !important;
     }
 
+    #gubunDropdownPanel input[type="checkbox"] {
+      position: static !important;
+      appearance: auto !important;
+      -webkit-appearance: checkbox !important;
+      margin: 0 !important;
+      flex-shrink: 0;
+    }
     /* ── HEADER ── */
     .header {
       background: #c0392b;
@@ -2367,26 +2374,26 @@
       <div id="gubunDropdownPanel"
         style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:1000;padding:4px;width:fit-content;min-width:120px">
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;font-weight:600;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" id="gubunAll" checked onchange="onGubunAllChange(this)" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>전체</span>
+          <input type="checkbox" id="gubunAll" checked onchange="onGubunAllChange(this)" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">전체</span>
         </label>
         <div style="border-top:1px solid #f3f4f6;margin:2px 0"></div>
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" class="gubun-chk" value="자체공사" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>자체공사</span>
+          <input type="checkbox" class="gubun-chk" value="자체공사" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">자체공사</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" class="gubun-chk" value="외주공사" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>외주공사</span>
+          <input type="checkbox" class="gubun-chk" value="외주공사" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">외주공사</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" class="gubun-chk" value="지급" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>지급</span>
+          <input type="checkbox" class="gubun-chk" value="지급" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">지급</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" class="gubun-chk" value="구매" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>구매</span>
+          <input type="checkbox" class="gubun-chk" value="구매" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">구매</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" class="gubun-chk" value="임시포설" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>임시포설</span>
+          <input type="checkbox" class="gubun-chk" value="임시포설" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">임시포설</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;white-space:nowrap" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
-          <input type="checkbox" class="gubun-chk" value="접수" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0;flex-shrink:0" /><span>접수</span>
+          <input type="checkbox" class="gubun-chk" value="접수" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;flex-shrink:0;display:inline-block;vertical-align:middle" /><span style="vertical-align:middle">접수</span>
         </label>
       </div>
     </div>
