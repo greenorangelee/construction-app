@@ -5563,17 +5563,20 @@ function getCheckedIds() {
 }
 
 function onRowCheck() {
-  const ids = getCheckedIds();
+  // 현재 화면에 있는 체크박스만 처리 (안 보이는 항목은 bulkSelected 유지)
+  document.querySelectorAll('.row-checkbox[value]').forEach(cb => {
+    const id = parseInt(cb.value);
+    if (cb.checked) bulkSelected.add(id);
+    else bulkSelected.delete(id);
+  });
+  const ids = [...bulkSelected];
   const bulkBar = document.getElementById('bulkBar');
   document.getElementById('bulkCount').textContent = `${ids.length}개 선택됨`;
   bulkBar.classList.toggle('visible', ids.length > 0);
   // 전체 체크박스 상태 업데이트
   const all = document.querySelectorAll('.row-checkbox[value]');
   const checkAll = document.getElementById('checkAll');
-  if (checkAll) checkAll.checked = ids.length === all.length && all.length > 0;
-  // 선택 묶기 버튼 업데이트
-  bulkSelected.clear();
-  ids.forEach(id => bulkSelected.add(parseInt(id)));
+  if (checkAll) checkAll.checked = all.length > 0 && [...all].every(cb => cb.checked);
   updateBulkGroupBtn();
 }
 
@@ -8202,7 +8205,10 @@ function updateBulkGroupBtn() {
   if (!btn) return;
   if (bulkSelected.size >= 2) {
     btn.style.display = 'flex';
-    cnt.textContent = bulkSelected.size;
+    // 현재 화면에 없는 선택 항목 수 계산
+    const visibleIds = new Set([...document.querySelectorAll('.row-checkbox[value]')].map(cb => parseInt(cb.value)));
+    const hiddenCount = [...bulkSelected].filter(id => !visibleIds.has(id)).length;
+    cnt.textContent = hiddenCount > 0 ? `${bulkSelected.size} (${hiddenCount}개 다른 검색)` : bulkSelected.size;
   } else {
     btn.style.display = 'none';
   }
