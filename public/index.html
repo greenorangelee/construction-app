@@ -5065,6 +5065,14 @@ async function loadData() {
       ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
     </tr>
   `).join('');
+
+  // 체크박스 선택 상태 복원 (검색 초기화 후에도 유지)
+  if (bulkSelected.size > 0) {
+    document.querySelectorAll('.row-checkbox[value]').forEach(cb => {
+      if (bulkSelected.has(parseInt(cb.value))) cb.checked = true;
+    });
+    updateBulkGroupBtn();
+  }
 }
 
 function gubunBadge(v) {
@@ -8292,6 +8300,14 @@ function renderGroupedTable(data, totalCols) {
   }
 
   tbody.innerHTML = html || `<tr><td colspan="${totalCols + 1}"><div class="empty-state"><div class="icon">📭</div><p>검색 결과가 없습니다</p></div></td></tr>`;
+
+  // 체크박스 선택 상태 복원
+  if (bulkSelected.size > 0) {
+    document.querySelectorAll('.row-checkbox[value]').forEach(cb => {
+      if (bulkSelected.has(parseInt(cb.value))) cb.checked = true;
+    });
+    updateBulkGroupBtn();
+  }
 }
 
 function toggleGroupSection(sectionId) {
