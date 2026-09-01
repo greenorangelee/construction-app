@@ -416,11 +416,21 @@ app.get('/api/constructions', authMiddleware, async (req, res) => {
   let sql = 'SELECT * FROM constructions WHERE 1=1';
   const params = [];
   if (search) {
-    const keywords = search.trim().split(/\s+/).filter(Boolean);
-    for (const kw of keywords) {
-      sql += ' AND (work_name LIKE ? OR requester LIKE ? OR dept LIKE ? OR loc_region LIKE ? OR loc_dong LIKE ? OR loc_floor LIKE ? OR loc_detail LIKE ? OR worker LIKE ? OR it_manager LIKE ? OR TRIM(purchase_doc) LIKE ? OR TRIM(payment_doc) LIKE ? OR TRIM(related_doc) LIKE ?)';
-      params.push(`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`,`%${kw}%`);
+    // 쉼표로 OR 그룹 분리, 스페이스로 AND 키워드 분리
+    const colList = ['work_name','requester','dept','loc_region','loc_dong','loc_floor','loc_detail','worker','it_manager','purchase_doc','payment_doc','related_doc'];
+    const orGroups = search.split(',').map(s => s.trim()).filter(Boolean);
+    const orClauses = [];
+    for (const group of orGroups) {
+      const keywords = group.split(/\s+/).filter(Boolean);
+      const andClauses = keywords.map(() =>
+        '(' + colList.map(c => `TRIM(${c}) LIKE ?`).join(' OR ') + ')'
+      );
+      orClauses.push('(' + andClauses.join(' AND ') + ')');
+      for (const kw of keywords) {
+        colList.forEach(() => params.push(`%${kw}%`));
+      }
     }
+    if (orClauses.length) sql += ' AND (' + orClauses.join(' OR ') + ')';
   }
   if (gubun && gubun !== '전체') {
     const gubuns = gubun.split(',').map(g => g.trim()).filter(Boolean);
