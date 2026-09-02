@@ -86,6 +86,12 @@ async function initDB() {
   }
   console.log('MariaDB 연결 성공');
 
+  // 연결 풀 유휴 방지 - 10분마다 ping
+  setInterval(async () => {
+    try { await pool.query('SELECT 1'); }
+    catch(e) { console.warn('[DB] keepalive ping 실패:', e.message); }
+  }, 10 * 60 * 1000);
+
   const run = (sql) => pool.query(sql);
 
   await run(`CREATE TABLE IF NOT EXISTS users (
