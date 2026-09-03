@@ -4751,11 +4751,28 @@ function parsePurchaseDoc(text) {
     }
   }
 
+  // 기안부서 의견 → 메모
+  // "기안부서\n의견\t내용..." 또는 "기안부서\n의견\n내용..." 패턴
+  const memoMatch = text.match(/기안부서[\s\r\n]+의견[\s\t\r\n]+([\s\S]*?)(?:수신부서[\s\r\n]+의견|결재의견|\[결재|$)/);
+  if (memoMatch) {
+    const memo = memoMatch[1]
+      .trim()
+      .replace(/\t/g, ' ')          // 탭을 공백으로
+      .replace(/[ ]{2,}/g, ' ')     // 연속 공백 정리
+      .replace(/\n{3,}/g, '\n\n')   // 3줄 이상 공백 → 2줄로
+      .trim();
+    if (memo) {
+      filled.memo = memo;
+      const memoEl = document.getElementById('f-memo');
+      if (memoEl) memoEl.value = memo;
+    }
+  }
+
   // 결과 표시
   const resultEl = document.getElementById('purchaseDocResult');
   const keys = Object.keys(filled);
   if (keys.length > 0) {
-    const labels = { corp:'법인', purchase_doc:'구매품의서', req_date:'요청일', requester:'요청자', work_name:'공사명', dept:'부서' };
+    const labels = { corp:'법인', purchase_doc:'구매품의서', req_date:'요청일', requester:'요청자', work_name:'공사명', dept:'부서', memo:'메모' };
     resultEl.style.display = 'block';
     resultEl.innerHTML = `✅ 자동입력 완료: ${keys.map(k => `<b>${labels[k]||k}</b>`).join(', ')}`;
   } else {
