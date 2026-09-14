@@ -220,7 +220,7 @@ async function initDB() {
     loc_region VARCHAR(100), loc_dong VARCHAR(100), loc_floor VARCHAR(50), loc_detail TEXT,
     move_region VARCHAR(100), move_dong VARCHAR(100), move_floor VARCHAR(50), move_detail TEXT,
     demolish_region VARCHAR(100), demolish_dong VARCHAR(100), demolish_floor VARCHAR(50), demolish_detail TEXT,
-    status VARCHAR(50), deadline VARCHAR(20), complete_date VARCHAR(20),
+    status VARCHAR(50), scheduled_date VARCHAR(20), deadline VARCHAR(20), complete_date VARCHAR(20),
     purchase_doc VARCHAR(255), payment_doc VARCHAR(255), related_doc VARCHAR(255),
     it_manager VARCHAR(100), worker VARCHAR(100), memo TEXT,
     group_id INT,
@@ -240,6 +240,7 @@ async function initDB() {
   // 기존 테이블에 컬럼 추가 (이미 있으면 무시)
   await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_from VARCHAR(20)").catch(()=>{});
   await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_to VARCHAR(20)").catch(()=>{});
+  await pool.query("ALTER TABLE constructions ADD COLUMN scheduled_date VARCHAR(20)").catch(()=>{});
 
   await run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -322,7 +323,7 @@ const FIELD_LABELS = {
   'loc_region':'작업지역','loc_dong':'작업동','loc_floor':'작업층','loc_detail':'작업 상세위치',
   'move_region':'공사위치지역','move_dong':'공사위치동','move_floor':'공사위치층','move_detail':'공사위치 상세',
   'demolish_region':'철거지역','demolish_dong':'철거동','demolish_floor':'철거층','demolish_detail':'철거 상세',
-  'status':'상태','deadline':'기한일','complete_date':'완료일',
+  'status':'상태','scheduled_date':'공사예정일','deadline':'기한일','complete_date':'완료일',
   'purchase_doc':'구매품의서','payment_doc':'지출품의서','related_doc':'연관품의서',
   'it_manager':'IT담당자','worker':'작업자','memo':'메모'
 };
@@ -818,12 +819,12 @@ app.post('/api/constructions', authMiddleware, requireWrite, async (req, res) =>
   try {
     const d = req.body;
     const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0);
-    const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,scheduled_date,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [lastNo+1,s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
        s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
-       s(d.status),s(d.deadline),s(d.complete_date),
+       s(d.status),s(d.scheduled_date),s(d.deadline),s(d.complete_date),
        s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo)]);
     saveDB();
     const newId = result.insertId;
@@ -838,12 +839,12 @@ app.put('/api/constructions/:id', authMiddleware, requireWrite, async (req, res)
     const d = req.body;
     const before = await queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
     const gid = d.hasOwnProperty('group_id') ? (d.group_id ? parseInt(d.group_id) : null) : before?.group_id;
-    await dbRun(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,group_id=? WHERE id=?`,
+    await dbRun(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,scheduled_date=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,group_id=? WHERE id=?`,
       [s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
        s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
-       s(d.status),s(d.deadline),s(d.complete_date),
+       s(d.status),s(d.scheduled_date),s(d.deadline),s(d.complete_date),
        s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo),gid,req.params.id]);
     const diff = diffRecords(before, d);
     if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
