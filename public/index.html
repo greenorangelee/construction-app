@@ -5427,7 +5427,18 @@ function showToast(msg) {
     popup.querySelector('#dp-prev').onclick = e => { e.stopPropagation(); curMonth--; if(curMonth<0){curMonth=11;curYear--;} renderDays(); };
     popup.querySelector('#dp-next').onclick = e => { e.stopPropagation(); curMonth++; if(curMonth>11){curMonth=0;curYear++;} renderDays(); };
     popup.querySelector('#dp-today').onclick = e => { e.stopPropagation(); const t=new Date(); selectDate(t.getFullYear(), t.getMonth(), t.getDate()); };
-    popup.querySelector('#dp-clear').onclick = e => { e.stopPropagation(); if(activeInput) activeInput.value=''; closePopup(); };
+    popup.querySelector('#dp-clear').onclick = e => {
+      e.stopPropagation();
+      if (activeInput) {
+        activeInput.value = '';
+        // 완료일 지우면 상태 '진행중'으로 복원
+        if (activeInput.id === 'f-complete_date') {
+          const statusEl = document.getElementById('f-status');
+          if (statusEl && statusEl.value === '완료') statusEl.value = '진행중';
+        }
+      }
+      closePopup();
+    };
   }
 
   function renderDays() {
@@ -5480,7 +5491,14 @@ function showToast(msg) {
   }
 
   function selectDate(y, m, d) {
-    if (activeInput) activeInput.value = fmt(y, m, d);
+    if (activeInput) {
+      activeInput.value = fmt(y, m, d);
+      // 작업 완료일 선택 시 상태 자동 '완료'로 변경
+      if (activeInput.id === 'f-complete_date' && d) {
+        const statusEl = document.getElementById('f-status');
+        if (statusEl) statusEl.value = '완료';
+      }
+    }
     closePopup();
   }
 
