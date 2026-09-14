@@ -2892,9 +2892,11 @@
           style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div id="groupLinkCurrent" style="display:none;padding-top:10px;border-top:1px solid #f3f4f6">
-        <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px">현재 같은 묶음</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:12px;font-weight:700;color:#6b7280">현재 같은 묶음</div>
+          <button onclick="unlinkGroup()" style="font-size:11px;padding:2px 8px;border:1px solid #fca5a5;border-radius:5px;background:#fff5f5;color:#dc2626;cursor:pointer;font-family:'Noto Sans KR',sans-serif">전체 해제</button>
+        </div>
         <div id="groupLinkCurrentList" style="display:flex;flex-direction:column;gap:4px"></div>
-        <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="unlinkGroup()">이 공사 묶음 해제</button>
       </div>
     </div>
     <div class="modal-footer">
@@ -4453,6 +4455,10 @@
         <div class="form-section-title">📅 일정</div>
         <div class="form-grid-3">
           <div class="form-group">
+            <label>공사 예정일</label>
+            <input type="text" id="f-scheduled_date" class="datepicker-input" placeholder="날짜 선택" readonly />
+          </div>
+          <div class="form-group">
             <label>기한일</label>
             <input type="text" id="f-deadline" class="datepicker-input" placeholder="날짜 선택" readonly />
           </div>
@@ -5167,6 +5173,7 @@ async function showDetail(id) {
       </div>
       <div class="detail-section">
         <div class="detail-section-title">📅 일정 / 담당자</div>
+        ${row('공사 예정일', r.scheduled_date)}
         ${row('기한일', r.deadline)}
         ${row('작업 완료일', r.complete_date)}
         ${row('IT담당자', r.it_manager)}
@@ -5232,7 +5239,7 @@ const FIELDS = ['gubun','req_date','corp','dept','requester','work_name',
   'loc_region','loc_dong','loc_floor','loc_detail',
   'move_region','move_dong','move_floor','move_detail',
   'demolish_region','demolish_dong','demolish_floor','demolish_detail',
-  'status','deadline','complete_date',
+  'status','scheduled_date','deadline','complete_date',
   'purchase_doc','payment_doc','related_doc','it_manager','worker','memo'];
 
 function openNewModal() {
@@ -8484,13 +8491,17 @@ async function openGroupLink(id) {
   const currentEl = document.getElementById('groupLinkCurrent');
   const currentListEl = document.getElementById('groupLinkCurrentList');
   if (base?.group_id) {
-    const members = allData.filter(r => r.group_id === base.group_id && r.id !== id);
-    currentEl.style.display = members.length ? 'block' : 'none';
-    currentListEl.innerHTML = members.map(m =>
-      `<div style="font-size:12px;padding:5px 10px;background:#fef2f2;border-radius:6px;color:#374151">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${base.group_color||'#6366f1'};margin-right:6px"></span>
-        ${m.work_name}
-      </div>`).join('');
+    // 현재 공사 본인도 포함해서 전체 멤버 표시
+    const members = allData.filter(r => r.group_id === base.group_id);
+    currentEl.style.display = members.length > 1 ? 'block' : 'none';
+    currentListEl.innerHTML = members.map(m => {
+      const isBase = m.id === id;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:${isBase?'#eff6ff':'#f9fafb'};border-radius:6px;border:1px solid ${isBase?'#bfdbfe':'transparent'}">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${base.group_color||'#6366f1'};flex-shrink:0"></span>
+        <span style="flex:1;font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.work_name}${isBase?' <span style="font-size:10px;color:#2563eb">(현재)</span>':''}</span>
+        ${!isBase ? `<button onclick="unlinkSingleGroup(${m.id},'${(m.work_name||'').replace(/'/g,"\'")}')" style="flex-shrink:0;padding:2px 8px;font-size:11px;border:1px solid #fca5a5;border-radius:5px;background:#fff;color:#dc2626;cursor:pointer;font-family:'Noto Sans KR',sans-serif">빼기</button>` : ''}
+      </div>`;
+    }).join('');
   } else {
     currentEl.style.display = 'none';
   }
@@ -8564,11 +8575,26 @@ async function applyGroupLink() {
 }
 
 async function unlinkGroup() {
-  if (!confirm('이 공사의 묶음을 해제할까요?')) return;
-  await api('PUT', `/api/constructions/${groupLinkBaseId}/group`, { group_id: null });
+  // 현재 묶음의 모든 멤버 해제
+  const base = allData.find(r => r.id === groupLinkBaseId);
+  if (!base?.group_id) return;
+  if (!confirm('이 묶음에 속한 공사를 전체 해제할까요?')) return;
+  const members = allData.filter(r => r.group_id === base.group_id);
+  for (const m of members) {
+    await api('PUT', `/api/constructions/${m.id}/group`, { group_id: null });
+  }
   closeModal('groupLinkModal');
-  showToast('묶음 해제됐습니다');
+  showToast(`묶음 전체 해제됐습니다 (${members.length}개)`);
   await loadData();
+}
+
+async function unlinkSingleGroup(id, name) {
+  if (!confirm(`"${name}" 공사를 묶음에서 제외할까요?`)) return;
+  await api('PUT', `/api/constructions/${id}/group`, { group_id: null });
+  showToast(`"${name}" 묶음에서 제외됐습니다`);
+  await loadData();
+  // 모달 내 목록 갱신
+  openGroupLink(groupLinkBaseId);
 }
 
 
