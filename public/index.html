@@ -4065,6 +4065,20 @@
         </div>
       </div>
     </div>
+
+    <!-- 방화벽 정책요청서 자동입력 -->
+    <div style="margin:0 24px 16px;border-top:2px solid #f3f4f6;padding-top:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700;color:#374151">📋 정책요청서 자동입력</span>
+        <span style="font-size:11px;color:#9ca3af">방화벽 정책 요청서 페이지에서 Ctrl+A → Ctrl+C 후 붙여넣기</span>
+      </div>
+      <textarea id="fwDocPaste" rows="5"
+        placeholder="방화벽 정책 요청서 텍스트를 여기에 붙여넣기 하세요 (Ctrl+V)..."
+        style="width:100%;box-sizing:border-box;padding:12px;border:1.5px dashed #e5e7eb;border-radius:10px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical;color:#374151;background:#fafafa;line-height:1.6"
+        oninput="parseFwDoc(this.value)"></textarea>
+      <div id="fwDocResult" style="display:none;margin-top:8px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal('fwModal')">취소</button>
       <button class="btn btn-primary" onclick="saveFwRequest()">저장</button>
@@ -9850,7 +9864,109 @@ function updateFwUIByRole() {
   if (addBtn) addBtn.style.display = canWrite ? '' : 'none';
 }
 
+// ── 방화벽 정책요청서 자동입력 ──────────────────────────────────────────
+
+function parseFwDoc(text) {
+  if (!text.trim()) {
+    document.getElementById('fwDocResult').style.display = 'none';
+    return;
+  }
+
+  const filled = {};
+
+  // 법인 감지
+  const corpMap = [
+    { keywords: ['케이에스엠컴포넌트', 'KSMC'], corp: 'KSMC' },
+    { keywords: ['케이에스엠페로텍', 'KSMF'], corp: 'KSMF' },
+    { keywords: ['한국씰마스타', 'FKSM'], corp: 'FKSM' },
+    { keywords: ['와이에이치이', 'YHE'], corp: 'YHE' },
+    { keywords: ['케이에스엠', 'KSM'], corp: 'KSM' },
+  ];
+  for (const { keywords, corp } of corpMap) {
+    if (keywords.some(k => text.includes(k))) {
+      filled.corp = corp;
+      document.getElementById('fw-corp').value = corp;
+      break;
+    }
+  }
+
+  // 문서번호 → 품의서류
+  const docMatch = text.match(/문서번호[\s\t]+([^\n\r\t]+)/);
+  if (docMatch) {
+    filled.doc = docMatch[1].trim();
+    document.getElementById('fw-doc').value = filled.doc;
+  }
+
+  // 기안일자 → 요청일
+  const dateMatch = text.match(/기안일자[\s\t]+(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (dateMatch) {
+    const yy = dateMatch[1].slice(2);
+    const mm = dateMatch[2].padStart(2, '0');
+    const dd = dateMatch[3].padStart(2, '0');
+    filled.req_date = `${yy}.${mm}.${dd}`;
+    document.getElementById('fw-req_date').value = filled.req_date;
+  }
+
+  // 기안부서 → 부서
+  const deptMatch = text.match(/기안부서[\s\t]+([^\n\r\t\u3000]+)/);
+  if (deptMatch) {
+    filled.dept = deptMatch[1].trim();
+    document.getElementById('fw-dept').value = filled.dept;
+  }
+
+  // 기 안 자 → 요청자 (이름만)
+  const authorMatch = text.match(/기\s*안\s*자[\s\t]+([^\n\r\t\/]+)/);
+  if (authorMatch) {
+    filled.requester = authorMatch[1].trim().split('/')[0].trim();
+    document.getElementById('fw-requester').value = filled.requester;
+  }
+
+  // 제 목 → 품의명
+  const titleMatch = text.match(/제\s{0,5}목[\s\t]+([^\n\r]+)/);
+  if (titleMatch) {
+    filled.title = titleMatch[1].trim();
+    document.getElementById('fw-title').value = filled.title;
+  }
+
+  // 요청기간 → period_from / period_to
+  const periodMatch = text.match(/요청기간[\s\t]+(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})\s*~\s*(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/);
+  if (periodMatch) {
+    const fmtDate = s => {
+      const m = s.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+      return m ? `${m[1].slice(2)}.${m[2].padStart(2,'0')}.${m[3].padStart(2,'0')}` : s;
+    };
+    filled.period_from = fmtDate(periodMatch[1]);
+    filled.period_to   = fmtDate(periodMatch[2]);
+    document.getElementById('fw-period_from').value = filled.period_from;
+    document.getElementById('fw-period_to').value   = filled.period_to;
+  }
+
+  // 결과 표시
+  const resultEl = document.getElementById('fwDocResult');
+  const keys = Object.keys(filled);
+  const labels = { corp:'법인', doc:'품의서류', req_date:'요청일', dept:'부서', requester:'요청자', title:'품의명', period_from:'요청기간 시작', period_to:'요청기간 종료' };
+  if (keys.length > 0) {
+    resultEl.style.display = 'block';
+    resultEl.style.background = '#f0fdf4';
+    resultEl.style.borderColor = '#86efac';
+    resultEl.style.color = '#166534';
+    resultEl.style.border = '1px solid #86efac';
+    resultEl.innerHTML = `✅ 자동입력 완료: ${keys.map(k => `<b>${labels[k]||k}</b>`).join(', ')}`;
+  } else {
+    resultEl.style.display = 'block';
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.border = '1px solid #fecaca';
+    resultEl.style.color = '#991b1b';
+    resultEl.textContent = '⚠️ 인식된 항목이 없습니다. 방화벽 정책 요청서인지 확인해주세요.';
+  }
+}
+
 async function openFwModal(id = null) {
+  // 붙여넣기 영역 초기화
+  const pasteEl = document.getElementById('fwDocPaste');
+  const resultEl = document.getElementById('fwDocResult');
+  if (pasteEl) pasteEl.value = '';
+  if (resultEl) resultEl.style.display = 'none';
   document.getElementById('fwModalTitle').textContent = id ? '방화벽 정책요청 수정' : '방화벽 정책요청 등록';
   document.getElementById('fwModalId').value = id || '';
   if (id) {
