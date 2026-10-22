@@ -495,6 +495,11 @@
     /* 컴팩트 열 */
     td.col-sm { max-width: 80px; font-size: 11.5px; }
     td.col-md { max-width: 110px; font-size: 11.5px; }
+    .gw-badge { display:inline-block; font-size:10px; line-height:15px; padding:0 5px; border-radius:8px; margin-right:4px; vertical-align:middle; white-space:nowrap; cursor:help; }
+    .gw-ing { background:#dbeafe; color:#1e40af; } .gw-ok { background:#dcfce7; color:#166534; }
+    .gw-ng { background:#fee2e2; color:#991b1b; } .gw-na { background:#f3f4f6; color:#6b7280; }
+    .gw-line { font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.6; }
+    .gw-line .wait { color:#1e40af; font-weight:600; }
     td.col-doc { max-width: 130px; font-size: 11px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* STATUS BADGES */
@@ -5060,6 +5065,7 @@ async function loadData() {
   const corp = document.getElementById('filterCorp').value;
   const params = new URLSearchParams({ search, gubun, status, corp });
   let data = await api('GET', `/api/constructions?${params}`);
+  await loadGwStatus();
 
   // 클라이언트 정렬
   data.sort((a, b) => {
@@ -5136,8 +5142,8 @@ async function loadData() {
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
       ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-      ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
-      ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+      ${v('purchase_doc') ? docCell(r.purchase_doc) : ''}
+      ${v('payment_doc') ? docCell(r.payment_doc) : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
       ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
@@ -5163,6 +5169,54 @@ function statusBadge(v) {
   if (v === '완료') return `<span class="badge badge-done">${v}</span>`;
   if (v === '진행중') return `<span class="badge badge-progress">${v}</span>`;
   return `<span class="badge badge-holding">${v}</span>`;
+}
+
+// ── 그룹웨어 결재 진행 배지 ──────────────────────────────
+let GW_STATUS = {};
+const GW_BASE = 'https://gw.ksm.co.kr';
+const DOC_NO_RE = /[가-힣A-Za-z]+-[가-힣A-Za-z]+-\d{2}-\d{3,5}/g;
+async function loadGwStatus() {
+  try {
+    const rows = await api('GET', '/api/gw-status');
+    GW_STATUS = Object.fromEntries(rows.map(x => [x.doc_no, x]));
+  } catch (e) { /* 테이블 없거나 실패해도 목록은 표시 */ }
+}
+function gwEsc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function gwBadge(docNo) {
+  const g = GW_STATUS[docNo];
+  if (!g) return '';
+  if (!g.found) return `<span class="gw-badge gw-na" title="그룹웨어에서 찾지 못함">?</span>`;
+  const tip = `${g.status_label || g.status} · ${g.step_done ?? '-'}/${g.step_total ?? '-'}${g.current_signer ? ' · 대기: ' + g.current_signer : ''}\n확인: ${g.checked_at ? String(g.checked_at).slice(0,16).replace('T',' ') : ''}`;
+  let cls = 'gw-ing', label = `${g.step_done}/${g.step_total}`;
+  if (['Appr','ApprEnd','ApprEnd2'].includes(g.status)) { cls = 'gw-ok'; label = g.status_label || '승인'; }
+  else if (['Return','Refusal','Cancel'].includes(g.status)) { cls = 'gw-ng'; label = g.status_label || '반려'; }
+  else if (g.current_signer) label += ' ' + g.current_signer.split('(')[0];
+  return `<span class="gw-badge ${cls}" title="${gwEsc(tip)}">${gwEsc(label)}</span>`;
+}
+function gwDocs(text) { return [...new Set(String(text || '').match(DOC_NO_RE) || [])]; }
+// 목록 셀: 첫 문서의 배지 + 원문
+function docCell(text) {
+  const docs = gwDocs(text);
+  const badge = docs.length ? gwBadge(docs[0]) : '';
+  return `<td class="col-doc" title="${gwEsc(text || '')}">${badge}${gwEsc(text || '-')}</td>`;
+}
+// 상세: 문서별 배지 + 결재선
+function docDetail(text) {
+  const docs = gwDocs(text);
+  if (!docs.length) return `<div style="font-size:13px">${gwEsc(text || '-')}</div>`;
+  return docs.map(d => {
+    const g = GW_STATUS[d];
+    let line = '';
+    if (g && g.found) {
+      let signers = [];
+      try { signers = JSON.parse(g.signers || '[]'); } catch {}
+      line = `<div class="gw-line">${signers.map(sg => sg.wait
+        ? `<span class="wait">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`
+        : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
+    }
+    const link = g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
+    return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}</div>`;
+  }).join('');
 }
 
 // ── DETAIL ──────────────────────────────────────────
@@ -5213,15 +5267,15 @@ async function showDetail(id) {
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">구매품의서</div>
-            <div style="font-size:13px">${r.purchase_doc || '-'}</div>
+            ${docDetail(r.purchase_doc)}
           </div>
           <div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">지출품의서</div>
-            <div style="font-size:13px">${r.payment_doc || '-'}</div>
+            ${docDetail(r.payment_doc)}
           </div>
           <div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">연관품의서</div>
-            <div style="font-size:13px">${r.related_doc || '-'}</div>
+            ${docDetail(r.related_doc)}
           </div>
         </div>
       </div>
@@ -8495,8 +8549,8 @@ function renderRowCells(r, v) {
     ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
     ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
     ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-    ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
-    ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+    ${v('purchase_doc') ? docCell(r.purchase_doc) : ''}
+    ${v('payment_doc') ? docCell(r.payment_doc) : ''}
     ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
     ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
     ${v('actions') ? `<td><div style="display:flex;gap:4px">

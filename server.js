@@ -242,6 +242,17 @@ async function initDB() {
   await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_to VARCHAR(20)").catch(()=>{});
   await pool.query("ALTER TABLE constructions ADD COLUMN scheduled_date VARCHAR(20)").catch(()=>{});
 
+  // 그룹웨어 결재 진행 상황 (gw-collector가 갱신)
+  await run(`CREATE TABLE IF NOT EXISTS gw_doc_status (
+    doc_no VARCHAR(50) PRIMARY KEY,
+    doc_id INT, title TEXT, form_name VARCHAR(100),
+    status VARCHAR(20), status_label VARCHAR(20),
+    step_done INT, step_total INT,
+    current_signer VARCHAR(255), signers TEXT,
+    decided_at VARCHAR(30), found TINYINT DEFAULT 1,
+    checked_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   await run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INT AUTO_INCREMENT PRIMARY KEY,
     construction_id INT NOT NULL,
@@ -461,6 +472,31 @@ app.get('/api/constructions', authMiddleware, async (req, res) => {
     ...r,
     group_color: r.group_id ? gColorMap[r.group_id] : null
   })));
+});
+
+// ── 그룹웨어 결재 진행 상황 API ──────────────────────────────
+app.get('/api/gw-status', authMiddleware, async (req, res) => {
+  try { res.json(await queryAll('SELECT * FROM gw_doc_status')); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// gw-collector 전용: { items: [{doc_no, doc_id, title, form_name, status, status_label, step_done, step_total, current_signer, signers, decided_at, found}] }
+app.put('/api/gw-status', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    for (const it of items) {
+      if (!s(it.doc_no)) continue;
+      await dbRun(`INSERT INTO gw_doc_status (doc_no,doc_id,title,form_name,status,status_label,step_done,step_total,current_signer,signers,decided_at,found,checked_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+        ON DUPLICATE KEY UPDATE doc_id=VALUES(doc_id),title=VALUES(title),form_name=VALUES(form_name),status=VALUES(status),
+          status_label=VALUES(status_label),step_done=VALUES(step_done),step_total=VALUES(step_total),current_signer=VALUES(current_signer),
+          signers=VALUES(signers),decided_at=VALUES(decided_at),found=VALUES(found),checked_at=NOW()`,
+        [s(it.doc_no), it.doc_id || null, s(it.title), s(it.form_name), s(it.status), s(it.status_label),
+         it.step_done ?? null, it.step_total ?? null, s(it.current_signer),
+         typeof it.signers === 'string' ? it.signers : JSON.stringify(it.signers || []), s(it.decided_at), it.found === false ? 0 : 1]);
+    }
+    res.json({ success: true, count: items.length });
+  } catch(e) { console.error('gw-status error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ── 인증 API ──────────────────────────────────────────

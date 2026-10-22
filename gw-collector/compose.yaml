@@ -1,0 +1,10 @@
+# Dockge 새 스택(gw-collector)으로 추가
+services:
+  gw-collector:
+    build: .
+    image: green0ran9e/construction-app:gw-collector
+    container_name: gw-collector
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data          # 처리한 docId 기록(state.json)
