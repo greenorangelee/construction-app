@@ -5360,7 +5360,7 @@ function gwBadge(docNo) {
   if (!g) return '';
   if (!g.found) return `<span class="gw-badge gw-na" title="그룹웨어에서 찾지 못함">?</span>`;
   const tip = `${g.status_label || g.status} · ${g.step_done ?? '-'}/${g.step_total ?? '-'}${g.current_signer ? ' · 대기: ' + g.current_signer : ''}\n확인: ${g.checked_at ? String(g.checked_at).slice(0,16).replace('T',' ') : ''}`;
-  let cls = 'gw-ing', label = `결재중 ${g.step_done}/${g.step_total}`;
+  let cls = 'gw-ing', label = '결재중';
   if (['Appr','ApprEnd','ApprEnd2'].includes(g.status)) { cls = 'gw-ok'; label = g.status_label || '승인'; }
   else if (['Return','Refusal','Cancel'].includes(g.status)) { cls = 'gw-ng'; label = g.status_label || '반려'; }
   return `<span class="gw-badge ${cls}" title="${gwEsc(tip)}">${gwEsc(label)}</span>`;
@@ -5380,8 +5380,8 @@ function gwStatusCell(r) {
     const g = GW_STATUS[d];
     if (!g) return;
     const wait = g.found && g.current_signer && !['Appr','ApprEnd','ApprEnd2','Return','Refusal','Cancel'].includes(g.status)
-      ? `<span style="font-size:11px;color:#1e40af;margin-left:2px">대기: ${gwEsc(g.current_signer.split('(')[0])}</span>` : '';
-    lines.push(`<div style="white-space:nowrap">${prefix ? `<span style="font-size:10px;color:#9ca3af;margin-right:3px">${prefix}</span>` : ''}${gwBadge(d)}${wait}</div>`);
+      ? `<div style="font-size:11px;color:#1e40af;margin-top:2px">대기 : ${gwEsc(g.current_signer.split('(')[0])}</div>` : '';
+    lines.push(`<div style="white-space:nowrap;margin-bottom:4px">${prefix ? `<span style="font-size:10px;color:#9ca3af;margin-right:3px">${prefix}</span>` : ''}${gwBadge(d)}${wait}</div>`);
   });
   add('', r.purchase_doc);
   add('지출', r.payment_doc);
