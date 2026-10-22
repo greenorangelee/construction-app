@@ -5183,6 +5183,7 @@ async function loadData() {
     ${v('deadline') ? `<th class="sortable" data-key="deadline" onclick="sortBy('deadline')">기한일</th>` : ''}
     ${v('complete_date') ? `<th class="sortable" data-key="complete_date" onclick="sortBy('complete_date')">완료일</th>` : ''}
     ${v('purchase_doc') ? `<th>구매품의서</th>` : ''}
+    ${v('gw_status') ? `<th title="그룹웨어 결재 진행 상황 (결재중 n/m = 결재자 m명 중 n명 승인)">품의 상태</th>` : ''}
     ${v('payment_doc') ? `<th>지출품의서</th>` : ''}
     ${v('it_manager') ? `<th class="sortable" data-key="it_manager" onclick="sortBy('it_manager')">IT담당자</th>` : ''}
     ${v('worker') ? `<th class="sortable" data-key="worker" onclick="sortBy('worker')">작업자</th>` : ''}
@@ -5219,8 +5220,9 @@ async function loadData() {
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
       ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-      ${v('purchase_doc') ? docCell(r.purchase_doc) : ''}
-      ${v('payment_doc') ? docCell(r.payment_doc) : ''}
+      ${v('purchase_doc') ? docCell(r.purchase_doc, r) : ''}
+      ${v('gw_status') ? gwStatusCell(r) : ''}
+      ${v('payment_doc') ? docCell(r.payment_doc, r) : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
       ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
@@ -5358,18 +5360,43 @@ function gwBadge(docNo) {
   if (!g) return '';
   if (!g.found) return `<span class="gw-badge gw-na" title="그룹웨어에서 찾지 못함">?</span>`;
   const tip = `${g.status_label || g.status} · ${g.step_done ?? '-'}/${g.step_total ?? '-'}${g.current_signer ? ' · 대기: ' + g.current_signer : ''}\n확인: ${g.checked_at ? String(g.checked_at).slice(0,16).replace('T',' ') : ''}`;
-  let cls = 'gw-ing', label = `${g.step_done}/${g.step_total}`;
+  let cls = 'gw-ing', label = `결재중 ${g.step_done}/${g.step_total}`;
   if (['Appr','ApprEnd','ApprEnd2'].includes(g.status)) { cls = 'gw-ok'; label = g.status_label || '승인'; }
   else if (['Return','Refusal','Cancel'].includes(g.status)) { cls = 'gw-ng'; label = g.status_label || '반려'; }
-  else if (g.current_signer) label += ' ' + g.current_signer.split('(')[0];
   return `<span class="gw-badge ${cls}" title="${gwEsc(tip)}">${gwEsc(label)}</span>`;
 }
+
+// 품의서 번호 → 그룹웨어 URL (공사에 저장된 URL 우선, 없으면 결재 추적 정보의 docId로 생성)
+function gwDocUrl(docNo, r) {
+  if (r && r.doc_url && gwDocs(r.purchase_doc)[0] === docNo) return r.doc_url;
+  const g = GW_STATUS[docNo];
+  return g && g.doc_id ? `${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=` : '';
+}
+
+// 목록 '품의 상태' 셀: 구매품의서(+지출품의서) 결재 상태
+function gwStatusCell(r) {
+  const lines = [];
+  const add = (prefix, text) => gwDocs(text).forEach(d => {
+    const g = GW_STATUS[d];
+    if (!g) return;
+    const wait = g.found && g.current_signer && !['Appr','ApprEnd','ApprEnd2','Return','Refusal','Cancel'].includes(g.status)
+      ? `<span style="font-size:11px;color:#1e40af;margin-left:2px">대기: ${gwEsc(g.current_signer.split('(')[0])}</span>` : '';
+    lines.push(`<div style="white-space:nowrap">${prefix ? `<span style="font-size:10px;color:#9ca3af;margin-right:3px">${prefix}</span>` : ''}${gwBadge(d)}${wait}</div>`);
+  });
+  add('', r.purchase_doc);
+  add('지출', r.payment_doc);
+  return `<td class="col-sm">${lines.join('') || '<span style="color:#d1d5db">-</span>'}</td>`;
+}
 function gwDocs(text) { return [...new Set(String(text || '').match(DOC_NO_RE) || [])]; }
-// 목록 셀: 첫 문서의 배지 + 원문
-function docCell(text) {
-  const docs = gwDocs(text);
-  const badge = docs.length ? gwBadge(docs[0]) : '';
-  return `<td class="col-doc" title="${gwEsc(text || '')}">${badge}${gwEsc(text || '-')}</td>`;
+// 목록 셀: 문서번호 (그룹웨어 링크)
+function docCell(text, r) {
+  if (!text) return `<td class="col-doc">-</td>`;
+  let html = gwEsc(text);
+  for (const d of gwDocs(text)) {
+    const url = gwDocUrl(d, r);
+    if (url) html = html.replace(gwEsc(d), `<a href="${gwEsc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#2563eb;text-decoration:underline">${gwEsc(d)}</a>`);
+  }
+  return `<td class="col-doc" title="${gwEsc(text)} (클릭하면 그룹웨어 품의서가 열립니다)">${html}</td>`;
 }
 // 상세: 문서별 배지 + 결재선
 function docDetail(text) {
@@ -5385,7 +5412,7 @@ function docDetail(text) {
         ? `<span class="wait">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`
         : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
     }
-    const link = g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
+    const link = gwDocUrl(d, window.__detailRec) ? `<a href="${gwEsc(gwDocUrl(d, window.__detailRec))}" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
     return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}</div>`;
   }).join('');
 }
@@ -5395,6 +5422,7 @@ function docDetail(text) {
 async function showDetail(id) {
   currentDetailId = id;
   const r = await api('GET', `/api/constructions/${id}`);
+  window.__detailRec = r;
 
   document.getElementById('detailTitle').textContent = r.work_name || '공사 상세';
   document.getElementById('detailSubtitle').textContent = `No.${r.no} · ${r.req_date} · ${r.corp}`;
@@ -5819,6 +5847,7 @@ const COL_DEFS = [
   { key: 'deadline',      label: '기한일',    default: true  },
   { key: 'complete_date', label: '완료일',    default: true  },
   { key: 'purchase_doc',  label: '구매품의서', default: true },
+  { key: 'gw_status',     label: '품의 상태', default: true },
   { key: 'payment_doc',   label: '지출품의서', default: true },
   { key: 'it_manager',    label: 'IT담당자',  default: true  },
   { key: 'worker',        label: '작업자',    default: true  },
@@ -8736,8 +8765,9 @@ function renderRowCells(r, v) {
     ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
     ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
     ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-    ${v('purchase_doc') ? docCell(r.purchase_doc) : ''}
-    ${v('payment_doc') ? docCell(r.payment_doc) : ''}
+    ${v('purchase_doc') ? docCell(r.purchase_doc, r) : ''}
+      ${v('gw_status') ? gwStatusCell(r) : ''}
+    ${v('payment_doc') ? docCell(r.payment_doc, r) : ''}
     ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
     ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
     ${v('actions') ? `<td><div style="display:flex;gap:4px">
