@@ -1,0 +1,11 @@
+{
+  "name": "gw-collector",
+  "version": "1.0.0",
+  "description": "ubiWare 구매품의서(랜선포설) → construction-app 자동 등록",
+  "main": "index.js",
+  "scripts": { "start": "node index.js", "test": "node test.js" },
+  "dependencies": {
+    "cheerio": "1.0.0",
+    "playwright": "1.48.2"
+  }
+}

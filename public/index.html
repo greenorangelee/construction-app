@@ -64,6 +64,19 @@
       -webkit-user-select: text !important;
     }
 
+    #gubunDropdownPanel input[type="checkbox"] {
+      position: static !important;
+      appearance: auto !important;
+      -webkit-appearance: checkbox !important;
+      margin: 0 !important;
+      flex-shrink: 0;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    #gubunDropdownPanel input[type="checkbox"]:focus {
+      outline: none !important;
+      box-shadow: none !important;
+    }
     /* ── HEADER ── */
     .header {
       background: #c0392b;
@@ -482,6 +495,15 @@
     /* 컴팩트 열 */
     td.col-sm { max-width: 80px; font-size: 11.5px; }
     td.col-md { max-width: 110px; font-size: 11.5px; }
+    .gwinbox-count:not(:empty) { display:inline-block; min-width:18px; padding:0 5px; margin-left:2px; border-radius:9px; background:#ef4444; color:#fff; font-size:10px; line-height:16px; text-align:center; }
+    .gwinbox-table th { padding:10px 12px; background:#f9fafb; border-bottom:2px solid #e5e7eb; color:#6b7280; font-weight:600; text-align:left; white-space:nowrap; }
+    .gwinbox-table td { padding:10px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+    .gwinbox-table td.memo { color:#6b7280; font-size:11px; white-space:pre-line; max-width:420px; }
+    .gw-badge { display:inline-block; font-size:10px; line-height:15px; padding:0 5px; border-radius:8px; margin-right:4px; vertical-align:middle; white-space:nowrap; cursor:help; }
+    .gw-ing { background:#dbeafe; color:#1e40af; } .gw-ok { background:#dcfce7; color:#166534; }
+    .gw-ng { background:#fee2e2; color:#991b1b; } .gw-na { background:#f3f4f6; color:#6b7280; }
+    .gw-line { font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.6; }
+    .gw-line .wait { color:#1e40af; font-weight:600; }
     td.col-doc { max-width: 130px; font-size: 11px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* STATUS BADGES */
@@ -2209,6 +2231,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -2357,16 +2380,39 @@
 
   <!-- FILTERS -->
   <div class="filter-bar">
-    <input type="text" id="searchInput" placeholder="🔍  스페이스로 AND 검색  예) B1 1F" oninput="loadData()" />
-    <select id="filterGubun" onchange="loadData()">
-      <option value="전체">전체 구분</option>
-      <option>자체공사</option>
-      <option>외주공사</option>
-      <option>지급</option>
-      <option>구매</option>
-      <option>임시포설</option>
-      <option>접수</option>
-    </select>
+    <input type="text" id="searchInput" placeholder="🔍  스페이스로 AND, 쉼표로 OR 검색  예) B1 1F,S1 2F" oninput="loadData()" />
+    <div style="position:relative" id="gubunDropdownWrap">
+      <button onclick="toggleGubunDropdown()" id="gubunDropdownBtn"
+        style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;background:#fff;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:110px;justify-content:space-between">
+        <span id="gubunDropdownLabel">전체 구분</span>
+        <span style="color:#9ca3af;font-size:10px">▼</span>
+      </button>
+            <div id="gubunDropdownPanel"
+        style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:1000;padding:4px;min-width:130px">
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;font-weight:600;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox" id="gubunAll"   checked onchange="onGubunAllChange(this)" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">전체</span>
+        </label>
+        <div style="border-top:1px solid #f3f4f6;margin:2px 4px"></div>
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox"  class="gubun-chk" value="자체공사" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">자체공사</span>
+        </label>
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox"  class="gubun-chk" value="외주공사" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">외주공사</span>
+        </label>
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox"  class="gubun-chk" value="지급" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">지급</span>
+        </label>
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox"  class="gubun-chk" value="구매" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">구매</span>
+        </label>
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox"  class="gubun-chk" value="임시포설" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">임시포설</span>
+        </label>
+        <label style="display:grid;grid-template-columns:13px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:#374151;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background=''">
+          <input type="checkbox"  class="gubun-chk" value="접수" checked onchange="onGubunChange()" style="accent-color:#c0392b;width:13px;height:13px;cursor:pointer;margin:0" /><span style="white-space:nowrap">접수</span>
+        </label>
+      </div>
+    </div>
     <select id="filterStatus" onchange="loadData()">
       <option value="전체">전체 상태</option>
       <option>완료</option>
@@ -2385,6 +2431,11 @@
       onclick="toggleGroupView()"
       style="white-space:nowrap;display:flex;align-items:center;gap:5px">
       <span id="groupViewIcon">⊞</span> 그룹 묶어보기
+    </button>
+    <button id="bulkGroupBtn" class="btn btn-outline btn-sm write-only"
+      onclick="applyBulkGroup()"
+      style="display:none;white-space:nowrap;align-items:center;gap:5px;border-color:#c0392b;color:#c0392b">
+      🔗 선택 묶기 (<span id="bulkGroupCount">0</span>)
     </button>
   </div>
 
@@ -2410,7 +2461,7 @@
             <div class="col-toggle-footer" style="margin-bottom:6px;padding-bottom:8px;border-bottom:1px solid #f3f4f6;padding-top:0;margin-top:0;border-top:none">
               <button onclick="setAllCols(true)">전체 선택</button>
               <button onclick="setAllCols(false)">전체 해제</button>
-              <button onclick="resetColWidths();closeFileDropdown()" style="flex:none;padding:5px 8px;font-size:11px" title="컬럼 너비 초기화">↺ 너비 초기화</button>
+              <button onclick="resetColWidths();closeFileDropdown()" style="flex:none;padding:3px 6px;font-size:11px" title="컬럼 너비 초기화">↺ 너비 초기화</button>
             </div>
             <div id="colCheckboxList"></div>
           </div>
@@ -2466,6 +2517,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-ip">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-ip">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-ip">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-ip">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
@@ -2682,6 +2734,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-c">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-c">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-c">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-c">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -2844,16 +2897,18 @@
       </div>
       <div>
         <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">묶을 공사 선택 (복수 가능)</div>
-        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명, 위치, 요청자 검색..."
+        <input type="text" id="groupLinkSearch" placeholder="🔍 공사명, 구매품의서, 위치, 요청자 검색..."
           style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;font-family:'Noto Sans KR',sans-serif;box-sizing:border-box;margin-bottom:8px"
           oninput="renderGroupLinkList(this.value)" />
         <div id="groupLinkList"
           style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div id="groupLinkCurrent" style="display:none;padding-top:10px;border-top:1px solid #f3f4f6">
-        <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px">현재 같은 묶음</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:12px;font-weight:700;color:#6b7280">현재 같은 묶음</div>
+          <button onclick="unlinkGroup()" style="font-size:11px;padding:2px 8px;border:1px solid #fca5a5;border-radius:5px;background:#fff5f5;color:#dc2626;cursor:pointer;font-family:'Noto Sans KR',sans-serif">전체 해제</button>
+        </div>
         <div id="groupLinkCurrentList" style="display:flex;flex-direction:column;gap:4px"></div>
-        <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="unlinkGroup()">이 공사 묶음 해제</button>
       </div>
     </div>
     <div class="modal-footer">
@@ -2939,6 +2994,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-d">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-d">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-d">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-d">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
@@ -3339,6 +3395,7 @@
         <button class="nav-tab active" onclick="switchTab('incident')" id="tab-incident-incident">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-incident">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-incident">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-incident">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-incident">⚙️ 설정</button>
       </nav>
     </div>
@@ -3565,6 +3622,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conreq">🚨 장애 이력</button>
         <button class="nav-tab active" onclick="switchTab('conreq')" id="tab-conreq-conreq">📋 공사 요청</button>
         <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-conreq">📬 공사 요청함</button>
+        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conreq">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conreq">⚙️ 설정</button>
       </nav>
     </div>
@@ -3829,6 +3887,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conbox">🚨 장애 이력</button>
         <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-conbox">📋 공사 요청</button>
         <button class="nav-tab active" onclick="switchTab('conbox')" id="tab-conbox-conbox">📬 공사 요청함</button>
+        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conbox">⚙️ 설정</button>
       </nav>
     </div>
@@ -3883,6 +3942,64 @@
   </div>
 </div>
 
+<!-- ─── GW 접수함 페이지 ─── -->
+<div id="gwinboxPage" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">KSM</div>
+      <span class="header-title">네트워크 공사 이력 관리 시스템</span>
+      <nav class="header-nav">
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-gwinbox">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-gwinbox">🗺️ 선번 관리</button>
+        <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-gwinbox">🖥️ IP 대장</button>
+        <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-gwinbox">🔌 네트워크 장비</button>
+        <button class="nav-tab" onclick="switchTab('fw')" id="tab-fw-gwinbox">🔥 방화벽 정책요청</button>
+        <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-gwinbox">🚨 장애 이력</button>
+        <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-gwinbox">📋 공사 요청</button>
+        <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-gwinbox">📬 공사 요청함</button>
+        <button class="nav-tab active" onclick="switchTab('gwinbox')" id="tab-gwinbox-gwinbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-gwinbox">⚙️ 설정</button>
+      </nav>
+    </div>
+    <div class="header-actions">
+      <div class="header-user">
+        <span class="header-user-name" id="headerUserName"></span>
+        <span class="header-user-role" id="headerUserRole"></span>
+        <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </header>
+  <div class="container">
+    <div class="filter-bar" style="margin-bottom:16px">
+      <input type="text" id="gwinboxSearch" placeholder="🔍 요청자·부서·공사명·문서번호 검색" oninput="renderGwInbox()" style="flex:1;min-width:200px;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
+      <select id="gwinboxStatusFilter" onchange="loadGwInbox()" style="padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none">
+        <option value="pending">검토 대기</option>
+        <option value="approved">등록 완료</option>
+        <option value="rejected">제외</option>
+        <option value="all">전체</option>
+      </select>
+    </div>
+    <div class="table-wrapper">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)">
+        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">📥 GW 접수 <span style="font-size:12px;font-weight:400;color:#6b7280;margin-left:6px">그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록</span></h2>
+        <span id="gwinboxCount" style="font-size:12px;color:#9ca3af"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="gwinbox-table" style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr>
+              <th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>상태</th><th>관리</th>
+            </tr>
+          </thead>
+          <tbody id="gwinboxTableBody">
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af">불러오는 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ─── 방화벽 정책요청 페이지 ─── -->
 <div id="firewallPage" style="display:none">
   <header class="header">
@@ -3898,6 +4015,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-fw">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-fw">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-fw">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-fw">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
       </nav>
     </div>
@@ -4001,6 +4119,14 @@
           <input type="text" id="fw-worker" placeholder="작업자 이름" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
         </div>
         <div style="grid-column:1/-1">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">요청 기간</label>
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">
+            <input type="text" id="fw-period_from" class="datepicker-input" placeholder="시작일 선택" readonly style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer;background:#fff" />
+            <span style="color:#9ca3af;font-size:13px;text-align:center">~</span>
+            <input type="text" id="fw-period_to" class="datepicker-input" placeholder="종료일 선택" readonly style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer;background:#fff" />
+          </div>
+        </div>
+        <div style="grid-column:1/-1">
           <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">품의명</label>
           <input type="text" id="fw-title" placeholder="품의명 입력" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none" />
         </div>
@@ -4014,6 +4140,20 @@
         </div>
       </div>
     </div>
+
+    <!-- 방화벽 정책요청서 자동입력 -->
+    <div style="margin:0 24px 16px;border-top:2px solid #f3f4f6;padding-top:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700;color:#374151">📋 정책요청서 자동입력</span>
+        <span style="font-size:11px;color:#9ca3af">방화벽 정책 요청서 페이지에서 Ctrl+A → Ctrl+C 후 붙여넣기</span>
+      </div>
+      <textarea id="fwDocPaste" rows="5"
+        placeholder="방화벽 정책 요청서 텍스트를 여기에 붙여넣기 하세요 (Ctrl+V)..."
+        style="width:100%;box-sizing:border-box;padding:12px;border:1.5px dashed #e5e7eb;border-radius:10px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical;color:#374151;background:#fafafa;line-height:1.6"
+        oninput="parseFwDoc(this.value)"></textarea>
+      <div id="fwDocResult" style="display:none;margin-top:8px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal('fwModal')">취소</button>
       <button class="btn btn-primary" onclick="saveFwRequest()">저장</button>
@@ -4036,6 +4176,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-s">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-s">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-s">📬 공사 요청함</button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-s">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -4404,6 +4545,10 @@
         <div class="form-section-title">📅 일정</div>
         <div class="form-grid-3">
           <div class="form-group">
+            <label>공사 예정일</label>
+            <input type="text" id="f-scheduled_date" class="datepicker-input" placeholder="날짜 선택" readonly />
+          </div>
+          <div class="form-group">
             <label>기한일</label>
             <input type="text" id="f-deadline" class="datepicker-input" placeholder="날짜 선택" readonly />
           </div>
@@ -4448,6 +4593,19 @@
             <textarea id="f-memo" placeholder="추가 메모를 여러 줄로 입력하세요" style="min-height:100px"></textarea>
           </div>
         </div>
+      </div>
+
+      <!-- 품의서 자동입력 -->
+      <div style="margin-top:20px;border-top:2px solid #f3f4f6;padding-top:20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:700;color:#374151">📋 품의서 자동입력</span>
+          <span style="font-size:11px;color:#9ca3af">품의서 페이지에서 Ctrl+A로 전체선택 후 복사(Ctrl+C)해서 그대로 붙여넣기(Ctrl+V)하면 항목이 자동으로 채워집니다</span>
+        </div>
+        <textarea id="purchaseDocPaste" rows="6"
+          placeholder="구매품의서 텍스트를 여기에 붙여넣기 하세요 (Ctrl+V)..."
+          style="width:100%;box-sizing:border-box;padding:12px;border:1.5px dashed #e5e7eb;border-radius:10px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;resize:vertical;color:#374151;background:#fafafa;line-height:1.6"
+          oninput="parsePurchaseDoc(this.value)"></textarea>
+        <div id="purchaseDocResult" style="display:none;margin-top:8px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#166534"></div>
       </div>
 
     </div>
@@ -4561,7 +4719,7 @@ async function doLogin() {
     currentUser = data.user;
     showApp();
     loadStats();
-    loadData().then(() => initColResize());
+    loadData().then(() => initAllColResize());
     loadLocations();
     loadNetworks();
     loadMonthlyChart();
@@ -4588,7 +4746,7 @@ async function checkAuth() {
     currentUser = await res.json();
     showApp();
     loadStats();
-    loadData().then(() => initColResize());
+    loadData().then(() => initAllColResize());
     loadLocations();
     loadNetworks();
     loadMonthlyChart();
@@ -4612,6 +4770,114 @@ async function api(method, path, body) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
   return data;
+}
+
+// ── 품의서 자동입력 ──────────────────────────────────────────
+
+function parsePurchaseDoc(text) {
+  if (!text.trim()) {
+    document.getElementById('purchaseDocResult').style.display = 'none';
+    return;
+  }
+
+  const filled = {};
+
+  // 법인 매핑 (첫 줄 또는 전체 텍스트에서 회사명 감지)
+  const corpMap = [
+    { keywords: ['케이에스엠컴포넌트', 'KSMC', 'ksmc'], corp: 'KSMC' },
+    { keywords: ['케이에스엠페로텍', 'KSMF', 'ksmf'], corp: 'KSMF' },
+    { keywords: ['한국씰마스타', 'FKSM', 'fksm'], corp: 'FKSM' },
+    { keywords: ['와이에이치이', 'YHE', 'yhe'], corp: 'YHE' },
+    { keywords: ['케이에스엠', 'KSM', '케이.에스.엠'], corp: 'KSM' },
+  ];
+  for (const { keywords, corp } of corpMap) {
+    if (keywords.some(k => text.includes(k))) {
+      filled.corp = corp;
+      document.getElementById('f-corp').value = corp;
+      break;
+    }
+  }
+
+  // 문서번호 → 구매품의서
+  const docNoMatch = text.match(/문서번호[\s\t]+([^\n\r\t]+)/);
+  if (docNoMatch) {
+    const docNo = docNoMatch[1].trim();
+    filled.purchase_doc = docNo;
+    document.getElementById('f-purchase_doc').value = docNo;
+  }
+
+  // 기안일자 → 요청일 (YY.MM.DD 형식으로 변환)
+  const dateMatch = text.match(/기안일자[\s\t]+(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (dateMatch) {
+    const yy = dateMatch[1].slice(2);
+    const mm = dateMatch[2].padStart(2, '0');
+    const dd = dateMatch[3].padStart(2, '0');
+    const dateStr = `${yy}.${mm}.${dd}`;
+    filled.req_date = dateStr;
+    document.getElementById('f-req_date').value = dateStr;
+  }
+
+  // 기안자 (이름/직급 → 이름만)
+  const authorMatch = text.match(/기\s*안\s*자[\s\t]+([^\n\r\t\/]+)/);
+  if (authorMatch) {
+    const author = authorMatch[1].trim().split('/')[0].split('　')[0].trim();
+    if (author && author.length <= 10) {
+      filled.requester = author;
+      document.getElementById('f-requester').value = author;
+    }
+  }
+
+  // 제 목 → 공사명
+  const titleMatch = text.match(/제\s{0,5}목[\s\t]+([^\n\r]+)/);
+  if (titleMatch) {
+    const title = titleMatch[1].trim();
+    if (title) {
+      filled.work_name = title;
+      document.getElementById('f-work_name').value = title;
+    }
+  }
+
+  // 기안부서 → 부서
+  const deptMatch = text.match(/기안부서[\s\t]+([^\n\r\t]+)/);
+  if (deptMatch) {
+    const dept = deptMatch[1].trim();
+    if (dept) {
+      filled.dept = dept;
+      document.getElementById('f-dept').value = dept;
+    }
+  }
+
+  // 기안부서 의견 → 메모
+  // "기안부서\n의견\t내용..." 또는 "기안부서\n의견\n내용..." 패턴
+  const memoMatch = text.match(/기안부서[\s\r\n]+의견[\s\t\r\n]+([\s\S]*?)(?:수신부서[\s\r\n]+의견|결재의견|\[결재|$)/);
+  if (memoMatch) {
+    const memo = memoMatch[1]
+      .trim()
+      .replace(/\t/g, ' ')          // 탭을 공백으로
+      .replace(/[ ]{2,}/g, ' ')     // 연속 공백 정리
+      .replace(/\n{3,}/g, '\n\n')   // 3줄 이상 공백 → 2줄로
+      .trim();
+    if (memo) {
+      filled.memo = memo;
+      const memoEl = document.getElementById('f-memo');
+      if (memoEl) memoEl.value = memo;
+    }
+  }
+
+  // 결과 표시
+  const resultEl = document.getElementById('purchaseDocResult');
+  const keys = Object.keys(filled);
+  if (keys.length > 0) {
+    const labels = { corp:'법인', purchase_doc:'구매품의서', req_date:'요청일', requester:'요청자', work_name:'공사명', dept:'부서', memo:'메모' };
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `✅ 자동입력 완료: ${keys.map(k => `<b>${labels[k]||k}</b>`).join(', ')}`;
+  } else {
+    resultEl.style.display = 'block';
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.borderColor = '#fecaca';
+    resultEl.style.color = '#991b1b';
+    resultEl.textContent = '⚠️ 인식된 항목이 없습니다. 구매품의서 텍스트인지 확인해주세요.';
+  }
 }
 
 // ── 백업 / 복구 ──────────────────────────────────────────
@@ -4783,7 +5049,7 @@ async function loadStats() {
 
 function updateActiveCards() {
   const status = document.getElementById('filterStatus').value;
-  const gubun  = document.getElementById('filterGubun').value;
+  const gubun  = getSelectedGubuns().length === document.querySelectorAll('.gubun-chk').length ? '전체' : getSelectedGubuns()[0] || '전체';
   const corp   = document.getElementById('filterCorp').value;
 
   // 상태 카드
@@ -4810,7 +5076,7 @@ function updateActiveCards() {
 
 function resetFilters() {
   document.getElementById('searchInput').value = '';
-  document.getElementById('filterGubun').value = '전체';
+  resetGubunFilter();
   document.getElementById('filterStatus').value = '전체';
   document.getElementById('filterCorp').value = '전체';
   document.querySelectorAll('th.sortable').forEach(th => th.classList.remove('asc','desc'));
@@ -4827,8 +5093,12 @@ function filterByStatus(val) {
 }
 
 function filterByGubun(val) {
-  const sel = document.getElementById('filterGubun');
-  sel.value = sel.value === val ? '전체' : val;
+  // 통계 카드 클릭 시 해당 구분만 선택
+  document.querySelectorAll('.gubun-chk').forEach(cb => {
+    cb.checked = cb.value === val;
+  });
+  document.getElementById('gubunAll').checked = false;
+  updateGubunLabel();
   updateActiveCards();
   loadData();
 }
@@ -4860,11 +5130,14 @@ function sortBy(key) {
 
 async function loadData() {
   const search = document.getElementById('searchInput').value;
-  const gubun = document.getElementById('filterGubun').value;
+  const selectedGubuns = getSelectedGubuns();
+  const gubun = selectedGubuns.length === document.querySelectorAll('.gubun-chk').length ? '전체' : selectedGubuns.join(',');
   const status = document.getElementById('filterStatus').value;
   const corp = document.getElementById('filterCorp').value;
   const params = new URLSearchParams({ search, gubun, status, corp });
   let data = await api('GET', `/api/constructions?${params}`);
+  await loadGwStatus();
+  refreshGwInboxCount();
 
   // 클라이언트 정렬
   data.sort((a, b) => {
@@ -4922,11 +5195,11 @@ async function loadData() {
   // 렌더 후 리사이저 재초기화는 requestAnimationFrame으로
   if (isGroupView) {
     renderGroupedTable(data, totalCols);
-    setTimeout(initColResize, 0);
+    setTimeout(initAllColResize, 0);
     return;
   }
 
-  setTimeout(initColResize, 0);
+  setTimeout(initAllColResize, 0);
   tbody.innerHTML = data.map(r => `
     <tr>
       <td class="cb-cell"><input type="checkbox" class="row-checkbox" value="${r.id}" onchange="onRowCheck()" /></td>
@@ -4941,13 +5214,21 @@ async function loadData() {
       ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
       ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-      ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
-      ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+      ${v('purchase_doc') ? docCell(r.purchase_doc) : ''}
+      ${v('payment_doc') ? docCell(r.payment_doc) : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
       ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
     </tr>
   `).join('');
+
+  // 체크박스 선택 상태 복원 (검색 초기화 후에도 유지)
+  if (bulkSelected.size > 0) {
+    document.querySelectorAll('.row-checkbox[value]').forEach(cb => {
+      if (bulkSelected.has(parseInt(cb.value))) cb.checked = true;
+    });
+    updateBulkGroupBtn();
+  }
 }
 
 function gubunBadge(v) {
@@ -4960,6 +5241,145 @@ function statusBadge(v) {
   if (v === '완료') return `<span class="badge badge-done">${v}</span>`;
   if (v === '진행중') return `<span class="badge badge-progress">${v}</span>`;
   return `<span class="badge badge-holding">${v}</span>`;
+}
+
+// ── GW 접수함 ──────────────────────────────────────────
+let gwInboxRows = [];
+const GW_INBOX_LABEL = { pending: ['검토 대기', 'gw-ing'], approved: ['등록 완료', 'gw-ok'], rejected: ['제외', 'gw-na'] };
+
+async function refreshGwInboxCount() {
+  try {
+    const { pending } = await api('GET', '/api/gw-inbox/count');
+    document.querySelectorAll('.gwinbox-count').forEach(el => el.textContent = pending > 0 ? pending : '');
+  } catch (e) {}
+}
+
+async function loadGwInbox() {
+  const st = document.getElementById('gwinboxStatusFilter').value;
+  try {
+    await loadGwStatus();
+    gwInboxRows = await api('GET', `/api/gw-inbox?status=${encodeURIComponent(st)}`);
+  } catch (e) { gwInboxRows = []; showToast('GW 접수 목록 오류: ' + e.message, true); }
+  renderGwInbox();
+  refreshGwInboxCount();
+}
+
+function renderGwInbox() {
+  const kw = (document.getElementById('gwinboxSearch').value || '').trim().toLowerCase();
+  const canWrite = ['write', 'admin'].includes(currentUser?.role);
+  const rows = gwInboxRows.filter(r => !kw || [r.data.requester, r.data.dept, r.data.work_name, r.doc_no]
+    .some(v => String(v || '').toLowerCase().includes(kw)));
+  document.getElementById('gwinboxCount').textContent = `${rows.length}건`;
+  const body = document.getElementById('gwinboxTableBody');
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af">항목이 없습니다</td></tr>'; return; }
+  body.innerHTML = rows.map(r => {
+    const d = r.data || {};
+    const items = (r.items || []).map(it => `${gwEsc(it.name)} ×${gwEsc(it.qty)}`).join('<br>');
+    const [label, cls] = GW_INBOX_LABEL[r.status] || [r.status, 'gw-na'];
+    let actions = '';
+    if (canWrite && r.status === 'pending') actions = `<button class="btn btn-primary btn-sm" onclick="openInboxModal(${r.id})">검토·등록</button> <button class="btn btn-outline btn-sm" onclick="rejectInbox(${r.id})">제외</button>`;
+    else if (canWrite && r.status === 'rejected') actions = `<button class="btn btn-outline btn-sm" onclick="restoreInbox(${r.id})">되돌리기</button>`;
+    else if (r.status === 'approved' && r.construction_id) actions = `<button class="btn btn-outline btn-sm" onclick="switchTab('main');showDetail(${r.construction_id})">공사 보기</button>`;
+    const who = r.decided_by ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px">${gwEsc(r.decided_by)} ${gwEsc(String(r.decided_at || '').slice(5, 10))}</div>` : '';
+    return `<tr>
+      <td style="white-space:nowrap">${gwEsc(d.req_date || '-')}</td>
+      <td>${gwEsc(d.corp || '-')}</td>
+      <td style="white-space:nowrap">${gwEsc(d.dept || '-')}</td>
+      <td style="white-space:nowrap">${gwEsc(d.requester || '-')}</td>
+      <td><div style="font-weight:600;color:#1a1a1a;margin-bottom:4px">${gwEsc(d.work_name || '-')}</div><div class="memo" style="color:#6b7280;font-size:11px;white-space:pre-line;max-width:420px">${gwEsc((d.memo || '').replace(/\n*\[GW 자동등록\][^\n]*$/, '').slice(0, 400))}</div></td>
+      <td style="font-size:12px;white-space:nowrap">${items || '-'}</td>
+      <td style="white-space:nowrap">${docDetail(r.doc_no)}</td>
+      <td><span class="gw-badge ${cls}">${label}</span>${who}</td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function openInboxModal(id) {
+  const r = await api('GET', `/api/gw-inbox/${id}`);
+  openNewModal();
+  inboxId = id;
+  document.getElementById('modalTitle').textContent = 'GW 접수 검토 → 공사 이력 등록';
+  document.getElementById('formSubmitBtn').textContent = '공사 이력에 등록';
+  await loadLocations();
+  populateLocDropdowns();
+  const d = r.data || {};
+  FIELDS.forEach(f => {
+    const el = document.getElementById('f-' + f);
+    if (!el || d[f] === undefined) return;
+    el.value = d[f] || '';
+  });
+  // 구분은 검토자가 직접 선택
+  const g = document.getElementById('f-gubun');
+  if (g && (!d.gubun || d.gubun === '접수')) g.value = '';
+  ['loc', 'demolish'].forEach(p => {
+    const regionEl = document.getElementById(`f-${p}_region`);
+    if (regionEl && d[`${p}_region`]) {
+      regionEl.value = d[`${p}_region`];
+      onLocRegionChange(p, true);
+    }
+  });
+}
+
+async function rejectInbox(id) {
+  if (!confirm('이 항목을 제외할까요? (공사 이력에 등록되지 않으며, 제외 목록에서 되돌릴 수 있습니다)')) return;
+  await api('POST', `/api/gw-inbox/${id}/reject`);
+  showToast('제외되었습니다');
+  loadGwInbox();
+}
+
+async function restoreInbox(id) {
+  await api('POST', `/api/gw-inbox/${id}/restore`);
+  showToast('검토 대기로 되돌렸습니다');
+  loadGwInbox();
+}
+
+// ── 그룹웨어 결재 진행 배지 ──────────────────────────────
+let GW_STATUS = {};
+const GW_BASE = 'https://gw.ksm.co.kr';
+const DOC_NO_RE = /[가-힣A-Za-z]+-[가-힣A-Za-z]+-\d{2}-\d{3,5}/g;
+async function loadGwStatus() {
+  try {
+    const rows = await api('GET', '/api/gw-status');
+    GW_STATUS = Object.fromEntries(rows.map(x => [x.doc_no, x]));
+  } catch (e) { /* 테이블 없거나 실패해도 목록은 표시 */ }
+}
+function gwEsc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function gwBadge(docNo) {
+  const g = GW_STATUS[docNo];
+  if (!g) return '';
+  if (!g.found) return `<span class="gw-badge gw-na" title="그룹웨어에서 찾지 못함">?</span>`;
+  const tip = `${g.status_label || g.status} · ${g.step_done ?? '-'}/${g.step_total ?? '-'}${g.current_signer ? ' · 대기: ' + g.current_signer : ''}\n확인: ${g.checked_at ? String(g.checked_at).slice(0,16).replace('T',' ') : ''}`;
+  let cls = 'gw-ing', label = `${g.step_done}/${g.step_total}`;
+  if (['Appr','ApprEnd','ApprEnd2'].includes(g.status)) { cls = 'gw-ok'; label = g.status_label || '승인'; }
+  else if (['Return','Refusal','Cancel'].includes(g.status)) { cls = 'gw-ng'; label = g.status_label || '반려'; }
+  else if (g.current_signer) label += ' ' + g.current_signer.split('(')[0];
+  return `<span class="gw-badge ${cls}" title="${gwEsc(tip)}">${gwEsc(label)}</span>`;
+}
+function gwDocs(text) { return [...new Set(String(text || '').match(DOC_NO_RE) || [])]; }
+// 목록 셀: 첫 문서의 배지 + 원문
+function docCell(text) {
+  const docs = gwDocs(text);
+  const badge = docs.length ? gwBadge(docs[0]) : '';
+  return `<td class="col-doc" title="${gwEsc(text || '')}">${badge}${gwEsc(text || '-')}</td>`;
+}
+// 상세: 문서별 배지 + 결재선
+function docDetail(text) {
+  const docs = gwDocs(text);
+  if (!docs.length) return `<div style="font-size:13px">${gwEsc(text || '-')}</div>`;
+  return docs.map(d => {
+    const g = GW_STATUS[d];
+    let line = '';
+    if (g && g.found) {
+      let signers = [];
+      try { signers = JSON.parse(g.signers || '[]'); } catch {}
+      line = `<div class="gw-line">${signers.map(sg => sg.wait
+        ? `<span class="wait">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`
+        : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
+    }
+    const link = g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
+    return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}</div>`;
+  }).join('');
 }
 
 // ── DETAIL ──────────────────────────────────────────
@@ -4984,6 +5404,7 @@ async function showDetail(id) {
       </div>
       <div class="detail-section">
         <div class="detail-section-title">📅 일정 / 담당자</div>
+        ${row('공사 예정일', r.scheduled_date)}
         ${row('기한일', r.deadline)}
         ${row('작업 완료일', r.complete_date)}
         ${row('IT담당자', r.it_manager)}
@@ -5009,15 +5430,15 @@ async function showDetail(id) {
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">구매품의서</div>
-            <div style="font-size:13px">${r.purchase_doc || '-'}</div>
+            ${docDetail(r.purchase_doc)}
           </div>
           <div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">지출품의서</div>
-            <div style="font-size:13px">${r.payment_doc || '-'}</div>
+            ${docDetail(r.payment_doc)}
           </div>
           <div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">연관품의서</div>
-            <div style="font-size:13px">${r.related_doc || '-'}</div>
+            ${docDetail(r.related_doc)}
           </div>
         </div>
       </div>
@@ -5049,28 +5470,34 @@ const FIELDS = ['gubun','req_date','corp','dept','requester','work_name',
   'loc_region','loc_dong','loc_floor','loc_detail',
   'move_region','move_dong','move_floor','move_detail',
   'demolish_region','demolish_dong','demolish_floor','demolish_detail',
-  'status','deadline','complete_date',
+  'status','scheduled_date','deadline','complete_date',
   'purchase_doc','payment_doc','related_doc','it_manager','worker','memo'];
+
+let inboxId = null;   // GW 접수함에서 열었을 때 해당 항목 id
 
 function openNewModal() {
   editingId = null;
+  inboxId = null;
   document.getElementById('modalTitle').textContent = '새 공사 등록';
   document.getElementById('formSubmitBtn').textContent = '등록';
   FIELDS.forEach(f => {
     const el = document.getElementById('f-' + f);
     if (!el) return;
-    if (el.tagName === 'SELECT') {
-      el.selectedIndex = 0;
-    } else {
-      el.value = '';
-    }
+    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else el.value = '';
   });
+  // 품의서 붙여넣기 영역 초기화
+  const pasteEl = document.getElementById('purchaseDocPaste');
+  const resultEl = document.getElementById('purchaseDocResult');
+  if (pasteEl) pasteEl.value = '';
+  if (resultEl) { resultEl.style.display = 'none'; resultEl.style.background = '#f0fdf4'; resultEl.style.borderColor = '#86efac'; resultEl.style.color = '#166534'; }
   populateLocDropdowns();
   openModal('formModal');
 }
 
 async function openEditModal(id) {
   editingId = id;
+  inboxId = null;
   document.getElementById('modalTitle').textContent = '공사 정보 수정';
   document.getElementById('formSubmitBtn').textContent = '저장';
   const r = await api('GET', `/api/constructions/${id}`);
@@ -5112,6 +5539,15 @@ async function submitForm() {
 
   data.changed_by = '관리자';
   try {
+    if (inboxId) {
+      await api('POST', `/api/gw-inbox/${inboxId}/approve`, data);
+      showToast('공사 이력에 등록되었습니다 ✓');
+      inboxId = null;
+      closeModal('formModal');
+      loadGwInbox();
+      loadData(); loadStats();
+      return;
+    }
     if (editingId) {
       const result = await api('PUT', `/api/constructions/${editingId}`, data);
       if (result.error) { alert('저장 오류: ' + result.error); return; }
@@ -5235,7 +5671,18 @@ function showToast(msg) {
     popup.querySelector('#dp-prev').onclick = e => { e.stopPropagation(); curMonth--; if(curMonth<0){curMonth=11;curYear--;} renderDays(); };
     popup.querySelector('#dp-next').onclick = e => { e.stopPropagation(); curMonth++; if(curMonth>11){curMonth=0;curYear++;} renderDays(); };
     popup.querySelector('#dp-today').onclick = e => { e.stopPropagation(); const t=new Date(); selectDate(t.getFullYear(), t.getMonth(), t.getDate()); };
-    popup.querySelector('#dp-clear').onclick = e => { e.stopPropagation(); if(activeInput) activeInput.value=''; closePopup(); };
+    popup.querySelector('#dp-clear').onclick = e => {
+      e.stopPropagation();
+      if (activeInput) {
+        activeInput.value = '';
+        // 완료일 지우면 상태 '진행중'으로 복원
+        if (activeInput.id === 'f-complete_date') {
+          const statusEl = document.getElementById('f-status');
+          if (statusEl && statusEl.value === '완료') statusEl.value = '진행중';
+        }
+      }
+      closePopup();
+    };
   }
 
   function renderDays() {
@@ -5288,7 +5735,14 @@ function showToast(msg) {
   }
 
   function selectDate(y, m, d) {
-    if (activeInput) activeInput.value = fmt(y, m, d);
+    if (activeInput) {
+      activeInput.value = fmt(y, m, d);
+      // 작업 완료일 선택 시 상태 자동 '완료'로 변경
+      if (activeInput.id === 'f-complete_date' && d) {
+        const statusEl = document.getElementById('f-status');
+        if (statusEl) statusEl.value = '완료';
+      }
+    }
     closePopup();
   }
 
@@ -5436,14 +5890,21 @@ function getCheckedIds() {
 }
 
 function onRowCheck() {
-  const ids = getCheckedIds();
+  // 현재 화면에 있는 체크박스만 처리 (안 보이는 항목은 bulkSelected 유지)
+  document.querySelectorAll('.row-checkbox[value]').forEach(cb => {
+    const id = parseInt(cb.value);
+    if (cb.checked) bulkSelected.add(id);
+    else bulkSelected.delete(id);
+  });
+  const ids = [...bulkSelected];
   const bulkBar = document.getElementById('bulkBar');
   document.getElementById('bulkCount').textContent = `${ids.length}개 선택됨`;
   bulkBar.classList.toggle('visible', ids.length > 0);
   // 전체 체크박스 상태 업데이트
   const all = document.querySelectorAll('.row-checkbox[value]');
   const checkAll = document.getElementById('checkAll');
-  if (checkAll) checkAll.checked = ids.length === all.length && all.length > 0;
+  if (checkAll) checkAll.checked = all.length > 0 && [...all].every(cb => cb.checked);
+  updateBulkGroupBtn();
 }
 
 function toggleCheckAll(el) {
@@ -7928,10 +8389,11 @@ function switchTab(tab) {
   document.getElementById('incidentPage').style.display = tab === 'incident' ? 'block' : 'none';
   document.getElementById('conreqPage').style.display = tab === 'conreq' ? 'block' : 'none';
   document.getElementById('conboxPage').style.display = tab === 'conbox' ? 'block' : 'none';
+  document.getElementById('gwinboxPage').style.display = tab === 'gwinbox' ? 'block' : 'none';
   document.getElementById('settingsPage').style.display = tab === 'settings' ? 'block' : 'none';
 
-  ['main','cable','ip','devices','fw','incident','conreq','conbox','settings'].forEach(t => {
-    ['tab-'+t,'tab-'+t+'-s','tab-'+t+'-c','tab-'+t+'-ip','tab-'+t+'-d','tab-'+t+'-fw','tab-'+t+'-incident','tab-'+t+'-conreq','tab-'+t+'-conbox'].forEach(id => {
+  ['main','cable','ip','devices','fw','incident','conreq','conbox','gwinbox','settings'].forEach(t => {
+    ['tab-'+t,'tab-'+t+'-s','tab-'+t+'-c','tab-'+t+'-ip','tab-'+t+'-d','tab-'+t+'-fw','tab-'+t+'-incident','tab-'+t+'-conreq','tab-'+t+'-conbox','tab-'+t+'-gwinbox'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('active', t === tab);
     });
@@ -7940,10 +8402,11 @@ function switchTab(tab) {
   if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
-  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; }
-  if (tab === 'fw') { loadFwList(); updateFwUIByRole(); }
-  if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); }
-  if (tab === 'conbox') { loadConBox(); }
+  if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; setTimeout(()=>initColResize(document.querySelector('#devicesPage table'),'colWidths_dev'),100); }
+  if (tab === 'fw') { loadFwList(); updateFwUIByRole(); setTimeout(()=>initColResize(document.querySelector('#firewallPage table'),'colWidths_fw'),100); }
+  if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); setTimeout(()=>initColResize(document.querySelector('#incidentPage table'),'colWidths_inc'),100); }
+  if (tab === 'gwinbox') { loadGwInbox(); }
+  if (tab === 'conbox') { loadConBox(); setTimeout(()=>initColResize(document.querySelector('#conboxPage table'),'colWidths_conbox'),100); }
 }
 
 // ── 위치 드롭다운 연동 ──────────────────────────────────────────
@@ -8044,6 +8507,130 @@ async function showHistory(id, workName) {
 
 
 
+// ── 구분 다중선택 드롭다운 ──────────────────────────────────────────
+
+function toggleGubunDropdown() {
+  const panel = document.getElementById('gubunDropdownPanel');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    // 외부 클릭 시 닫기
+    setTimeout(() => {
+      document.addEventListener('click', closeGubunDropdown, { once: true });
+    }, 50);
+  }
+}
+
+function closeGubunDropdown(e) {
+  const wrap = document.getElementById('gubunDropdownWrap');
+  if (!wrap?.contains(e.target)) {
+    document.getElementById('gubunDropdownPanel').style.display = 'none';
+  } else {
+    // 패널 안 클릭이면 다시 등록
+    document.addEventListener('click', closeGubunDropdown, { once: true });
+  }
+}
+
+function getSelectedGubuns() {
+  return [...document.querySelectorAll('.gubun-chk:checked')].map(cb => cb.value);
+}
+
+function onGubunAllChange(el) {
+  document.querySelectorAll('.gubun-chk').forEach(cb => cb.checked = el.checked);
+  updateGubunLabel();
+  loadData();
+}
+
+function onGubunChange() {
+  const all = document.querySelectorAll('.gubun-chk');
+  const checked = document.querySelectorAll('.gubun-chk:checked');
+  document.getElementById('gubunAll').checked = all.length === checked.length;
+  updateGubunLabel();
+  loadData();
+}
+
+function updateGubunLabel() {
+  const selected = getSelectedGubuns();
+  const all = document.querySelectorAll('.gubun-chk');
+  const label = document.getElementById('gubunDropdownLabel');
+  if (selected.length === 0) label.textContent = '구분 없음';
+  else if (selected.length === all.length) label.textContent = '전체 구분';
+  else if (selected.length === 1) label.textContent = selected[0];
+  else label.textContent = `${selected[0]} 외 ${selected.length - 1}`;
+}
+
+function resetGubunFilter() {
+  document.querySelectorAll('.gubun-chk').forEach(cb => cb.checked = true);
+  document.getElementById('gubunAll').checked = true;
+  updateGubunLabel();
+}
+
+
+
+const bulkSelected = new Set();
+
+function toggleBulkSelect(id, checked) {
+  if (checked) bulkSelected.add(id);
+  else bulkSelected.delete(id);
+  updateBulkGroupBtn();
+}
+
+function toggleBulkSelectAll(checked) {
+  const boxes = document.querySelectorAll('.row-checkbox');
+  boxes.forEach(cb => {
+    const id = parseInt(cb.dataset.id);
+    cb.checked = checked;
+    if (checked) bulkSelected.add(id);
+    else bulkSelected.delete(id);
+  });
+  updateBulkGroupBtn();
+}
+
+function updateBulkGroupBtn() {
+  const btn = document.getElementById('bulkGroupBtn');
+  const cnt = document.getElementById('bulkGroupCount');
+  if (!btn) return;
+  if (bulkSelected.size >= 2) {
+    btn.style.display = 'flex';
+    // 현재 화면에 없는 선택 항목 수 계산
+    const visibleIds = new Set([...document.querySelectorAll('.row-checkbox[value]')].map(cb => parseInt(cb.value)));
+    const hiddenCount = [...bulkSelected].filter(id => !visibleIds.has(id)).length;
+    cnt.textContent = hiddenCount > 0 ? `${bulkSelected.size} (${hiddenCount}개 다른 검색)` : bulkSelected.size;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+async function applyBulkGroup() {
+  if (bulkSelected.size < 2) {
+    showCenterAlert('2개 이상 선택해야 묶을 수 있습니다');
+    return;
+  }
+  if (!confirm(`선택한 ${bulkSelected.size}개 공사를 묶을까요?`)) return;
+
+  const ids = [...bulkSelected];
+  // 선택된 공사 중 기존 group_id가 있으면 재사용, 없으면 새로 발급
+  const existingGroup = allData.find(r => ids.includes(r.id) && r.group_id);
+  let group_id = existingGroup?.group_id;
+  if (!group_id) {
+    const res = await api('POST', '/api/groups/new');
+    group_id = res.group_id;
+  }
+
+  for (const id of ids) {
+    await api('PUT', `/api/constructions/${id}/group`, { group_id });
+  }
+
+  bulkSelected.clear();
+  updateBulkGroupBtn();
+  // 전체선택 체크박스 해제
+  const allBox = document.getElementById('selectAllCheckbox');
+  if (allBox) allBox.checked = false;
+
+  showToast(`✓ ${ids.length}개 공사가 묶였습니다`);
+  await loadData();
+}
+
 // ── 그룹 묶어보기 ──────────────────────────────────────────
 
 let isGroupView = false;
@@ -8106,6 +8693,14 @@ function renderGroupedTable(data, totalCols) {
   }
 
   tbody.innerHTML = html || `<tr><td colspan="${totalCols + 1}"><div class="empty-state"><div class="icon">📭</div><p>검색 결과가 없습니다</p></div></td></tr>`;
+
+  // 체크박스 선택 상태 복원
+  if (bulkSelected.size > 0) {
+    document.querySelectorAll('.row-checkbox[value]').forEach(cb => {
+      if (bulkSelected.has(parseInt(cb.value))) cb.checked = true;
+    });
+    updateBulkGroupBtn();
+  }
 }
 
 function toggleGroupSection(sectionId) {
@@ -8132,8 +8727,8 @@ function renderRowCells(r, v) {
     ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
     ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
     ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
-    ${v('purchase_doc') ? `<td class="col-doc" title="${r.purchase_doc || ''}">${r.purchase_doc || '-'}</td>` : ''}
-    ${v('payment_doc') ? `<td class="col-doc" title="${r.payment_doc || ''}">${r.payment_doc || '-'}</td>` : ''}
+    ${v('purchase_doc') ? docCell(r.purchase_doc) : ''}
+    ${v('payment_doc') ? docCell(r.payment_doc) : ''}
     ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
     ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
     ${v('actions') ? `<td><div style="display:flex;gap:4px">
@@ -8160,13 +8755,17 @@ async function openGroupLink(id) {
   const currentEl = document.getElementById('groupLinkCurrent');
   const currentListEl = document.getElementById('groupLinkCurrentList');
   if (base?.group_id) {
-    const members = allData.filter(r => r.group_id === base.group_id && r.id !== id);
-    currentEl.style.display = members.length ? 'block' : 'none';
-    currentListEl.innerHTML = members.map(m =>
-      `<div style="font-size:12px;padding:5px 10px;background:#fef2f2;border-radius:6px;color:#374151">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${base.group_color||'#6366f1'};margin-right:6px"></span>
-        ${m.work_name}
-      </div>`).join('');
+    // 현재 공사 본인도 포함해서 전체 멤버 표시
+    const members = allData.filter(r => r.group_id === base.group_id);
+    currentEl.style.display = members.length > 1 ? 'block' : 'none';
+    currentListEl.innerHTML = members.map(m => {
+      const isBase = m.id === id;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:${isBase?'#eff6ff':'#f9fafb'};border-radius:6px;border:1px solid ${isBase?'#bfdbfe':'transparent'}">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${base.group_color||'#6366f1'};flex-shrink:0"></span>
+        <span style="flex:1;font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.work_name}${isBase?' <span style="font-size:10px;color:#2563eb">(현재)</span>':''}</span>
+        ${!isBase ? `<button onclick="unlinkSingleGroup(${m.id},'${(m.work_name||'').replace(/'/g,"\'")}')" style="flex-shrink:0;padding:2px 8px;font-size:11px;border:1px solid #fca5a5;border-radius:5px;background:#fff;color:#dc2626;cursor:pointer;font-family:'Noto Sans KR',sans-serif">빼기</button>` : ''}
+      </div>`;
+    }).join('');
   } else {
     currentEl.style.display = 'none';
   }
@@ -8182,7 +8781,15 @@ function renderGroupLinkList(search) {
 
   const candidates = allData.filter(r =>
     r.id !== groupLinkBaseId &&
-    (!keyword || (r.work_name || '').toLowerCase().includes(keyword) || (r.requester || '').toLowerCase().includes(keyword) || (r.loc_region || '').toLowerCase().includes(keyword) || (r.loc_dong || '').toLowerCase().includes(keyword) || (r.loc_floor || '').toLowerCase().includes(keyword) || (r.loc_detail || '').toLowerCase().includes(keyword))
+    (!keyword ||
+      (r.work_name    || '').toLowerCase().includes(keyword) ||
+      (r.requester    || '').toLowerCase().includes(keyword) ||
+      (r.loc_region   || '').toLowerCase().includes(keyword) ||
+      (r.loc_dong     || '').toLowerCase().includes(keyword) ||
+      (r.loc_floor    || '').toLowerCase().includes(keyword) ||
+      (r.loc_detail   || '').toLowerCase().includes(keyword) ||
+      (r.purchase_doc || '').toLowerCase().includes(keyword)   // 구매품의서 검색 추가
+    )
   );
 
   el.innerHTML = candidates.length ? candidates.map(r => {
@@ -8191,9 +8798,12 @@ function renderGroupLinkList(search) {
     return `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;background:${sameGroup?'#eff6ff':checked?'#f0fdf4':'#f9fafb'};border:1px solid ${sameGroup?'#bfdbfe':checked?'#bbf7d0':'transparent'}">
       <input type="checkbox" ${checked||sameGroup?'checked':''} ${sameGroup?'disabled':''} onchange="toggleGroupSelect(${r.id},this.checked)"
         style="accent-color:#c0392b;width:14px;height:14px;cursor:pointer;flex-shrink:0" />
-      <span style="flex:1;font-size:12px;color:#374151">${r.work_name || '-'}</span>
-      <span style="font-size:10px;color:#9ca3af">${r.req_date||''} ${r.corp||''}</span>
-      ${sameGroup ? '<span style="font-size:10px;color:#2563eb">현재 묶음</span>' : ''}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.work_name || '-'}</div>
+        ${r.purchase_doc ? `<div style="font-size:10px;color:#9ca3af">${r.purchase_doc}</div>` : ''}
+      </div>
+      <span style="font-size:10px;color:#9ca3af;white-space:nowrap">${r.req_date||''} ${r.corp||''}</span>
+      ${sameGroup ? '<span style="font-size:10px;color:#2563eb;white-space:nowrap">현재 묶음</span>' : ''}
     </label>`;
   }).join('') : '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px">검색 결과 없음</div>';
 }
@@ -8229,11 +8839,26 @@ async function applyGroupLink() {
 }
 
 async function unlinkGroup() {
-  if (!confirm('이 공사의 묶음을 해제할까요?')) return;
-  await api('PUT', `/api/constructions/${groupLinkBaseId}/group`, { group_id: null });
+  // 현재 묶음의 모든 멤버 해제
+  const base = allData.find(r => r.id === groupLinkBaseId);
+  if (!base?.group_id) return;
+  if (!confirm('이 묶음에 속한 공사를 전체 해제할까요?')) return;
+  const members = allData.filter(r => r.group_id === base.group_id);
+  for (const m of members) {
+    await api('PUT', `/api/constructions/${m.id}/group`, { group_id: null });
+  }
   closeModal('groupLinkModal');
-  showToast('묶음 해제됐습니다');
+  showToast(`묶음 전체 해제됐습니다 (${members.length}개)`);
   await loadData();
+}
+
+async function unlinkSingleGroup(id, name) {
+  if (!confirm(`"${name}" 공사를 묶음에서 제외할까요?`)) return;
+  await api('PUT', `/api/constructions/${id}/group`, { group_id: null });
+  showToast(`"${name}" 묶음에서 제외됐습니다`);
+  await loadData();
+  // 모달 내 목록 갱신
+  openGroupLink(groupLinkBaseId);
 }
 
 
@@ -8279,27 +8904,29 @@ function initBeta() {
 
 // ── COLUMN RESIZE ──────────────────────────────────────────
 
-function initColResize() {
-  const table = document.querySelector('table');
+function initColResize(tableEl, storageKey) {
+  // tableEl: 대상 table 요소 (없으면 첫 번째 table)
+  // storageKey: localStorage 키 (없으면 'colWidths')
+  const table = tableEl || document.querySelector('table');
   if (!table) return;
+  const key = storageKey || 'colWidths';
+
+  // 기존 리사이저 제거 (중복 방지)
+  table.querySelectorAll('.col-resizer').forEach(r => r.remove());
 
   // 저장된 너비 복원
-  const saved = (() => { try { return JSON.parse(localStorage.getItem('colWidths') || '{}'); } catch { return {}; } })();
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } })();
 
   const ths = table.querySelectorAll('thead th');
   ths.forEach((th, i) => {
     th.classList.add('resizable');
-
-    // 저장된 너비 적용
     if (saved[i]) th.style.width = saved[i] + 'px';
 
-    // 리사이저 핸들 추가
     const resizer = document.createElement('div');
     resizer.className = 'col-resizer';
     th.appendChild(resizer);
 
     let startX, startW;
-
     resizer.addEventListener('mousedown', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -8308,31 +8935,46 @@ function initColResize() {
       resizer.classList.add('resizing');
 
       const onMove = e => {
-        const newW = Math.max(50, startW + e.clientX - startX);
-        th.style.width = newW + 'px';
+        th.style.width = Math.max(50, startW + e.clientX - startX) + 'px';
       };
-
       const onUp = () => {
         resizer.classList.remove('resizing');
-        // 너비 저장
         const widths = {};
         table.querySelectorAll('thead th').forEach((t, idx) => {
           if (t.style.width) widths[idx] = parseInt(t.style.width);
         });
-        localStorage.setItem('colWidths', JSON.stringify(widths));
+        localStorage.setItem(key, JSON.stringify(widths));
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
   });
 }
 
+// 탭별 테이블에 리사이즈 초기화
+function initAllColResize() {
+  // 공사이력
+  const mainTable = document.querySelector('#mainPage table');
+  if (mainTable) initColResize(mainTable, 'colWidths_main');
+  // 방화벽
+  const fwTable = document.querySelector('#firewallPage table');
+  if (fwTable) initColResize(fwTable, 'colWidths_fw');
+  // 장애이력
+  const incTable = document.querySelector('#incidentPage table');
+  if (incTable) initColResize(incTable, 'colWidths_inc');
+  // 공사요청함
+  const conboxTable = document.querySelector('#conboxPage table');
+  if (conboxTable) initColResize(conboxTable, 'colWidths_conbox');
+  // 네트워크장비
+  const devTable = document.querySelector('#devicesPage table');
+  if (devTable) initColResize(devTable, 'colWidths_dev');
+}
+
 // 너비 초기화 버튼
 function resetColWidths() {
-  localStorage.removeItem('colWidths');
+  ['colWidths_main','colWidths_fw','colWidths_inc','colWidths_conbox','colWidths_dev','colWidths'].forEach(k => localStorage.removeItem(k));
   document.querySelectorAll('thead th').forEach(th => { th.style.width = ''; });
   showToast('컬럼 너비가 초기화됐습니다');
 }
@@ -9454,25 +10096,129 @@ function updateFwUIByRole() {
   if (addBtn) addBtn.style.display = canWrite ? '' : 'none';
 }
 
+// ── 방화벽 정책요청서 자동입력 ──────────────────────────────────────────
+
+function parseFwDoc(text) {
+  if (!text.trim()) {
+    document.getElementById('fwDocResult').style.display = 'none';
+    return;
+  }
+
+  const filled = {};
+
+  // 법인 감지
+  const corpMap = [
+    { keywords: ['케이에스엠컴포넌트', 'KSMC'], corp: 'KSMC' },
+    { keywords: ['케이에스엠페로텍', 'KSMF'], corp: 'KSMF' },
+    { keywords: ['한국씰마스타', 'FKSM'], corp: 'FKSM' },
+    { keywords: ['와이에이치이', 'YHE'], corp: 'YHE' },
+    { keywords: ['케이에스엠', 'KSM'], corp: 'KSM' },
+  ];
+  for (const { keywords, corp } of corpMap) {
+    if (keywords.some(k => text.includes(k))) {
+      filled.corp = corp;
+      document.getElementById('fw-corp').value = corp;
+      break;
+    }
+  }
+
+  // 문서번호 → 품의서류
+  const docMatch = text.match(/문서번호[\s\t]+([^\n\r\t]+)/);
+  if (docMatch) {
+    filled.doc = docMatch[1].trim();
+    document.getElementById('fw-doc').value = filled.doc;
+  }
+
+  // 기안일자 → 요청일
+  const dateMatch = text.match(/기안일자[\s\t]+(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (dateMatch) {
+    const yy = dateMatch[1].slice(2);
+    const mm = dateMatch[2].padStart(2, '0');
+    const dd = dateMatch[3].padStart(2, '0');
+    filled.req_date = `${yy}.${mm}.${dd}`;
+    document.getElementById('fw-req_date').value = filled.req_date;
+  }
+
+  // 기안부서 → 부서
+  const deptMatch = text.match(/기안부서[\s\t]+([^\n\r\t\u3000]+)/);
+  if (deptMatch) {
+    filled.dept = deptMatch[1].trim();
+    document.getElementById('fw-dept').value = filled.dept;
+  }
+
+  // 기 안 자 → 요청자 (이름만)
+  const authorMatch = text.match(/기\s*안\s*자[\s\t]+([^\n\r\t\/]+)/);
+  if (authorMatch) {
+    filled.requester = authorMatch[1].trim().split('/')[0].trim();
+    document.getElementById('fw-requester').value = filled.requester;
+  }
+
+  // 제 목 → 품의명
+  const titleMatch = text.match(/제\s{0,5}목[\s\t]+([^\n\r]+)/);
+  if (titleMatch) {
+    filled.title = titleMatch[1].trim();
+    document.getElementById('fw-title').value = filled.title;
+  }
+
+  // 요청기간 → period_from / period_to
+  const periodMatch = text.match(/요청기간[\s\t]+(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})\s*~\s*(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/);
+  if (periodMatch) {
+    const fmtDate = s => {
+      const m = s.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+      return m ? `${m[1].slice(2)}.${m[2].padStart(2,'0')}.${m[3].padStart(2,'0')}` : s;
+    };
+    filled.period_from = fmtDate(periodMatch[1]);
+    filled.period_to   = fmtDate(periodMatch[2]);
+    document.getElementById('fw-period_from').value = filled.period_from;
+    document.getElementById('fw-period_to').value   = filled.period_to;
+  }
+
+  // 결과 표시
+  const resultEl = document.getElementById('fwDocResult');
+  const keys = Object.keys(filled);
+  const labels = { corp:'법인', doc:'품의서류', req_date:'요청일', dept:'부서', requester:'요청자', title:'품의명', period_from:'요청기간 시작', period_to:'요청기간 종료' };
+  if (keys.length > 0) {
+    resultEl.style.display = 'block';
+    resultEl.style.background = '#f0fdf4';
+    resultEl.style.borderColor = '#86efac';
+    resultEl.style.color = '#166534';
+    resultEl.style.border = '1px solid #86efac';
+    resultEl.innerHTML = `✅ 자동입력 완료: ${keys.map(k => `<b>${labels[k]||k}</b>`).join(', ')}`;
+  } else {
+    resultEl.style.display = 'block';
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.border = '1px solid #fecaca';
+    resultEl.style.color = '#991b1b';
+    resultEl.textContent = '⚠️ 인식된 항목이 없습니다. 방화벽 정책 요청서인지 확인해주세요.';
+  }
+}
+
 async function openFwModal(id = null) {
+  // 붙여넣기 영역 초기화
+  const pasteEl = document.getElementById('fwDocPaste');
+  const resultEl = document.getElementById('fwDocResult');
+  if (pasteEl) pasteEl.value = '';
+  if (resultEl) resultEl.style.display = 'none';
   document.getElementById('fwModalTitle').textContent = id ? '방화벽 정책요청 수정' : '방화벽 정책요청 등록';
   document.getElementById('fwModalId').value = id || '';
   if (id) {
     const r = await api('GET', `/api/firewall/${id}`);
-    document.getElementById('fw-req_date').value = r.req_date || '';
-    document.getElementById('fw-corp').value = r.corp || '';
-    document.getElementById('fw-dept').value = r.dept || '';
-    document.getElementById('fw-requester').value = r.requester || '';
-    document.getElementById('fw-status').value = r.status || '결재 대기중';
-    document.getElementById('fw-title').value = r.title || '';
-    document.getElementById('fw-worker').value = r.worker || '';
-    document.getElementById('fw-doc').value = r.doc || '';
-    document.getElementById('fw-memo').value = r.memo || '';
+    document.getElementById('fw-req_date').value    = r.req_date    || '';
+    document.getElementById('fw-corp').value        = r.corp        || '';
+    document.getElementById('fw-dept').value        = r.dept        || '';
+    document.getElementById('fw-requester').value   = r.requester   || '';
+    document.getElementById('fw-status').value      = r.status      || '결재 대기중';
+    document.getElementById('fw-title').value       = r.title       || '';
+    document.getElementById('fw-worker').value      = r.worker      || '';
+    document.getElementById('fw-doc').value         = r.doc         || '';
+    document.getElementById('fw-memo').value        = r.memo        || '';
+    document.getElementById('fw-period_from').value = r.period_from || '';
+    document.getElementById('fw-period_to').value   = r.period_to   || '';
   } else {
-    ['req_date','corp','dept','requester','title','worker','doc','memo'].forEach(f => {
-      const el = document.getElementById('fw-'+f);
-      if (el) el.value = f === 'status' ? '결재 대기중' : '';
+    ['req_date','dept','requester','title','worker','doc','memo','period_from','period_to'].forEach(f => {
+      const el = document.getElementById('fw-'+f); if (el) el.value = '';
     });
+    document.getElementById('fw-corp').value   = '';
     document.getElementById('fw-status').value = '결재 대기중';
   }
   openModal('fwModal');
@@ -9481,24 +10227,21 @@ async function openFwModal(id = null) {
 async function saveFwRequest() {
   const id = document.getElementById('fwModalId').value;
   const body = {
-    req_date:  document.getElementById('fw-req_date').value.trim(),
-    corp:      document.getElementById('fw-corp').value,
-    dept:      document.getElementById('fw-dept').value.trim(),
-    requester: document.getElementById('fw-requester').value.trim(),
-    status:    document.getElementById('fw-status').value,
-    title:     document.getElementById('fw-title').value.trim(),
-    worker:    document.getElementById('fw-worker').value.trim(),
-    doc:       document.getElementById('fw-doc').value.trim(),
-    memo:      document.getElementById('fw-memo').value.trim(),
+    req_date:    document.getElementById('fw-req_date').value.trim(),
+    corp:        document.getElementById('fw-corp').value,
+    dept:        document.getElementById('fw-dept').value.trim(),
+    requester:   document.getElementById('fw-requester').value.trim(),
+    status:      document.getElementById('fw-status').value,
+    title:       document.getElementById('fw-title').value.trim(),
+    worker:      document.getElementById('fw-worker').value.trim(),
+    doc:         document.getElementById('fw-doc').value.trim(),
+    memo:        document.getElementById('fw-memo').value.trim(),
+    period_from: document.getElementById('fw-period_from').value.trim(),
+    period_to:   document.getElementById('fw-period_to').value.trim(),
   };
   try {
-    if (id) {
-      await api('PUT', `/api/firewall/${id}`, body);
-      showToast('수정됐습니다');
-    } else {
-      await api('POST', '/api/firewall', body);
-      showToast('등록됐습니다');
-    }
+    if (id) { await api('PUT', `/api/firewall/${id}`, body); showToast('수정됐습니다'); }
+    else    { await api('POST', '/api/firewall', body); showToast('등록됐습니다'); }
     closeModal('fwModal');
     loadFwList();
   } catch(e) { showToast(e.message, true); }
