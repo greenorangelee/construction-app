@@ -5183,8 +5183,9 @@ async function loadData() {
     ${v('deadline') ? `<th class="sortable" data-key="deadline" onclick="sortBy('deadline')">기한일</th>` : ''}
     ${v('complete_date') ? `<th class="sortable" data-key="complete_date" onclick="sortBy('complete_date')">완료일</th>` : ''}
     ${v('purchase_doc') ? `<th>구매품의서</th>` : ''}
-    ${v('gw_status') ? `<th title="그룹웨어 결재 진행 상황 (결재중 n/m = 결재자 m명 중 n명 승인)">품의 상태</th>` : ''}
+    ${v('gw_status') ? `<th title="구매품의서 그룹웨어 결재 진행 상황">구품 상태</th>` : ''}
     ${v('payment_doc') ? `<th>지출품의서</th>` : ''}
+    ${v('gw_pay_status') ? `<th title="지출품의서 그룹웨어 결재 진행 상황">지품 상태</th>` : ''}
     ${v('it_manager') ? `<th class="sortable" data-key="it_manager" onclick="sortBy('it_manager')">IT담당자</th>` : ''}
     ${v('worker') ? `<th class="sortable" data-key="worker" onclick="sortBy('worker')">작업자</th>` : ''}
     ${v('actions') ? `<th style="width:100px">관리</th>` : ''}
@@ -5221,8 +5222,9 @@ async function loadData() {
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
       ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
       ${v('purchase_doc') ? docCell(r.purchase_doc, r) : ''}
-      ${v('gw_status') ? gwStatusCell(r) : ''}
+      ${v('gw_status') ? gwStatusCell(r.purchase_doc) : ''}
       ${v('payment_doc') ? docCell(r.payment_doc, r) : ''}
+      ${v('gw_pay_status') ? gwStatusCell(r.payment_doc) : ''}
       ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
       ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
       ${v('actions') ? `<td><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openEditModal(${r.id})">수정</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openGroupLink(${r.id})" title="공사 묶기">🔗</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openFileManageModal(${r.id},'${(r.work_name||'').replace(/'/g,'')}')" title="파일 첨부">📎</button></div></td>` : ''}
@@ -5373,8 +5375,8 @@ function gwDocUrl(docNo, r) {
   return g && g.doc_id ? `${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=` : '';
 }
 
-// 목록 '품의 상태' 셀: 구매품의서(+지출품의서) 결재 상태
-function gwStatusCell(r) {
+// 목록 '구품 상태' / '지품 상태' 셀: 해당 품의서의 결재 상태
+function gwStatusCell(docText) {
   const lines = [];
   const add = (prefix, text) => gwDocs(text).forEach(d => {
     const g = GW_STATUS[d];
@@ -5383,8 +5385,7 @@ function gwStatusCell(r) {
       ? `<div style="font-size:11px;color:#1e40af;margin-top:2px">대기 : ${gwEsc(g.current_signer.split('(')[0])}</div>` : '';
     lines.push(`<div style="white-space:nowrap;margin-bottom:4px">${prefix ? `<span style="font-size:10px;color:#9ca3af;margin-right:3px">${prefix}</span>` : ''}${gwBadge(d)}${wait}</div>`);
   });
-  add('', r.purchase_doc);
-  add('지출', r.payment_doc);
+  add('', docText);
   return `<td class="col-sm">${lines.join('') || '<span style="color:#d1d5db">-</span>'}</td>`;
 }
 function gwDocs(text) { return [...new Set(String(text || '').match(DOC_NO_RE) || [])]; }
@@ -5847,8 +5848,9 @@ const COL_DEFS = [
   { key: 'deadline',      label: '기한일',    default: true  },
   { key: 'complete_date', label: '완료일',    default: true  },
   { key: 'purchase_doc',  label: '구매품의서', default: true },
-  { key: 'gw_status',     label: '품의 상태', default: true },
+  { key: 'gw_status',     label: '구품 상태', default: true },
   { key: 'payment_doc',   label: '지출품의서', default: true },
+  { key: 'gw_pay_status', label: '지품 상태', default: true },
   { key: 'it_manager',    label: 'IT담당자',  default: true  },
   { key: 'worker',        label: '작업자',    default: true  },
   { key: 'actions',       label: '관리',      default: true  },
@@ -8766,8 +8768,9 @@ function renderRowCells(r, v) {
     ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
     ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
     ${v('purchase_doc') ? docCell(r.purchase_doc, r) : ''}
-      ${v('gw_status') ? gwStatusCell(r) : ''}
+      ${v('gw_status') ? gwStatusCell(r.purchase_doc) : ''}
     ${v('payment_doc') ? docCell(r.payment_doc, r) : ''}
+      ${v('gw_pay_status') ? gwStatusCell(r.payment_doc) : ''}
     ${v('it_manager') ? `<td class="col-sm">${r.it_manager || '-'}</td>` : ''}
     ${v('worker') ? `<td class="col-md">${r.worker || '-'}</td>` : ''}
     ${v('actions') ? `<td><div style="display:flex;gap:4px">
