@@ -2,7 +2,7 @@
 // - 로그인만 Playwright(헤드리스 Chromium)로 처리하고, 이후 목록/본문은 같은 세션 쿠키로 직접 요청
 // - 목록: /ubiWare/ware/approval/apprDoc.html/grid.json (JSON)
 // - 본문: /ubiWare/ware/approval/apprViewForm.html?docId=... (HTML, 품명 표 파싱)
-// - 품명이 '랜선포설'(또는 품목코드 ZMXZ001081)인 품의서만 construction-app에 '접수' 상태로 등록
+// - 품명이 '랜선포설'(또는 품목코드 ZMXZ001081)인 품의서를 construction-app의 'GW 접수' 탭에 넣음 (사람이 검토 후 공사 이력에 등록)
 
 const fs = require('fs');
 const path = require('path');
@@ -243,7 +243,7 @@ class App {
     const rows = await this.call('GET', `/api/constructions?search=${encodeURIComponent(docNo)}`);
     return rows.some(r => (r.purchase_doc || '').trim() === docNo);
   }
-  create(rec) { return this.call('POST', '/api/constructions', rec); }
+  toInbox(docId, docNo, data, items) { return this.call('POST', '/api/gw-inbox', { doc_id: docId, doc_no: docNo, data, items }); }
   all() { return this.call('GET', '/api/constructions'); }
   gwStatus() { return this.call('GET', '/api/gw-status'); }
   putGwStatus(items) { return this.call('PUT', '/api/gw-status', { items }); }
@@ -316,15 +316,15 @@ async function runOnce() {
         continue;   // dry-run은 상태 저장 안 함
       }
       if (await app.exists(docNo)) {
-        log(`[APP] 이미 등록됨: ${docNo}`);
+        log(`[APP] 이미 공사 이력에 있음: ${docNo}`);
       } else {
-        const r = await app.create(rec);
-        created++;
-        log(`[APP] 등록: no=${r.no} ${docNo} ${rec.work_name}`);
+        const r = await app.toInbox(d.docId, docNo, rec, hits);
+        if (r.created) { created++; log(`[APP] GW 접수함에 추가: ${docNo} ${rec.work_name}`); }
+        else log(`[APP] 이미 GW 접수함에 있음: ${docNo}`);
       }
       st.seen[d.docId] = { at: Date.now(), match: true, docNo };
     }
-    log(`신규 품의: 대상 ${found}건, 등록 ${created}건`);
+    log(`신규 품의: 대상 ${found}건, GW 접수함 추가 ${created}건`);
     if (CFG.track && CFG.appUser) await trackProgress(gw, app);
   } finally {
     await gw.close();
@@ -336,7 +336,7 @@ async function main() {
   for (const k of ['GW_ID', 'GW_PW', ...(CFG.dryRun ? [] : ['APP_USER', 'APP_PW'])])
     if (!process.env[k]) { console.error(`환경변수 ${k} 필요`); process.exit(1); }
   do {
-    try { await runOnce(); } catch (e) { log('[ERR]', e.message); }
+    try { await runOnce(); } catch (e) { log('[ERR]', e.message, e.cause ? `(${e.cause.code || ''} ${e.cause.message || e.cause})` : ''); }
     if (CFG.runOnce) break;
     await new Promise(r => setTimeout(r, CFG.intervalMin * 60e3));
   } while (true);

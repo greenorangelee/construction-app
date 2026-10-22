@@ -242,6 +242,16 @@ async function initDB() {
   await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_to VARCHAR(20)").catch(()=>{});
   await pool.query("ALTER TABLE constructions ADD COLUMN scheduled_date VARCHAR(20)").catch(()=>{});
 
+  // 그룹웨어 접수함: gw-collector가 찾은 품의를 사람이 검토 후 공사 이력으로 등록
+  await run(`CREATE TABLE IF NOT EXISTS gw_inbox (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    doc_id INT NOT NULL UNIQUE, doc_no VARCHAR(50),
+    data TEXT, items TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    construction_id INT, decided_by VARCHAR(100), decided_at DATETIME,
+    created_at DATETIME DEFAULT NOW()
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // 그룹웨어 결재 진행 상황 (gw-collector가 갱신)
   await run(`CREATE TABLE IF NOT EXISTS gw_doc_status (
     doc_no VARCHAR(50) PRIMARY KEY,
@@ -472,6 +482,71 @@ app.get('/api/constructions', authMiddleware, async (req, res) => {
     ...r,
     group_color: r.group_id ? gColorMap[r.group_id] : null
   })));
+});
+
+// ── 그룹웨어 접수함 API ──────────────────────────────
+const parseJson = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
+const inboxRow = r => ({ ...r, data: parseJson(r.data, {}), items: parseJson(r.items, []) });
+
+app.get('/api/gw-inbox', authMiddleware, async (req, res) => {
+  try {
+    const st = req.query.status || 'pending';
+    const rows = st === 'all'
+      ? await queryAll('SELECT * FROM gw_inbox ORDER BY id DESC')
+      : await queryAll('SELECT * FROM gw_inbox WHERE status=? ORDER BY id DESC', [st]);
+    res.json(rows.map(inboxRow));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/gw-inbox/count', authMiddleware, async (req, res) => {
+  try { res.json(await queryOne("SELECT COUNT(*) AS pending FROM gw_inbox WHERE status='pending'")); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/gw-inbox/:id', authMiddleware, async (req, res) => {
+  const r = await queryOne('SELECT * FROM gw_inbox WHERE id=?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  res.json(inboxRow(r));
+});
+
+// gw-collector 전용: 같은 docId는 한 번만 들어감
+app.post('/api/gw-inbox', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    const d = req.body || {};
+    if (!d.doc_id) return res.status(400).json({ error: 'doc_id 필요' });
+    const r = await dbRun('INSERT IGNORE INTO gw_inbox (doc_id, doc_no, data, items) VALUES (?,?,?,?)',
+      [d.doc_id, s(d.doc_no), JSON.stringify(d.data || {}), JSON.stringify(d.items || [])]);
+    res.json({ created: r.affectedRows > 0 });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// 검토 후 등록: body = 수정된 공사 정보
+app.post('/api/gw-inbox/:id/approve', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    const row = await queryOne('SELECT * FROM gw_inbox WHERE id=?', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    if (row.status === 'approved') return res.status(409).json({ error: '이미 등록된 항목입니다' });
+    const result = await insertConstruction({ ...req.body, changed_by: req.user?.name || req.body.changed_by });
+    await dbRun("UPDATE gw_inbox SET status='approved', construction_id=?, decided_by=?, decided_at=NOW() WHERE id=?",
+      [result.id, req.user?.name || '', req.params.id]);
+    res.json(result);
+  } catch(e) { console.error('gw-inbox approve error:', e); res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/gw-inbox/:id/reject', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    await dbRun("UPDATE gw_inbox SET status='rejected', decided_by=?, decided_at=NOW() WHERE id=? AND status='pending'",
+      [req.user?.name || '', req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// 제외 취소 → 다시 대기
+app.post('/api/gw-inbox/:id/restore', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    await dbRun("UPDATE gw_inbox SET status='pending', decided_by=NULL, decided_at=NULL WHERE id=? AND status='rejected'", [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── 그룹웨어 결재 진행 상황 API ──────────────────────────────
@@ -851,9 +926,8 @@ app.get('/api/constructions/:id', authMiddleware, async (req, res) => {
   res.json(row);
 });
 
-app.post('/api/constructions', authMiddleware, requireWrite, async (req, res) => {
-  try {
-    const d = req.body;
+// 공사 이력 1건 등록 (POST /api/constructions, GW 접수함 승인에서 공용)
+async function insertConstruction(d) {
     const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0);
     const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,scheduled_date,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [lastNo+1,s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
@@ -866,8 +940,12 @@ app.post('/api/constructions', authMiddleware, requireWrite, async (req, res) =>
     const newId = result.insertId;
     recordHistory(newId, 'create', d.changed_by, [{ field: 'work_name', label: '공사명', before: '', after: d.work_name }]);
     saveDB();
-    res.json({ id: newId, no: lastNo+1 });
-  } catch(e) { console.error('POST error:', e); res.status(500).json({ error: e.message }); }
+    return { id: newId, no: lastNo+1 };
+}
+
+app.post('/api/constructions', authMiddleware, requireWrite, async (req, res) => {
+  try { res.json(await insertConstruction(req.body)); }
+  catch(e) { console.error('POST error:', e); res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/constructions/:id', authMiddleware, requireWrite, async (req, res) => {
