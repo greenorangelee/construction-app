@@ -495,6 +495,12 @@
     /* 컴팩트 열 */
     td.col-sm { max-width: 80px; font-size: 11.5px; }
     td.col-md { max-width: 110px; font-size: 11.5px; }
+    .tabvis-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:4px; padding:14px 16px; }
+    .tabvis-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; font-size:13px; color:#1a1a1a; cursor:pointer; user-select:none; }
+    .tabvis-item:hover { background:#f9fafb; }
+    .tabvis-item input { width:16px; height:16px; accent-color:#c0392b; cursor:pointer; }
+    .tabvis-item.fixed { color:#9ca3af; cursor:default; }
+    .tabvis-item.fixed input { cursor:default; }
     .gwinbox-count:not(:empty) { display:inline-block; min-width:18px; padding:0 5px; margin-left:2px; border-radius:9px; background:#ef4444; color:#fff; font-size:10px; line-height:16px; text-align:center; }
     .gwinbox-table th { padding:10px 12px; background:#f9fafb; border-bottom:2px solid #e5e7eb; color:#6b7280; font-weight:600; text-align:left; white-space:nowrap; }
     .gwinbox-table td { padding:10px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
@@ -4233,26 +4239,14 @@
       </div>
     </div>
 
-    <!-- 🧪 Beta 기능 -->
+    <!-- 🗂️ 탭 표시 설정 -->
     <div style="margin-top:28px;margin-bottom:28px">
       <div class="settings-header">
-        <h2>🧪 Beta 기능</h2>
-        <span style="font-size:12px;color:#9ca3af">실험적 기능으로 안정성이 보장되지 않을 수 있습니다</span>
+        <h2>🗂️ 탭 표시</h2>
+        <span style="font-size:12px;color:#9ca3af">상단 메뉴에 보일 탭을 선택합니다 (이 브라우저에 저장)</span>
       </div>
       <div class="settings-panel" style="max-width:640px">
-        <div style="padding:18px 20px;display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:#1a1a1a">선번 관리 / IP 대장</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:3px">도면 핀 관리, IP 자산 관리, NAC 연동 기능을 활성화합니다</div>
-          </div>
-          <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer;flex-shrink:0">
-            <input type="checkbox" id="betaToggle" onchange="onBetaToggle(this.checked)"
-              style="opacity:0;width:0;height:0;position:absolute" />
-            <span id="betaSlider" style="position:absolute;inset:0;border-radius:26px;background:#d1d5db;transition:0.2s;display:flex;align-items:center">
-              <span id="betaThumb" style="position:absolute;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
-            </span>
-          </label>
-        </div>
+        <div id="tabVisibilityList" class="tabvis-list"></div>
       </div>
     </div>
 
@@ -4723,7 +4717,7 @@ async function doLogin() {
     loadLocations();
     loadNetworks();
     loadMonthlyChart();
-    initBeta();
+    initTabVisibility();
   } catch(e) {
     errEl.textContent = '서버 연결 오류';
   }
@@ -4750,7 +4744,7 @@ async function checkAuth() {
     loadLocations();
     loadNetworks();
     loadMonthlyChart();
-    initBeta();
+    initTabVisibility();
   } catch(e) {
     showLogin();
   }
@@ -8399,7 +8393,7 @@ function switchTab(tab) {
     });
   });
 
-  if (tab === 'settings') { loadLocations(); loadNetworks(); applyBetaState(isBetaEnabled()); if (currentUser?.role === 'admin') loadUsers(); }
+  if (tab === 'settings') { loadLocations(); loadNetworks(); renderTabSettings(); if (currentUser?.role === 'admin') loadUsers(); }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
   if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; setTimeout(()=>initColResize(document.querySelector('#devicesPage table'),'colWidths_dev'),100); }
@@ -8862,44 +8856,71 @@ async function unlinkSingleGroup(id, name) {
 }
 
 
-// ── Beta 기능 토글 ──────────────────────────────────────────
+// ── 탭 표시 설정 ──────────────────────────────────────────
+// 사용자가 설정에서 보일 탭을 선택 (localStorage 'hiddenTabs'에 숨긴 탭 목록 저장)
+const TAB_DEFS = [
+  { key: 'main',     label: '공사 이력',          fixed: true },
+  { key: 'cable',    label: '🗺️ 선번 관리' },
+  { key: 'ip',       label: '🖥️ IP 대장' },
+  { key: 'devices',  label: '🔌 네트워크 장비' },
+  { key: 'fw',       label: '🔥 방화벽 정책요청' },
+  { key: 'incident', label: '🚨 장애 이력' },
+  { key: 'conreq',   label: '📋 공사 요청' },
+  { key: 'conbox',   label: '📬 공사 요청함' },
+  { key: 'gwinbox',  label: '📥 GW 접수' },
+  { key: 'settings', label: '⚙️ 설정',            fixed: true },
+];
+const TAB_PAGE_ID = { main:'mainPage', cable:'cablePage', ip:'ipPage', devices:'devicesPage', fw:'firewallPage',
+  incident:'incidentPage', conreq:'conreqPage', conbox:'conboxPage', gwinbox:'gwinboxPage', settings:'settingsPage' };
 
-function isBetaEnabled() {
-  return localStorage.getItem('betaEnabled') === 'true';
+function getHiddenTabs() {
+  try {
+    const v = localStorage.getItem('hiddenTabs');
+    if (v !== null) return JSON.parse(v) || [];
+    // 기존 Beta 설정 이어받기: Beta가 꺼져 있었으면 선번 관리 / IP 대장 숨김
+    return localStorage.getItem('betaEnabled') === 'true' ? [] : ['cable', 'ip'];
+  } catch (e) { return []; }
 }
 
-function applyBetaState(enabled) {
-  // 탭 버튼 표시/숨김 (모든 헤더의 탭)
-  ['tab-cable','tab-cable-s','tab-cable-c','tab-cable-ip','tab-cable-d','tab-cable-fw','tab-cable-incident','tab-cable-conreq','tab-cable-conbox',
-   'tab-ip','tab-ip-s','tab-ip-c','tab-ip-ip','tab-ip-d','tab-ip-fw','tab-ip-incident','tab-ip-conreq','tab-ip-conbox'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = enabled ? '' : 'none';
+function setHiddenTabs(list) {
+  try { localStorage.setItem('hiddenTabs', JSON.stringify(list)); localStorage.removeItem('betaEnabled'); } catch (e) {}
+}
+
+function applyTabVisibility() {
+  const hidden = new Set(getHiddenTabs().filter(k => !TAB_DEFS.find(d => d.key === k)?.fixed));
+  // 모든 헤더의 탭 버튼 (onclick="switchTab('xxx')")
+  document.querySelectorAll('button.nav-tab[onclick^="switchTab("]').forEach(btn => {
+    const m = btn.getAttribute('onclick').match(/switchTab\('(\w+)'\)/);
+    if (m) btn.style.display = hidden.has(m[1]) ? 'none' : '';
   });
-
-  // 현재 베타 탭에 있으면 메인으로 이동
-  if (!enabled) {
-    const activePage = ['cablePage','ipPage'].find(p => document.getElementById(p)?.style.display === 'block');
-    if (activePage) switchTab('main');
-  }
-
-  // 토글 UI 업데이트
-  const slider = document.getElementById('betaSlider');
-  const thumb = document.getElementById('betaThumb');
-  const toggle = document.getElementById('betaToggle');
-  if (slider) slider.style.background = enabled ? '#c0392b' : '#d1d5db';
-  if (thumb) thumb.style.left = enabled ? '25px' : '3px';
-  if (toggle) toggle.checked = enabled;
+  // 현재 보고 있는 탭을 숨겼으면 공사 이력으로 이동
+  const cur = Object.entries(TAB_PAGE_ID).find(([, id]) => document.getElementById(id)?.style.display === 'block');
+  if (cur && hidden.has(cur[0])) switchTab('main');
 }
 
-function onBetaToggle(enabled) {
-  localStorage.setItem('betaEnabled', enabled ? 'true' : 'false');
-  applyBetaState(enabled);
-  showToast(enabled ? '🧪 Beta 기능 활성화됐습니다' : 'Beta 기능이 비활성화됐습니다');
+function renderTabSettings() {
+  const box = document.getElementById('tabVisibilityList');
+  if (!box) return;
+  const hidden = new Set(getHiddenTabs());
+  box.innerHTML = TAB_DEFS.map(d => `
+    <label class="tabvis-item${d.fixed ? ' fixed' : ''}" title="${d.fixed ? '항상 표시되는 탭입니다' : ''}">
+      <input type="checkbox" ${d.fixed || !hidden.has(d.key) ? 'checked' : ''} ${d.fixed ? 'disabled' : ''}
+        onchange="onTabVisibilityChange('${d.key}', this.checked)" />
+      <span>${d.label}</span>
+    </label>`).join('');
 }
 
-function initBeta() {
-  const enabled = isBetaEnabled();
-  applyBetaState(enabled);
+function onTabVisibilityChange(key, visible) {
+  const hidden = new Set(getHiddenTabs());
+  if (visible) hidden.delete(key); else hidden.add(key);
+  setHiddenTabs([...hidden]);
+  applyTabVisibility();
+  const label = TAB_DEFS.find(d => d.key === key)?.label || key;
+  showToast(`${label} 탭을 ${visible ? '표시합니다' : '숨겼습니다'}`);
+}
+
+function initTabVisibility() {
+  applyTabVisibility();
 }
 
 // ── COLUMN RESIZE ──────────────────────────────────────────
