@@ -308,6 +308,7 @@ async function runOnce() {
         purchase_doc: docNo,
         it_manager: CFG.itManager,
         memo: [v.memo, '', `[GW 자동등록] docId ${d.docId} / 품목: ${hits.map(h => `${h.name} x${h.qty}`).join(', ')}`].join('\n').trim(),
+        doc_url: `${CFG.gwBase}/ubiWare/ware/approval/apprView.html?docId=${d.docId}&fId=DocList&from=DocList&folderId=`,
         changed_by: 'GW자동등록',
       };
 

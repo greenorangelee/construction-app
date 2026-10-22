@@ -241,6 +241,7 @@ async function initDB() {
   await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_from VARCHAR(20)").catch(()=>{});
   await pool.query("ALTER TABLE firewall_requests ADD COLUMN period_to VARCHAR(20)").catch(()=>{});
   await pool.query("ALTER TABLE constructions ADD COLUMN scheduled_date VARCHAR(20)").catch(()=>{});
+  await pool.query("ALTER TABLE constructions ADD COLUMN doc_url TEXT").catch(()=>{});
 
   // 그룹웨어 접수함: gw-collector가 찾은 품의를 사람이 검토 후 공사 이력으로 등록
   await run(`CREATE TABLE IF NOT EXISTS gw_inbox (
@@ -346,7 +347,7 @@ const FIELD_LABELS = {
   'demolish_region':'철거지역','demolish_dong':'철거동','demolish_floor':'철거층','demolish_detail':'철거 상세',
   'status':'상태','scheduled_date':'공사예정일','deadline':'기한일','complete_date':'완료일',
   'purchase_doc':'구매품의서','payment_doc':'지출품의서','related_doc':'연관품의서',
-  'it_manager':'IT담당자','worker':'작업자','memo':'메모'
+  'it_manager':'IT담당자','worker':'작업자','memo':'메모','doc_url':'품의서 URL'
 };
 
 async function recordHistory(constructionId, action, changedBy, diff) {
@@ -929,13 +930,13 @@ app.get('/api/constructions/:id', authMiddleware, async (req, res) => {
 // 공사 이력 1건 등록 (POST /api/constructions, GW 접수함 승인에서 공용)
 async function insertConstruction(d) {
     const lastNo = ((await queryOne('SELECT MAX(no) as m FROM constructions')).m || 0);
-    const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,scheduled_date,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    const result = await dbRun(`INSERT INTO constructions (no,gubun,req_date,corp,dept,requester,work_name,loc_region,loc_dong,loc_floor,loc_detail,move_region,move_dong,move_floor,move_detail,demolish_region,demolish_dong,demolish_floor,demolish_detail,status,scheduled_date,deadline,complete_date,purchase_doc,payment_doc,related_doc,it_manager,worker,memo,doc_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [lastNo+1,s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
        s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
        s(d.status),s(d.scheduled_date),s(d.deadline),s(d.complete_date),
-       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo)]);
+       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo),s(d.doc_url)]);
     saveDB();
     const newId = result.insertId;
     recordHistory(newId, 'create', d.changed_by, [{ field: 'work_name', label: '공사명', before: '', after: d.work_name }]);
@@ -952,14 +953,15 @@ app.put('/api/constructions/:id', authMiddleware, requireWrite, async (req, res)
   try {
     const d = req.body;
     const before = await queryOne('SELECT * FROM constructions WHERE id = ?', [req.params.id]);
+    if (d.doc_url === undefined) d.doc_url = before?.doc_url || '';   // 구버전 클라이언트가 보낸 요청에서 값 유지
     const gid = d.hasOwnProperty('group_id') ? (d.group_id ? parseInt(d.group_id) : null) : before?.group_id;
-    await dbRun(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,scheduled_date=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,group_id=? WHERE id=?`,
+    await dbRun(`UPDATE constructions SET gubun=?,req_date=?,corp=?,dept=?,requester=?,work_name=?,loc_region=?,loc_dong=?,loc_floor=?,loc_detail=?,move_region=?,move_dong=?,move_floor=?,move_detail=?,demolish_region=?,demolish_dong=?,demolish_floor=?,demolish_detail=?,status=?,scheduled_date=?,deadline=?,complete_date=?,purchase_doc=?,payment_doc=?,related_doc=?,it_manager=?,worker=?,memo=?,doc_url=?,group_id=? WHERE id=?`,
       [s(d.gubun),s(d.req_date),s(d.corp),s(d.dept),s(d.requester),s(d.work_name),
        s(d.loc_region),s(d.loc_dong),s(d.loc_floor),s(d.loc_detail),
        s(d.move_region),s(d.move_dong),s(d.move_floor),s(d.move_detail),
        s(d.demolish_region),s(d.demolish_dong),s(d.demolish_floor),s(d.demolish_detail),
        s(d.status),s(d.scheduled_date),s(d.deadline),s(d.complete_date),
-       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo),gid,req.params.id]);
+       s(d.purchase_doc),s(d.payment_doc),s(d.related_doc),s(d.it_manager),s(d.worker),s(d.memo),s(d.doc_url),gid,req.params.id]);
     const diff = diffRecords(before, d);
     if (diff.length > 0) recordHistory(req.params.id, 'update', d.changed_by, diff);
     saveDB();
