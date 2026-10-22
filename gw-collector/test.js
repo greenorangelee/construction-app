@@ -39,6 +39,15 @@ console.log(sum);
 assert.equal(sum.step_done, 2); assert.equal(sum.step_total, 3);
 assert.equal(sum.current_signer, '이준성(IT관리팀)'); assert.equal(sum.status_label, '진행 중');
 assert.equal(sum.decided_at, '');
+// 사전참조(Circul) / 사후참조(Refer)는 결재 현황에서 제외
+const sum2 = summarize({ docNo: 'x', docId: 1, status: 'Ing', decideTime: '' }, [
+  sg('김희', '사원', '품질보증팀', 'Writer', '2026/10/21 13:58:00.233', false),
+  sg('홍길동', '과장', '총무팀', 'Circul', '1900/01/01 00:00:00.000', true),
+  sg('김경석', '과장', '품질보증팀', 'Signer', '1900/01/01 00:00:00.000', true),
+  sg('박참조', '팀장', '재무팀', 'Refer', '1900/01/01 00:00:00.000', false),
+]);
+assert.deepEqual(sum2.signers.map(s => s.name), ['김희', '김경석']);
+assert.equal(sum2.current_signer, '김경석(품질보증팀)');
 // 요청기간 파싱
 // 실제 방화벽 정책 요청서(docId 725134) 구조
 const fv = parseView(`<table><tr><th>문서번호</th><td>기술-보안-26-0166</td></tr><tr><th>제 목</th><td>PLM 인터페이스를 위한 중간 DB 접근 방화벽 해제 요청</td></tr></table>

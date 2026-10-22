@@ -172,9 +172,18 @@ const STATUS_LABEL = { Temp: '임시저장', Ready: '상신대기', Start: '상�
 const FINAL = ['Appr', 'ApprEnd', 'ApprEnd2', 'Return', 'Refusal', 'Cancel'];
 const validTime = t => (t && !t.startsWith('1900') ? t.slice(0, 16) : '');
 
+// 결재 현황에서 뺄 결재자 유형 (사전참조 / 사후참조 / 열람)
+const SKIP_SIGNER_RE = new RegExp(env('SKIP_SIGNER_TYPES', 'Circul|Refer|Reader|Read'), 'i');
+const seenSignerTypes = new Set();
+
 function summarize(doc, signers) {
+  for (const s of signers) {
+    const k = `${s.signerType}/${s.signType}`;
+    if (!seenSignerTypes.has(k)) { seenSignerTypes.add(k); log(`[TRACK] 결재자 유형 발견: ${k} (예: ${s.staffName})${SKIP_SIGNER_RE.test(s.signerType || '') ? ' → 제외' : ''}`); }
+  }
+  signers = signers.filter(s => !SKIP_SIGNER_RE.test(s.signerType || ''));
   const list = signers.map(s => ({
-    name: s.staffName, level: s.levelName || '', dept: s.departName || '', type: s.signerType,
+    name: s.staffName, level: s.levelName || '', dept: s.departName || '', type: s.signerType, signType: s.signType,
     done: validTime(s.processTime), wait: !!s.wait,
   }));
   const steps = list.filter(s => s.type !== 'Writer');

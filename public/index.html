@@ -5329,7 +5329,7 @@ function renderGwInbox() {
         const url = d.doc_url || (r.doc_id ? `${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${r.doc_id}&fId=DocList&from=DocList&folderId=` : '');
         return url ? `<a href="${gwEsc(url)}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">${gwEsc(r.doc_no)}</a>` : gwEsc(r.doc_no || '-');
       })()}</td>
-      <td style="min-width:260px">${gwSignLine(r.doc_no).replace('class="gw-line"', 'class="gw-line" style="margin-top:0;font-size:12px"') || '<span style="font-size:11px;color:#9ca3af">결재선 확인 중 (다음 수집 때 표시)</span>'}${r.status !== 'pending' ? `<div style="margin-top:4px"><span class="gw-badge ${cls}">${label}</span>${who}</div>` : ''}</td>
+      <td>${gwWaitLine(r.doc_no) || '<span style="font-size:11px;color:#9ca3af">확인 중</span>'}${r.status !== 'pending' ? `<div style="margin-top:4px"><span class="gw-badge ${cls}">${label}</span>${who}</div>` : ''}</td>
       <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join('');
@@ -5450,10 +5450,23 @@ function gwSignLine(docNo) {
   if (!g || !g.found) return '';
   let signers = [];
   try { signers = JSON.parse(g.signers || '[]'); } catch {}
+  signers = signers.filter(sg => !/Circul|Refer|Read/i.test(sg.type || ''));   // 사전참조·사후참조·열람 제외
   if (!signers.length) return '';
   return `<div class="gw-line">${signers.map(sg => sg.wait
     ? `<span class="wait">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`
     : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
+}
+
+// 짧은 표시: 지금 대기 중인 사람만 (⏳ 장원준(사원)), 끝난 문서는 승인/반려 배지
+function gwWaitLine(docNo) {
+  const g = GW_STATUS[docNo];
+  if (!g || !g.found) return '';
+  if (['Appr','ApprEnd','ApprEnd2','Return','Refusal','Cancel'].includes(g.status)) return gwBadge(docNo);
+  let signers = [];
+  try { signers = JSON.parse(g.signers || '[]'); } catch {}
+  const waits = signers.filter(sg => sg.wait && !/Circul|Refer|Read/i.test(sg.type || ''));
+  if (!waits.length) return gwBadge(docNo);
+  return waits.map(sg => `<span style="color:#1e40af;font-weight:600;font-size:12px;white-space:nowrap">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`).join('<br>');
 }
 
 // 상세: 문서별 배지 + 결재선
