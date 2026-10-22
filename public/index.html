@@ -5457,6 +5457,19 @@ function gwSignLine(docNo) {
     : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
 }
 
+// 그룹웨어 품의서 링크는 새 탭 대신 팝업 창으로 열기 (같은 창을 재사용)
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a[href]');
+  if (!a || !a.href.startsWith(GW_BASE + '/ubiWare/ware/approval/apprView.html')) return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;   // Ctrl+클릭 등은 브라우저 기본 동작
+  e.preventDefault();
+  e.stopPropagation();
+  const w = Math.min(1200, screen.availWidth - 80), h = Math.min(950, screen.availHeight - 80);
+  const left = Math.max(0, (screen.availWidth - w) / 2), top = Math.max(0, (screen.availHeight - h) / 2);
+  const win = window.open(a.href, 'gwDocPopup', `popup=yes,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+  if (win) win.focus(); else window.open(a.href, '_blank');   // 팝업 차단 시 새 탭
+}, true);
+
 // 짧은 표시: 지금 대기 중인 사람만 (⏳ 장원준(사원)), 끝난 문서는 승인/반려 배지
 function gwWaitLine(docNo) {
   const g = GW_STATUS[docNo];
