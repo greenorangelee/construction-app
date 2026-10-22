@@ -1,10 +1,10 @@
-# Dockge 새 스택(gw-collector)으로 추가
+# Dockge 스택용 — GitHub Actions가 빌드한 이미지를 받아서 실행 (업데이트 버튼으로 갱신)
 services:
   gw-collector:
-    build: .
     image: green0ran9e/construction-app:gw-collector
     container_name: gw-collector
     restart: unless-stopped
+    network_mode: host
     env_file: .env
     volumes:
-      - ./data:/data          # 처리한 docId 기록(state.json)
+      - ./data:/data
