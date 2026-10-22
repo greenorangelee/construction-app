@@ -495,8 +495,14 @@
     /* 컴팩트 열 */
     td.col-sm { max-width: 80px; font-size: 11.5px; }
     td.col-md { max-width: 110px; font-size: 11.5px; }
-    .tabvis-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:4px; padding:14px 16px; }
-    .tabvis-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; font-size:13px; color:#1a1a1a; cursor:pointer; user-select:none; }
+    .tabvis-list { display:flex; flex-direction:column; gap:2px; padding:14px 16px; }
+    .tabvis-row { display:flex; align-items:center; gap:6px; border-radius:8px; border:1px solid transparent; }
+    .tabvis-row.dragging { opacity:0.4; }
+    .tabvis-row.drag-over { border-color:#c0392b; background:#fef2f2; }
+    .tabvis-handle { cursor:grab; color:#9ca3af; padding:0 4px; font-size:14px; user-select:none; }
+    .tabvis-move { border:1px solid #e5e7eb; background:#fff; border-radius:6px; width:26px; height:24px; font-size:10px; color:#6b7280; cursor:pointer; }
+    .tabvis-move:disabled { opacity:0.3; cursor:default; }
+    .tabvis-item { flex:1; display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; font-size:13px; color:#1a1a1a; cursor:pointer; user-select:none; }
     .tabvis-item:hover { background:#f9fafb; }
     .tabvis-item input { width:16px; height:16px; accent-color:#c0392b; cursor:pointer; }
     .tabvis-item.fixed { color:#9ca3af; cursor:default; }
@@ -2229,7 +2235,7 @@
     <div class="logo">KSM</div>
     <span class="header-title">네트워크 공사 이력 관리 시스템</span>
     <nav class="header-nav">
-      <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">공사 이력</button>
+      <button class="nav-tab active" onclick="switchTab('main')" id="tab-main">🏗️ 공사 이력</button>
       <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable">🗺️ 선번 관리</button>
       <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip">🖥️ IP 대장</button>
       <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices">🔌 네트워크 장비</button>
@@ -2237,7 +2243,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -2515,7 +2521,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-ip">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-ip">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-ip">🗺️ 선번 관리</button>
         <button class="nav-tab active" onclick="switchTab('ip')" id="tab-ip-ip">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-ip">🔌 네트워크 장비</button>
@@ -2523,7 +2529,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-ip">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-ip">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-ip">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-ip">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-ip">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
@@ -2732,7 +2738,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-c">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-c">🏗️ 공사 이력</button>
         <button class="nav-tab active" onclick="switchTab('cable')" id="tab-cable-c">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-c">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-c">🔌 네트워크 장비</button>
@@ -2740,7 +2746,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-c">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-c">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-c">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-c">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-c">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -2992,7 +2998,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-d">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-d">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-d">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-d">🖥️ IP 대장</button>
         <button class="nav-tab active" onclick="switchTab('devices')" id="tab-devices-d">🔌 네트워크 장비</button>
@@ -3000,7 +3006,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-d">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-d">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-d">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-d">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-d">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
@@ -3393,7 +3399,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-incident">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-incident">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-incident">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-incident">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-incident">🔌 네트워크 장비</button>
@@ -3401,7 +3407,7 @@
         <button class="nav-tab active" onclick="switchTab('incident')" id="tab-incident-incident">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-incident">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-incident">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-incident">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-incident">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-incident">⚙️ 설정</button>
       </nav>
     </div>
@@ -3620,7 +3626,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-conreq">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-conreq">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-conreq">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-conreq">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-conreq">🔌 네트워크 장비</button>
@@ -3628,7 +3634,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conreq">🚨 장애 이력</button>
         <button class="nav-tab active" onclick="switchTab('conreq')" id="tab-conreq-conreq">📋 공사 요청</button>
         <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-conreq">📬 공사 요청함</button>
-        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conreq">📥 GW 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conreq">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conreq">⚙️ 설정</button>
       </nav>
     </div>
@@ -3885,7 +3891,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-conbox">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-conbox">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-conbox">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-conbox">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-conbox">🔌 네트워크 장비</button>
@@ -3893,7 +3899,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conbox">🚨 장애 이력</button>
         <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-conbox">📋 공사 요청</button>
         <button class="nav-tab active" onclick="switchTab('conbox')" id="tab-conbox-conbox">📬 공사 요청함</button>
-        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conbox">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conbox">⚙️ 설정</button>
       </nav>
     </div>
@@ -3955,7 +3961,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-gwinbox">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-gwinbox">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-gwinbox">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-gwinbox">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-gwinbox">🔌 네트워크 장비</button>
@@ -3963,7 +3969,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-gwinbox">🚨 장애 이력</button>
         <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-gwinbox">📋 공사 요청</button>
         <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-gwinbox">📬 공사 요청함</button>
-        <button class="nav-tab active" onclick="switchTab('gwinbox')" id="tab-gwinbox-gwinbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab active" onclick="switchTab('gwinbox')" id="tab-gwinbox-gwinbox">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-gwinbox">⚙️ 설정</button>
       </nav>
     </div>
@@ -3987,7 +3993,7 @@
     </div>
     <div class="table-wrapper">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)">
-        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">📥 GW 접수 <span style="font-size:12px;font-weight:400;color:#6b7280;margin-left:6px">그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록</span></h2>
+        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">📥 GW 공사 접수 <span style="font-size:12px;font-weight:400;color:#6b7280;margin-left:6px">그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록</span></h2>
         <span id="gwinboxCount" style="font-size:12px;color:#9ca3af"></span>
       </div>
       <div style="overflow-x:auto">
@@ -4013,7 +4019,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-fw">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-fw">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-fw">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-fw">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-fw">🔌 네트워크 장비</button>
@@ -4021,7 +4027,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-fw">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-fw">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-fw">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-fw">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-fw">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
       </nav>
     </div>
@@ -4174,7 +4180,7 @@
       <div class="logo">KSM</div>
       <span class="header-title">네트워크 공사 이력 관리 시스템</span>
       <nav class="header-nav">
-        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-s">공사 이력</button>
+        <button class="nav-tab" onclick="switchTab('main')" id="tab-main-s">🏗️ 공사 이력</button>
         <button class="nav-tab" onclick="switchTab('cable')" id="tab-cable-s">🗺️ 선번 관리</button>
         <button class="nav-tab" onclick="switchTab('ip')" id="tab-ip-s">🖥️ IP 대장</button>
         <button class="nav-tab" onclick="switchTab('devices')" id="tab-devices-s">🔌 네트워크 장비</button>
@@ -4182,7 +4188,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-s">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-s">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-s">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-s">📥 GW 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-s">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -4242,11 +4248,12 @@
     <!-- 🗂️ 탭 표시 설정 -->
     <div style="margin-top:28px;margin-bottom:28px">
       <div class="settings-header">
-        <h2>🗂️ 탭 표시</h2>
-        <span style="font-size:12px;color:#9ca3af">상단 메뉴에 보일 탭을 선택합니다 (이 브라우저에 저장)</span>
+        <h2>🗂️ 탭 표시 · 순서</h2>
+        <span style="font-size:12px;color:#9ca3af">체크로 표시/숨김, ▲▼ 또는 끌어서 순서 변경 (이 브라우저에 저장)</span>
       </div>
       <div class="settings-panel" style="max-width:640px">
         <div id="tabVisibilityList" class="tabvis-list"></div>
+        <div style="padding:0 16px 14px;text-align:right"><button class="btn btn-outline btn-sm" onclick="resetTabOrder()">기본 순서로</button></div>
       </div>
     </div>
 
@@ -5253,7 +5260,7 @@ async function loadGwInbox() {
   try {
     await loadGwStatus();
     gwInboxRows = await api('GET', `/api/gw-inbox?status=${encodeURIComponent(st)}`);
-  } catch (e) { gwInboxRows = []; showToast('GW 접수 목록 오류: ' + e.message, true); }
+  } catch (e) { gwInboxRows = []; showToast('GW 공사 접수 목록 오류: ' + e.message, true); }
   renderGwInbox();
   refreshGwInboxCount();
 }
@@ -5293,7 +5300,7 @@ async function openInboxModal(id) {
   const r = await api('GET', `/api/gw-inbox/${id}`);
   openNewModal();
   inboxId = id;
-  document.getElementById('modalTitle').textContent = 'GW 접수 검토 → 공사 이력 등록';
+  document.getElementById('modalTitle').textContent = 'GW 공사 접수 검토 → 공사 이력 등록';
   document.getElementById('formSubmitBtn').textContent = '공사 이력에 등록';
   await loadLocations();
   populateLocDropdowns();
@@ -8859,7 +8866,7 @@ async function unlinkSingleGroup(id, name) {
 // ── 탭 표시 설정 ──────────────────────────────────────────
 // 사용자가 설정에서 보일 탭을 선택 (localStorage 'hiddenTabs'에 숨긴 탭 목록 저장)
 const TAB_DEFS = [
-  { key: 'main',     label: '공사 이력',          fixed: true },
+  { key: 'main',     label: '🏗️ 공사 이력',       fixed: true },
   { key: 'cable',    label: '🗺️ 선번 관리' },
   { key: 'ip',       label: '🖥️ IP 대장' },
   { key: 'devices',  label: '🔌 네트워크 장비' },
@@ -8867,7 +8874,7 @@ const TAB_DEFS = [
   { key: 'incident', label: '🚨 장애 이력' },
   { key: 'conreq',   label: '📋 공사 요청' },
   { key: 'conbox',   label: '📬 공사 요청함' },
-  { key: 'gwinbox',  label: '📥 GW 접수' },
+  { key: 'gwinbox',  label: '📥 GW 공사 접수' },
   { key: 'settings', label: '⚙️ 설정',            fixed: true },
 ];
 const TAB_PAGE_ID = { main:'mainPage', cable:'cablePage', ip:'ipPage', devices:'devicesPage', fw:'firewallPage',
@@ -8886,6 +8893,61 @@ function setHiddenTabs(list) {
   try { localStorage.setItem('hiddenTabs', JSON.stringify(list)); localStorage.removeItem('betaEnabled'); } catch (e) {}
 }
 
+const DEFAULT_TAB_ORDER = TAB_DEFS.map(d => d.key);
+
+function getTabOrder() {
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem('tabOrder') || '[]') || []; } catch (e) {}
+  const known = saved.filter(k => DEFAULT_TAB_ORDER.includes(k));
+  // 새로 추가된 탭은 기본 위치 근처(끝)에 붙임
+  return [...known, ...DEFAULT_TAB_ORDER.filter(k => !known.includes(k))];
+}
+
+function setTabOrder(order) {
+  try { localStorage.setItem('tabOrder', JSON.stringify(order)); } catch (e) {}
+}
+
+// 모든 헤더 메뉴의 탭 버튼을 저장된 순서로 재배치
+function applyTabOrder() {
+  const order = getTabOrder();
+  document.querySelectorAll('.header-nav').forEach(nav => {
+    const btns = [...nav.querySelectorAll(':scope > button.nav-tab[onclick^="switchTab("]')];
+    const keyOf = b => (b.getAttribute('onclick').match(/switchTab\('(\w+)'\)/) || [])[1];
+    btns.sort((a, b) => order.indexOf(keyOf(a)) - order.indexOf(keyOf(b)))
+        .forEach(b => nav.appendChild(b));
+  });
+}
+
+function moveTab(key, delta) {
+  const order = getTabOrder();
+  const i = order.indexOf(key), j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  setTabOrder(order); applyTabOrder(); renderTabSettings();
+}
+
+function resetTabOrder() {
+  try { localStorage.removeItem('tabOrder'); } catch (e) {}
+  applyTabOrder(); renderTabSettings();
+  showToast('탭 순서를 기본으로 되돌렸습니다');
+}
+
+// 드래그로 순서 변경
+let tabDragKey = null;
+function onTabDragStart(e, key) { tabDragKey = key; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; }
+function onTabDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function onTabDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onTabDrop(e, key) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!tabDragKey || tabDragKey === key) return;
+  const order = getTabOrder().filter(k => k !== tabDragKey);
+  order.splice(order.indexOf(key), 0, tabDragKey);
+  tabDragKey = null;
+  setTabOrder(order); applyTabOrder(); renderTabSettings();
+}
+function onTabDragEnd(e) { e.currentTarget.classList.remove('dragging'); tabDragKey = null; }
+
 function applyTabVisibility() {
   const hidden = new Set(getHiddenTabs().filter(k => !TAB_DEFS.find(d => d.key === k)?.fixed));
   // 모든 헤더의 탭 버튼 (onclick="switchTab('xxx')")
@@ -8902,12 +8964,23 @@ function renderTabSettings() {
   const box = document.getElementById('tabVisibilityList');
   if (!box) return;
   const hidden = new Set(getHiddenTabs());
-  box.innerHTML = TAB_DEFS.map(d => `
-    <label class="tabvis-item${d.fixed ? ' fixed' : ''}" title="${d.fixed ? '항상 표시되는 탭입니다' : ''}">
-      <input type="checkbox" ${d.fixed || !hidden.has(d.key) ? 'checked' : ''} ${d.fixed ? 'disabled' : ''}
-        onchange="onTabVisibilityChange('${d.key}', this.checked)" />
-      <span>${d.label}</span>
-    </label>`).join('');
+  const order = getTabOrder();
+  box.innerHTML = order.map((key, i) => {
+    const d = TAB_DEFS.find(x => x.key === key);
+    return `
+    <div class="tabvis-row" draggable="true"
+      ondragstart="onTabDragStart(event,'${key}')" ondragover="onTabDragOver(event)" ondragleave="onTabDragLeave(event)"
+      ondrop="onTabDrop(event,'${key}')" ondragend="onTabDragEnd(event)">
+      <span class="tabvis-handle" title="끌어서 순서 변경">⠿</span>
+      <label class="tabvis-item${d.fixed ? ' fixed' : ''}" title="${d.fixed ? '항상 표시되는 탭입니다' : ''}">
+        <input type="checkbox" ${d.fixed || !hidden.has(key) ? 'checked' : ''} ${d.fixed ? 'disabled' : ''}
+          onchange="onTabVisibilityChange('${key}', this.checked)" />
+        <span>${d.label}</span>
+      </label>
+      <button class="tabvis-move" title="위로" ${i === 0 ? 'disabled' : ''} onclick="moveTab('${key}',-1)">▲</button>
+      <button class="tabvis-move" title="아래로" ${i === order.length - 1 ? 'disabled' : ''} onclick="moveTab('${key}',1)">▼</button>
+    </div>`;
+  }).join('');
 }
 
 function onTabVisibilityChange(key, visible) {
@@ -8920,6 +8993,7 @@ function onTabVisibilityChange(key, visible) {
 }
 
 function initTabVisibility() {
+  applyTabOrder();
   applyTabVisibility();
 }
 
