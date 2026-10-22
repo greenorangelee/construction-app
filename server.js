@@ -253,6 +253,8 @@ async function initDB() {
     created_at DATETIME DEFAULT NOW()
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  await pool.query("ALTER TABLE gw_inbox ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'construction'").catch(()=>{});
+
   // 그룹웨어 결재 진행 상황 (gw-collector가 갱신)
   await run(`CREATE TABLE IF NOT EXISTS gw_doc_status (
     doc_no VARCHAR(50) PRIMARY KEY,
@@ -492,15 +494,20 @@ const inboxRow = r => ({ ...r, data: parseJson(r.data, {}), items: parseJson(r.i
 app.get('/api/gw-inbox', authMiddleware, async (req, res) => {
   try {
     const st = req.query.status || 'pending';
+    const kind = req.query.kind || 'construction';
     const rows = st === 'all'
-      ? await queryAll('SELECT * FROM gw_inbox ORDER BY id DESC')
-      : await queryAll('SELECT * FROM gw_inbox WHERE status=? ORDER BY id DESC', [st]);
+      ? await queryAll('SELECT * FROM gw_inbox WHERE kind=? ORDER BY id DESC', [kind])
+      : await queryAll('SELECT * FROM gw_inbox WHERE kind=? AND status=? ORDER BY id DESC', [kind, st]);
     res.json(rows.map(inboxRow));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/gw-inbox/count', authMiddleware, async (req, res) => {
-  try { res.json(await queryOne("SELECT COUNT(*) AS pending FROM gw_inbox WHERE status='pending'")); }
+  try {
+    const rows = await queryAll("SELECT kind, COUNT(*) AS cnt FROM gw_inbox WHERE status='pending' GROUP BY kind");
+    const by = Object.fromEntries(rows.map(r => [r.kind, Number(r.cnt)]));
+    res.json({ pending: rows.reduce((a, r) => a + Number(r.cnt), 0), construction: by.construction || 0, firewall: by.firewall || 0 });
+  }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -510,13 +517,20 @@ app.get('/api/gw-inbox/:id', authMiddleware, async (req, res) => {
   res.json(inboxRow(r));
 });
 
+// gw-collector 전용: 방화벽 정책요청에 이미 있는 문서번호인지
+app.get('/api/firewall-doc-exists', authMiddleware, async (req, res) => {
+  const r = await queryOne('SELECT id FROM firewall_requests WHERE TRIM(doc)=? LIMIT 1', [s(req.query.doc)]);
+  res.json({ exists: !!r });
+});
+
 // gw-collector 전용: 같은 docId는 한 번만 들어감
 app.post('/api/gw-inbox', authMiddleware, requireWrite, async (req, res) => {
   try {
     const d = req.body || {};
     if (!d.doc_id) return res.status(400).json({ error: 'doc_id 필요' });
-    const r = await dbRun('INSERT IGNORE INTO gw_inbox (doc_id, doc_no, data, items) VALUES (?,?,?,?)',
-      [d.doc_id, s(d.doc_no), JSON.stringify(d.data || {}), JSON.stringify(d.items || [])]);
+    const kind = d.kind === 'firewall' ? 'firewall' : 'construction';
+    const r = await dbRun('INSERT IGNORE INTO gw_inbox (doc_id, doc_no, kind, data, items) VALUES (?,?,?,?,?)',
+      [d.doc_id, s(d.doc_no), kind, JSON.stringify(d.data || {}), JSON.stringify(d.items || [])]);
     res.json({ created: r.affectedRows > 0 });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -527,7 +541,9 @@ app.post('/api/gw-inbox/:id/approve', authMiddleware, requireWrite, async (req, 
     const row = await queryOne('SELECT * FROM gw_inbox WHERE id=?', [req.params.id]);
     if (!row) return res.status(404).json({ error: 'Not found' });
     if (row.status === 'approved') return res.status(409).json({ error: '이미 등록된 항목입니다' });
-    const result = await insertConstruction({ ...req.body, changed_by: req.user?.name || req.body.changed_by });
+    const result = row.kind === 'firewall'
+      ? await insertFirewall(req.body)
+      : await insertConstruction({ ...req.body, changed_by: req.user?.name || req.body.changed_by });
     await dbRun("UPDATE gw_inbox SET status='approved', construction_id=?, decided_by=?, decided_at=NOW() WHERE id=?",
       [result.id, req.user?.name || '', req.params.id]);
     res.json(result);
@@ -861,12 +877,17 @@ app.get('/api/firewall/:id', authMiddleware, async (req, res) => {
   res.json(row);
 });
 
-app.post('/api/firewall', authMiddleware, requireWrite, async (req, res) => {
-  const { req_date, corp, dept, requester, status, title, worker, doc, memo, period_from, period_to } = req.body;
+// 방화벽 정책요청 1건 등록 (POST /api/firewall, GW 접수함 승인에서 공용)
+async function insertFirewall(d) {
+  const { req_date, corp, dept, requester, status, title, worker, doc, memo, period_from, period_to } = d;
   const result = await dbRun('INSERT INTO firewall_requests (req_date,corp,dept,requester,status,title,worker,doc,memo,period_from,period_to) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     [s(req_date),s(corp),s(dept),s(requester),status||'결재 대기중',s(title),s(worker),s(doc),s(memo),s(period_from),s(period_to)]);
   saveDB();
-  res.json({ id: result.insertId });
+  return { id: result.insertId };
+}
+
+app.post('/api/firewall', authMiddleware, requireWrite, async (req, res) => {
+  res.json(await insertFirewall(req.body));
 });
 
 app.put('/api/firewall/:id', authMiddleware, requireWrite, async (req, res) => {

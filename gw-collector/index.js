@@ -18,7 +18,7 @@ const CFG = {
   gwBox:       env('GW_BOX', 'AppBoxAll'),            // 전체문서함
   formIds:     env('GW_FORM_IDS', 'PHUCHASEDRAFT,PHUCHASEDRAFTC,PHUCHASEDRAFTCM,PHUCHASEDRAFTK').split(',').map(s => s.trim()).filter(Boolean),
   facilities:  env('GW_FACILITIES', 'KSM100|20170101,KSM200|20170101,KSM300|20170101,KSM400|20170101,KSM500|20170101,KSM2000|20200601,KSM701|20260211,KSM800|20170101,KSM1001|20260211,KSM1100|20211201').split(',').map(s => s.trim()).filter(Boolean),
-  lookbackDays: parseInt(env('LOOKBACK_DAYS', '14'), 10),
+  lookbackDays: parseInt(env('LOOKBACK_DAYS', '30'), 10),
   itemRegex:   new RegExp(env('ITEM_REGEX', '랜선\\s*포설')),
   itemCodes:   env('ITEM_CODES', 'ZMXZ001081').split(',').map(s => s.trim()).filter(Boolean),
   ignoreTls:   env('GW_IGNORE_TLS', '0') === '1',
@@ -33,6 +33,10 @@ const CFG = {
   intervalMin: parseInt(env('INTERVAL_MIN', '30'), 10),
   runOnce:     env('RUN_ONCE', '0') === '1',
   track:       env('TRACK_PROGRESS', '1') === '1',
+  // 방화벽 정책 요청서: 양식 ID를 알면 지정, 비우면 양식 이름에 '방화벽'이 들어간 문서를 찾음
+  fwEnabled:   env('FW_ENABLED', '1') === '1',
+  fwFormIds:   env('GW_FW_FORM_IDS', 'SCRTYFRWLPRQ').split(',').map(s => s.trim()).filter(Boolean),
+  fwFormRegex: new RegExp(env('FW_FORM_REGEX', '방화벽')),
   dryRun:      env('DRY_RUN', '0') === '1',
   stateFile:   env('STATE_FILE', '/data/state.json'),
 };
@@ -204,7 +208,32 @@ function parseView(html) {
       .replace(/ /g, ' ').split('\n').map(l => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  // 요청기간 (라벨에 '기간'이 들어간 칸에서 날짜 2개)
+  let periodFrom = '', periodTo = '';
+  $('th,td').each((_, el) => {
+    if (periodFrom) return;
+    const lab = clean($(el).text()).replace(/\s/g, '');
+    if (!/기간$/.test(lab) || $(el).find('table').length) return;
+    const ds = clean($(el).next().text()).match(/\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}/g) || [];
+    if (ds.length) { periodFrom = ds[0]; periodTo = ds[1] || ''; }
+  });
+
+  // 방화벽 요청내역 표: 헤더 행(출발지/출발지 포트/목적지/목적지 포트/상세용도) 아래 행들
+  const fwRules = [];
+  const srcTh = $('th').filter((_, el) => clean($(el).text()) === '출발지').first();
+  if (srcTh.length) {
+    let tr = srcTh.closest('tr').next();
+    while (tr.length) {
+      const c = tr.children('td,th').map((_, td) => clean($(td).text())).get();
+      if (tr.children('th').length) break;              // '주의사항' 등 다음 구역
+      if (c.length >= 4 && c.some(Boolean)) fwRules.push({ src: c[0], srcPort: c[1], dst: c[2], dstPort: c[3], desc: c[4] || '' });
+      tr = tr.next();
+    }
+  }
+
   return {
+    periodFrom, periodTo, fwRules,
+    purpose: text(field('용도')),
     docNo: text(field('문서번호')),
     writer: text(field('기안자')).split('/')[0].trim(),
     date: text(field('기안일자')),
@@ -243,7 +272,8 @@ class App {
     const rows = await this.call('GET', `/api/constructions?search=${encodeURIComponent(docNo)}`);
     return rows.some(r => (r.purchase_doc || '').trim() === docNo);
   }
-  toInbox(docId, docNo, data, items) { return this.call('POST', '/api/gw-inbox', { doc_id: docId, doc_no: docNo, data, items }); }
+  toInbox(docId, docNo, data, items, kind = 'construction') { return this.call('POST', '/api/gw-inbox', { doc_id: docId, doc_no: docNo, data, items, kind }); }
+  async fwExists(docNo) { return (await this.call('GET', `/api/firewall-doc-exists?doc=${encodeURIComponent(docNo)}`)).exists; }
   all() { return this.call('GET', '/api/constructions'); }
   gwStatus() { return this.call('GET', '/api/gw-status'); }
   putGwStatus(items) { return this.call('PUT', '/api/gw-status', { items }); }
@@ -273,6 +303,48 @@ async function trackProgress(gw, app) {
   }
   if (items.length && !CFG.dryRun) await app.putGwStatus(items);
   log(`[TRACK] 문서 ${docNos.size}개 중 ${targets.length}개 확인${CFG.dryRun ? ' (DRY_RUN: 저장 안 함)' : ''}`);
+}
+
+// ── 방화벽 정책 요청서 수집 ─────────────────────────────
+async function collectFirewall(gw, app, st, since) {
+  let docs = [];
+  if (CFG.fwFormIds.length) for (const f of CFG.fwFormIds) docs.push(...await gw.list(f, since));
+  else docs = (await gw.list('', since)).filter(d => CFG.fwFormRegex.test(d.formName || ''));
+  const fresh = docs.filter(d => !st.seen['fw' + d.docId] && !['Return', 'Refusal', 'Cancel', 'Temp'].includes(d.status));
+  const forms = [...new Set(docs.map(d => `${d.formName}(${d.formId})`))].join(', ');
+  log(`[GW] 방화벽 정책 요청서 ${docs.length}건 (신규 ${fresh.length}건)${forms ? ' 양식: ' + forms : ''}`);
+  let created = 0;
+  for (const d of fresh) {
+    const v = await gw.view(d.docId);
+    const docNo = v.docNo || d.docNo;
+    const url = `${CFG.gwBase}/ubiWare/ware/approval/apprView.html?docId=${d.docId}&fId=DocList&from=DocList&folderId=`;
+    const rec = {
+      req_date: yymmdd(v.date || d.startTime),
+      corp: corpOf(d.conductFacilityName || ''),
+      dept: v.dept || d.conductDepartName || '',
+      requester: v.writer || d.writerName || '',
+      title: v.title || d.title,
+      doc: docNo,
+      status: '결재 대기중',
+      worker: CFG.itManager,
+      period_from: yymmdd(v.periodFrom),
+      period_to: yymmdd(v.periodTo),
+      memo: [
+        v.purpose ? `용도: ${v.purpose}` : '',
+        v.fwRules.length ? '[요청내역]\n' + v.fwRules.map(r => `- ${r.src}${r.srcPort ? ':' + r.srcPort : ''} → ${r.dst}${r.dstPort ? ':' + r.dstPort : ''}${r.desc ? ' (' + r.desc + ')' : ''}`).join('\n') : '',
+        v.memo,
+        `품의서: ${url}`,
+      ].filter(Boolean).join('\n\n'),
+    };
+    if (CFG.dryRun) { log('[DRY] 방화벽 접수 대상', JSON.stringify(rec)); continue; }
+    if (await app.fwExists(docNo)) log(`[APP] 이미 방화벽 정책요청에 있음: ${docNo}`);
+    else {
+      const r = await app.toInbox(d.docId, docNo, rec, v.fwRules, 'firewall');
+      if (r.created) { created++; log(`[APP] GW 접수함(방화벽)에 추가: ${docNo} ${rec.title}`); }
+    }
+    st.seen['fw' + d.docId] = { at: Date.now(), match: true, docNo };
+  }
+  log(`방화벽 정책: GW 접수함 추가 ${created}건`);
 }
 
 // ── 1회 실행 ─────────────────────────────────────────
@@ -326,6 +398,7 @@ async function runOnce() {
       st.seen[d.docId] = { at: Date.now(), match: true, docNo };
     }
     log(`신규 품의: 대상 ${found}건, GW 접수함 추가 ${created}건`);
+    if (CFG.fwEnabled) await collectFirewall(gw, app, st, since);
     if (CFG.track && CFG.appUser) await trackProgress(gw, app);
   } finally {
     await gw.close();

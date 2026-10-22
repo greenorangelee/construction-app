@@ -508,6 +508,10 @@
     .tabvis-item.fixed { color:#9ca3af; cursor:default; }
     .tabvis-item.fixed input { cursor:default; }
     .gwinbox-count:not(:empty) { display:inline-block; min-width:18px; padding:0 5px; margin-left:2px; border-radius:9px; background:#ef4444; color:#fff; font-size:10px; line-height:16px; text-align:center; }
+    .gw-subtabs { display:inline-flex; background:#f3f4f6; border-radius:10px; padding:3px; gap:2px; }
+    .gw-subtab { border:none; background:transparent; padding:6px 12px; border-radius:8px; font-size:13px; color:#6b7280; cursor:pointer; font-family:inherit; }
+    .gw-subtab.active { background:#fff; color:#1a1a1a; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,0.08); }
+    .gw-subcount:not(:empty) { display:inline-block; min-width:16px; padding:0 4px; border-radius:8px; background:#ef4444; color:#fff; font-size:10px; line-height:15px; text-align:center; }
     .gwinbox-table th { padding:10px 12px; background:#f9fafb; border-bottom:2px solid #e5e7eb; color:#6b7280; font-weight:600; text-align:left; white-space:nowrap; }
     .gwinbox-table td { padding:10px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
     .gwinbox-table td.memo { color:#6b7280; font-size:11px; white-space:pre-line; max-width:420px; }
@@ -2243,7 +2247,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">⚙️ 설정</button>
     </nav>
   </div>
@@ -2529,7 +2533,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-ip">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-ip">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-ip">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-ip">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-ip">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-ip">⚙️ 설정</button>
       </nav>
     </div>
@@ -2746,7 +2750,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-c">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-c">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-c">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-c">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-c">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-c">⚙️ 설정</button>
       </nav>
     </div>
@@ -3006,7 +3010,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-d">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-d">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-d">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-d">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-d">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-d">⚙️ 설정</button>
       </nav>
     </div>
@@ -3407,7 +3411,7 @@
         <button class="nav-tab active" onclick="switchTab('incident')" id="tab-incident-incident">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-incident">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-incident">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-incident">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-incident">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-incident">⚙️ 설정</button>
       </nav>
     </div>
@@ -3634,7 +3638,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conreq">🚨 장애 이력</button>
         <button class="nav-tab active" onclick="switchTab('conreq')" id="tab-conreq-conreq">📋 공사 요청</button>
         <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-conreq">📬 공사 요청함</button>
-        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conreq">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conreq">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conreq">⚙️ 설정</button>
       </nav>
     </div>
@@ -3899,7 +3903,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-conbox">🚨 장애 이력</button>
         <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-conbox">📋 공사 요청</button>
         <button class="nav-tab active" onclick="switchTab('conbox')" id="tab-conbox-conbox">📬 공사 요청함</button>
-        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conbox">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-conbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-conbox">⚙️ 설정</button>
       </nav>
     </div>
@@ -3969,7 +3973,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-gwinbox">🚨 장애 이력</button>
         <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-gwinbox">📋 공사 요청</button>
         <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-gwinbox">📬 공사 요청함</button>
-        <button class="nav-tab active" onclick="switchTab('gwinbox')" id="tab-gwinbox-gwinbox">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+        <button class="nav-tab active" onclick="switchTab('gwinbox')" id="tab-gwinbox-gwinbox">📥 GW 접수 <span class="gwinbox-count"></span></button>
         <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-gwinbox">⚙️ 설정</button>
       </nav>
     </div>
@@ -3993,12 +3997,19 @@
     </div>
     <div class="table-wrapper">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)">
-        <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">📥 GW 공사 접수 <span style="font-size:12px;font-weight:400;color:#6b7280;margin-left:6px">그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록</span></h2>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <h2 style="font-size:15px;font-weight:700;color:#1a1a1a">📥 GW 접수</h2>
+          <div class="gw-subtabs">
+            <button class="gw-subtab active" data-kind="construction" onclick="setGwInboxKind('construction')">🏗️ 공사 <span class="gw-subcount" id="gwSubCount-construction"></span></button>
+            <button class="gw-subtab" data-kind="firewall" onclick="setGwInboxKind('firewall')">🔥 방화벽 정책 <span class="gw-subcount" id="gwSubCount-firewall"></span></button>
+          </div>
+          <span id="gwinboxDesc" style="font-size:12px;color:#6b7280">그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록</span>
+        </div>
         <span id="gwinboxCount" style="font-size:12px;color:#9ca3af"></span>
       </div>
       <div style="overflow-x:auto">
         <table class="gwinbox-table" style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead>
+          <thead id="gwinboxThead">
             <tr>
               <th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>상태</th><th>관리</th>
             </tr>
@@ -4027,7 +4038,7 @@
         <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-fw">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-fw">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-fw">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-fw">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-fw">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-fw">⚙️ 설정</button>
       </nav>
     </div>
@@ -4188,7 +4199,7 @@
       <button class="nav-tab" onclick="switchTab('incident')" id="tab-incident-s">🚨 장애 이력</button>
       <button class="nav-tab" onclick="switchTab('conreq')" id="tab-conreq-s">📋 공사 요청</button>
       <button class="nav-tab" onclick="switchTab('conbox')" id="tab-conbox-s">📬 공사 요청함</button>
-      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-s">📥 GW 공사 접수 <span class="gwinbox-count"></span></button>
+      <button class="nav-tab" onclick="switchTab('gwinbox')" id="tab-gwinbox-s">📥 GW 접수 <span class="gwinbox-count"></span></button>
       <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings-s">⚙️ 설정</button>
       </nav>
     </div>
@@ -4595,7 +4606,7 @@
           </div>
           <div class="form-group form-full">
             <label>품의서 URL</label>
-            <input type="url" id="f-doc_url" placeholder="그룹웨어 품의서 주소 (GW 공사 접수에서 등록 시 자동 입력)" />
+            <input type="url" id="f-doc_url" placeholder="그룹웨어 품의서 주소 (GW 접수에서 등록 시 자동 입력)" />
           </div>
         </div>
       </div>
@@ -5254,12 +5265,27 @@ function statusBadge(v) {
 
 // ── GW 접수함 ──────────────────────────────────────────
 let gwInboxRows = [];
+let gwInboxKind = 'construction';   // construction | firewall
+const GW_KIND_DESC = {
+  construction: '그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록',
+  firewall: '그룹웨어 방화벽 정책 요청서 자동 수집 → 검토 후 방화벽 정책요청에 등록',
+};
+function setGwInboxKind(kind) {
+  gwInboxKind = kind;
+  document.querySelectorAll('.gw-subtab').forEach(b => b.classList.toggle('active', b.dataset.kind === kind));
+  document.getElementById('gwinboxDesc').textContent = GW_KIND_DESC[kind];
+  document.getElementById('gwinboxThead').innerHTML = kind === 'firewall'
+    ? '<tr><th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>품의명</th><th>요청기간</th><th>품의서</th><th>상태</th><th>관리</th></tr>'
+    : '<tr><th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>상태</th><th>관리</th></tr>';
+  loadGwInbox();
+}
 const GW_INBOX_LABEL = { pending: ['검토 대기', 'gw-ing'], approved: ['등록 완료', 'gw-ok'], rejected: ['제외', 'gw-na'] };
 
 async function refreshGwInboxCount() {
   try {
-    const { pending } = await api('GET', '/api/gw-inbox/count');
-    document.querySelectorAll('.gwinbox-count').forEach(el => el.textContent = pending > 0 ? pending : '');
+    const c = await api('GET', '/api/gw-inbox/count');
+    document.querySelectorAll('.gwinbox-count').forEach(el => el.textContent = c.pending > 0 ? c.pending : '');
+    ['construction', 'firewall'].forEach(k => { const el = document.getElementById('gwSubCount-' + k); if (el) el.textContent = c[k] > 0 ? c[k] : ''; });
   } catch (e) {}
 }
 
@@ -5267,8 +5293,8 @@ async function loadGwInbox() {
   const st = document.getElementById('gwinboxStatusFilter').value;
   try {
     await loadGwStatus();
-    gwInboxRows = await api('GET', `/api/gw-inbox?status=${encodeURIComponent(st)}`);
-  } catch (e) { gwInboxRows = []; showToast('GW 공사 접수 목록 오류: ' + e.message, true); }
+    gwInboxRows = await api('GET', `/api/gw-inbox?kind=${gwInboxKind}&status=${encodeURIComponent(st)}`);
+  } catch (e) { gwInboxRows = []; showToast('GW 접수 목록 오류: ' + e.message, true); }
   renderGwInbox();
   refreshGwInboxCount();
 }
@@ -5276,7 +5302,7 @@ async function loadGwInbox() {
 function renderGwInbox() {
   const kw = (document.getElementById('gwinboxSearch').value || '').trim().toLowerCase();
   const canWrite = ['write', 'admin'].includes(currentUser?.role);
-  const rows = gwInboxRows.filter(r => !kw || [r.data.requester, r.data.dept, r.data.work_name, r.doc_no]
+  const rows = gwInboxRows.filter(r => !kw || [r.data.requester, r.data.dept, r.data.work_name, r.data.title, r.doc_no]
     .some(v => String(v || '').toLowerCase().includes(kw)));
   document.getElementById('gwinboxCount').textContent = `${rows.length}건`;
   const body = document.getElementById('gwinboxTableBody');
@@ -5288,15 +5314,17 @@ function renderGwInbox() {
     let actions = '';
     if (canWrite && r.status === 'pending') actions = `<button class="btn btn-primary btn-sm" onclick="openInboxModal(${r.id})">검토·등록</button> <button class="btn btn-outline btn-sm" onclick="rejectInbox(${r.id})">제외</button>`;
     else if (canWrite && r.status === 'rejected') actions = `<button class="btn btn-outline btn-sm" onclick="restoreInbox(${r.id})">되돌리기</button>`;
-    else if (r.status === 'approved' && r.construction_id) actions = `<button class="btn btn-outline btn-sm" onclick="switchTab('main');showDetail(${r.construction_id})">공사 보기</button>`;
+    else if (r.status === 'approved' && r.construction_id) actions = r.kind === 'firewall'
+      ? `<button class="btn btn-outline btn-sm" onclick="switchTab('fw')">방화벽 정책 보기</button>`
+      : `<button class="btn btn-outline btn-sm" onclick="switchTab('main');showDetail(${r.construction_id})">공사 보기</button>`;
     const who = r.decided_by ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px">${gwEsc(r.decided_by)} ${gwEsc(String(r.decided_at || '').slice(5, 10))}</div>` : '';
     return `<tr>
       <td style="white-space:nowrap">${gwEsc(d.req_date || '-')}</td>
       <td>${gwEsc(d.corp || '-')}</td>
       <td style="white-space:nowrap">${gwEsc(d.dept || '-')}</td>
       <td style="white-space:nowrap">${gwEsc(d.requester || '-')}</td>
-      <td><div style="font-weight:600;color:#1a1a1a;margin-bottom:4px">${gwEsc(d.work_name || '-')}</div><div class="memo" style="color:#6b7280;font-size:11px;white-space:pre-line;max-width:420px">${gwEsc((d.memo || '').replace(/\n*\[GW 자동등록\][^\n]*$/, '').slice(0, 400))}</div></td>
-      <td style="font-size:12px;white-space:nowrap">${items || '-'}</td>
+      <td><div style="font-weight:600;color:#1a1a1a;margin-bottom:4px">${gwEsc(d.work_name || d.title || '-')}</div><div class="memo" style="color:#6b7280;font-size:11px;white-space:pre-line;max-width:420px">${gwEsc((d.memo || '').replace(/\n*\[GW 자동등록\][^\n]*$/, '').slice(0, 400))}</div></td>
+      <td style="font-size:12px;white-space:nowrap">${r.kind === 'firewall' ? gwEsc([d.period_from, d.period_to].filter(Boolean).join(' ~ ') || '-') : (items || '-')}</td>
       <td style="white-space:nowrap">${docDetail(r.doc_no)}</td>
       <td><span class="gw-badge ${cls}">${label}</span>${who}</td>
       <td style="white-space:nowrap">${actions}</td>
@@ -5306,9 +5334,10 @@ function renderGwInbox() {
 
 async function openInboxModal(id) {
   const r = await api('GET', `/api/gw-inbox/${id}`);
+  if (r.kind === 'firewall') return openFwInboxModal(r);
   openNewModal();
   inboxId = id;
-  document.getElementById('modalTitle').textContent = 'GW 공사 접수 검토 → 공사 이력 등록';
+  document.getElementById('modalTitle').textContent = 'GW 접수 검토 → 공사 이력 등록';
   document.getElementById('formSubmitBtn').textContent = '공사 이력에 등록';
   await loadLocations();
   populateLocDropdowns();
@@ -5330,6 +5359,19 @@ async function openInboxModal(id) {
       regionEl.value = d[`${p}_region`];
       onLocRegionChange(p, true);
     }
+  });
+}
+
+// 방화벽 정책 요청서 검토 → 방화벽 정책요청 등록
+let fwInboxId = null;
+async function openFwInboxModal(r) {
+  await openFwModal();
+  fwInboxId = r.id;
+  document.getElementById('fwModalTitle').textContent = 'GW 접수 검토 → 방화벽 정책요청 등록';
+  const d = r.data || {};
+  ['req_date','corp','dept','requester','status','title','worker','doc','memo','period_from','period_to'].forEach(f => {
+    const el = document.getElementById('fw-' + f);
+    if (el && d[f] !== undefined && d[f] !== '') el.value = d[f];
   });
 }
 
@@ -8915,7 +8957,7 @@ const TAB_DEFS = [
   { key: 'incident', label: '🚨 장애 이력' },
   { key: 'conreq',   label: '📋 공사 요청' },
   { key: 'conbox',   label: '📬 공사 요청함' },
-  { key: 'gwinbox',  label: '📥 GW 공사 접수' },
+  { key: 'gwinbox',  label: '📥 GW 접수' },
   { key: 'settings', label: '⚙️ 설정',            fixed: true },
 ];
 const TAB_PAGE_ID = { main:'mainPage', cable:'cablePage', ip:'ipPage', devices:'devicesPage', fw:'firewallPage',
@@ -10335,6 +10377,7 @@ async function openFwModal(id = null) {
   const resultEl = document.getElementById('fwDocResult');
   if (pasteEl) pasteEl.value = '';
   if (resultEl) resultEl.style.display = 'none';
+  fwInboxId = null;
   document.getElementById('fwModalTitle').textContent = id ? '방화벽 정책요청 수정' : '방화벽 정책요청 등록';
   document.getElementById('fwModalId').value = id || '';
   if (id) {
@@ -10376,6 +10419,14 @@ async function saveFwRequest() {
     period_to:   document.getElementById('fw-period_to').value.trim(),
   };
   try {
+    if (fwInboxId) {
+      await api('POST', `/api/gw-inbox/${fwInboxId}/approve`, body);
+      fwInboxId = null;
+      showToast('방화벽 정책요청에 등록되었습니다 ✓');
+      closeModal('fwModal');
+      loadGwInbox();
+      return;
+    }
     if (id) { await api('PUT', `/api/firewall/${id}`, body); showToast('수정됐습니다'); }
     else    { await api('POST', '/api/firewall', body); showToast('등록됐습니다'); }
     closeModal('fwModal');

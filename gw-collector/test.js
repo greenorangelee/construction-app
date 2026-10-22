@@ -39,4 +39,17 @@ console.log(sum);
 assert.equal(sum.step_done, 2); assert.equal(sum.step_total, 3);
 assert.equal(sum.current_signer, '이준성(IT관리팀)'); assert.equal(sum.status_label, '진행 중');
 assert.equal(sum.decided_at, '');
+// 요청기간 파싱
+// 실제 방화벽 정책 요청서(docId 725134) 구조
+const fv = parseView(`<table><tr><th>문서번호</th><td>기술-보안-26-0166</td></tr><tr><th>제 목</th><td>PLM 인터페이스를 위한 중간 DB 접근 방화벽 해제 요청</td></tr></table>
+<table><tr><th>요청기간</th><td>2026/10/19 ~ 2099/12/31</td><th>용도</th><td>PLM 인터페이스용 (시스템 사용 종료전까지 유지 필요)</td></tr>
+<tr><th rowspan="11">요청내역</th><th>출발지</th><th>출발지 포트</th><th>목적지</th><th>목적지 포트</th><th>상세용도</th></tr>
+<tr><td>172.16.2.188</td><td>80(HTTP), 443(HTTPS)</td><td>172.30.11.4</td><td>1433</td><td>SSMS, JDBC 연결 용도.</td></tr>
+<tr><td>172.30.23.4</td><td>80(HTTP), 443(HTTPS)</td><td>172.30.11.4</td><td>1433</td><td>JDBC 연결 용도.</td></tr>
+<tr><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><th>주의사항</th><td>■ 개인적인 용도...</td></tr></table>`);
+assert.equal(fv.periodFrom, '2026/10/19'); assert.equal(fv.periodTo, '2099/12/31');
+assert.equal(fv.purpose, 'PLM 인터페이스용 (시스템 사용 종료전까지 유지 필요)');
+assert.equal(fv.fwRules.length, 2); assert.equal(fv.fwRules[0].dstPort, '1433');
+console.log(fv.fwRules);
 console.log('OK');
