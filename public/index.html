@@ -4011,7 +4011,7 @@
         <table class="gwinbox-table" style="width:100%;border-collapse:collapse;font-size:13px">
           <thead id="gwinboxThead">
             <tr>
-              <th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>상태</th><th>관리</th>
+              <th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>결재 진행</th><th>관리</th>
             </tr>
           </thead>
           <tbody id="gwinboxTableBody">
@@ -5275,8 +5275,8 @@ function setGwInboxKind(kind) {
   document.querySelectorAll('.gw-subtab').forEach(b => b.classList.toggle('active', b.dataset.kind === kind));
   document.getElementById('gwinboxDesc').textContent = GW_KIND_DESC[kind];
   document.getElementById('gwinboxThead').innerHTML = kind === 'firewall'
-    ? '<tr><th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>품의명</th><th>요청기간</th><th>품의서</th><th>상태</th><th>관리</th></tr>'
-    : '<tr><th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>상태</th><th>관리</th></tr>';
+    ? '<tr><th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>품의명</th><th>요청기간</th><th>품의서</th><th>결재 진행</th><th>관리</th></tr>'
+    : '<tr><th>요청일</th><th>법인</th><th>부서</th><th>요청자</th><th>공사명</th><th>품목</th><th>구매품의서</th><th>결재 진행</th><th>관리</th></tr>';
   loadGwInbox();
 }
 const GW_INBOX_LABEL = { pending: ['검토 대기', 'gw-ing'], approved: ['등록 완료', 'gw-ok'], rejected: ['제외', 'gw-na'] };
@@ -5325,8 +5325,11 @@ function renderGwInbox() {
       <td style="white-space:nowrap">${gwEsc(d.requester || '-')}</td>
       <td><div style="font-weight:600;color:#1a1a1a;margin-bottom:4px">${gwEsc(d.work_name || d.title || '-')}</div><div class="memo" style="color:#6b7280;font-size:11px;white-space:pre-line;max-width:420px">${gwEsc((d.memo || '').replace(/\n*\[GW 자동등록\][^\n]*$/, '').slice(0, 400))}</div></td>
       <td style="font-size:12px;white-space:nowrap">${r.kind === 'firewall' ? gwEsc([d.period_from, d.period_to].filter(Boolean).join(' ~ ') || '-') : (items || '-')}</td>
-      <td style="white-space:nowrap">${docDetail(r.doc_no)}</td>
-      <td><span class="gw-badge ${cls}">${label}</span>${who}</td>
+      <td style="white-space:nowrap">${(() => {
+        const url = d.doc_url || (r.doc_id ? `${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${r.doc_id}&fId=DocList&from=DocList&folderId=` : '');
+        return url ? `<a href="${gwEsc(url)}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">${gwEsc(r.doc_no)}</a>` : gwEsc(r.doc_no || '-');
+      })()}</td>
+      <td style="min-width:260px">${gwSignLine(r.doc_no).replace('class="gw-line"', 'class="gw-line" style="margin-top:0;font-size:12px"') || '<span style="font-size:11px;color:#9ca3af">결재선 확인 중 (다음 수집 때 표시)</span>'}${r.status !== 'pending' ? `<div style="margin-top:4px"><span class="gw-badge ${cls}">${label}</span>${who}</div>` : ''}</td>
       <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join('');
@@ -5441,20 +5444,25 @@ function docCell(text, r) {
   }
   return `<td class="col-doc" title="${gwEsc(text)} (클릭하면 그룹웨어 품의서가 열립니다)">${html}</td>`;
 }
+// 결재선: 안준혁(사원) ✓10/16 → 김우영(대리) ✓10/16 → ⏳ 장원준(사원)
+function gwSignLine(docNo) {
+  const g = GW_STATUS[docNo];
+  if (!g || !g.found) return '';
+  let signers = [];
+  try { signers = JSON.parse(g.signers || '[]'); } catch {}
+  if (!signers.length) return '';
+  return `<div class="gw-line">${signers.map(sg => sg.wait
+    ? `<span class="wait">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`
+    : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
+}
+
 // 상세: 문서별 배지 + 결재선
 function docDetail(text) {
   const docs = gwDocs(text);
   if (!docs.length) return `<div style="font-size:13px">${gwEsc(text || '-')}</div>`;
   return docs.map(d => {
     const g = GW_STATUS[d];
-    let line = '';
-    if (g && g.found) {
-      let signers = [];
-      try { signers = JSON.parse(g.signers || '[]'); } catch {}
-      line = `<div class="gw-line">${signers.map(sg => sg.wait
-        ? `<span class="wait">⏳ ${gwEsc(sg.name)}(${gwEsc(sg.level)})</span>`
-        : `${gwEsc(sg.name)}(${gwEsc(sg.level)}) ${sg.done ? '✓' + gwEsc(sg.done.slice(5,10)) : '·'}`).join(' → ')}</div>`;
-    }
+    const line = gwSignLine(d);
     const link = gwDocUrl(d, window.__detailRec) ? `<a href="${gwEsc(gwDocUrl(d, window.__detailRec))}" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
     return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}</div>`;
   }).join('');

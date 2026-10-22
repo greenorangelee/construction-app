@@ -90,17 +90,28 @@ class Groupware {
   }
   async close() { try { await this.browser?.close(); } catch {} }
 
-  async login() {
-    const page = await this.ctx.newPage();
-    await page.goto(`${CFG.gwBase}/ubiWare/frame/auth/login.html`, { waitUntil: 'domcontentloaded' });
-    await page.fill('#loginId', CFG.gwId);
-    await page.fill('#loginPw', CFG.gwPw);
-    await Promise.all([
-      page.waitForURL(u => !/\/auth\/login/.test(u.toString()), { timeout: 30000 }),
-      page.press('#loginPw', 'Enter'),
-    ]);
-    await page.close();
-    log('[GW] 로그인 완료');
+  // 컨테이너 시작 직후 네트워크 변경(ERR_NETWORK_CHANGED) 등 일시 오류는 몇 번 재시도
+  async login(tries = 3) {
+    for (let i = 1; ; i++) {
+      const page = await this.ctx.newPage();
+      try {
+        await page.goto(`${CFG.gwBase}/ubiWare/frame/auth/login.html`, { waitUntil: 'domcontentloaded' });
+        await page.fill('#loginId', CFG.gwId);
+        await page.fill('#loginPw', CFG.gwPw);
+        await Promise.all([
+          page.waitForURL(u => !/\/auth\/login/.test(u.toString()), { timeout: 30000 }),
+          page.press('#loginPw', 'Enter'),
+        ]);
+        log('[GW] 로그인 완료');
+        return;
+      } catch (e) {
+        if (i >= tries) throw e;
+        log(`[GW] 로그인 재시도 ${i}/${tries - 1}: ${e.message.split('\n')[0]}`);
+        await new Promise(r => setTimeout(r, 10000 * i));
+      } finally {
+        await page.close().catch(() => {});
+      }
+    }
   }
 
   // 결재 문서 목록 (grid.json)
@@ -284,8 +295,12 @@ const DOC_NO_RE = /[가-힣A-Za-z]+-[가-힣A-Za-z]+-\d{2}-\d{3,5}/g;
 async function trackProgress(gw, app) {
   const rows = await app.all();
   const docNos = new Set();
-  for (const r of rows) for (const f of ['purchase_doc', 'payment_doc', 'related_doc'])
-    for (const m of String(r[f] || '').match(DOC_NO_RE) || []) docNos.add(m);
+  const addDocs = v => { for (const m of String(v || '').match(DOC_NO_RE) || []) docNos.add(m); };
+  for (const r of rows) for (const f of ['purchase_doc', 'payment_doc', 'related_doc']) addDocs(r[f]);
+  // GW 접수함(검토 대기)과 방화벽 정책요청 문서도 결재선 추적
+  for (const kind of ['construction', 'firewall'])
+    for (const r of await app.call('GET', `/api/gw-inbox?kind=${kind}&status=pending`).catch(() => [])) addDocs(r.doc_no);
+  for (const r of await app.call('GET', '/api/firewall').catch(() => [])) addDocs(r.doc);
   const known = Object.fromEntries((await app.gwStatus()).map(x => [x.doc_no, x]));
   // 최종 상태(승인/반려 등)는 다시 조회하지 않음
   const targets = [...docNos].filter(d => !known[d] || !FINAL.includes(known[d].status));
@@ -409,10 +424,17 @@ async function runOnce() {
 async function main() {
   for (const k of ['GW_ID', 'GW_PW', ...(CFG.dryRun ? [] : ['APP_USER', 'APP_PW'])])
     if (!process.env[k]) { console.error(`환경변수 ${k} 필요`); process.exit(1); }
+  // docker stop 시 바로 종료 (기본 동작이면 10초 기다렸다 강제 종료 → exit 137)
+  for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { log(`${sig} 수신, 종료`); process.exit(0); });
   do {
-    try { await runOnce(); } catch (e) { log('[ERR]', e.message, e.cause ? `(${e.cause.code || ''} ${e.cause.message || e.cause})` : ''); }
+    let failed = false;
+    try { await runOnce(); }
+    catch (e) { failed = true; log('[ERR]', e.message.split('\n')[0], e.cause ? `(${e.cause.code || ''} ${e.cause.message || e.cause})` : ''); }
     if (CFG.runOnce) break;
-    await new Promise(r => setTimeout(r, CFG.intervalMin * 60e3));
+    // 실패하면 5분 뒤 재시도, 정상이면 설정 주기대로
+    const wait = failed ? Math.min(5, CFG.intervalMin) : CFG.intervalMin;
+    if (failed) log(`[ERR] ${wait}분 뒤 다시 시도`);
+    await new Promise(r => setTimeout(r, wait * 60e3));
   } while (true);
 }
 
