@@ -15,7 +15,11 @@ const CFG = {
   gwBase:      env('GW_BASE', 'https://gw.ksm.co.kr'),
   gwId:        env('GW_ID'),
   gwPw:        env('GW_PW'),
-  gwBox:       env('GW_BOX', 'AppBoxAll'),            // 전체문서함
+  // 조회할 결재함 (전체문서함 권한이 없어서 부서함 기준)
+  //   AppBoxDpDone=부서처리함, AppBoxDpWait=부서수신함, AppBoxDpSp=부서문서함, AppBoxAll=전체문서함
+  gwBoxes:     env('GW_BOXES', env('GW_BOX', 'AppBoxDpDone,AppBoxDpWait')).split(',').map(s => s.trim()).filter(Boolean),
+  // 결재 추적용 문서번호 검색 시 차례로 찾아볼 결재함 (부서처리함·부서발신함에서 대부분 찾음)
+  trackBoxes:  env('TRACK_BOXES', 'AppBoxDpDone,AppBoxDpUp,AppBoxDpSp,AppBoxDpWait,AppBoxUp,AppBoxDone,AppBoxIng,AppBoxWait').split(',').map(s => s.trim()).filter(Boolean),
   formIds:     env('GW_FORM_IDS', 'PHUCHASEDRAFT,PHUCHASEDRAFTC,PHUCHASEDRAFTCM,PHUCHASEDRAFTK').split(',').map(s => s.trim()).filter(Boolean),
   facilities:  env('GW_FACILITIES', 'KSM100|20170101,KSM200|20170101,KSM300|20170101,KSM400|20170101,KSM500|20170101,KSM2000|20200601,KSM701|20260211,KSM800|20170101,KSM1001|20260211,KSM1100|20211201').split(',').map(s => s.trim()).filter(Boolean),
   lookbackDays: parseInt(env('LOOKBACK_DAYS', '30'), 10),
@@ -115,7 +119,20 @@ class Groupware {
   }
 
   // 결재 문서 목록 (grid.json)
-  async list(formId, dateStart, docNo = '') {
+  // 여러 결재함을 합쳐서 조회 (같은 문서는 한 번만)
+  async listBoxes(boxes, formId, dateStart, docNo = '') {
+    const seen = new Map();
+    for (const box of boxes) {
+      try {
+        for (const d of await this.list(formId, dateStart, docNo, box)) if (!seen.has(d.docId)) seen.set(d.docId, d);
+      } catch (e) {
+        if (!this.boxErr?.has(box)) { (this.boxErr ||= new Set()).add(box); log(`[GW] ${box} 조회 실패(권한 없음?) — 건너뜀: ${e.message.slice(0, 120)}`); }
+      }
+    }
+    return [...seen.values()];
+  }
+
+  async list(formId, dateStart, docNo = '', box = CFG.gwBoxes[0]) {
     const out = [];
     for (let start = 0; ; start += 100) {
       const p = new URLSearchParams();
@@ -131,7 +148,7 @@ class Groupware {
       p.append('limit', '100');
 
       const res = await this.ctx.request.post(
-        `${CFG.gwBase}/ubiWare/ware/approval/apprDoc.html/grid.json?_mid=${CFG.gwBox}`,
+        `${CFG.gwBase}/ubiWare/ware/approval/apprDoc.html/grid.json?_mid=${box}`,
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, data: p.toString() });
       const text = await res.text();
       let j;
@@ -154,8 +171,16 @@ class Groupware {
 
   // 문서번호로 문서 찾기 (정확히 일치하는 것만)
   async findByDocNo(docNo) {
-    const list = await this.list('', '', docNo);
-    return list.find(d => (d.docNo || '').trim() === docNo) || null;
+    // 결재함을 차례로 보며 처음 찾은 곳에서 멈춤
+    for (const box of CFG.trackBoxes) {
+      if (this.boxErr?.has(box)) continue;
+      let list = [];
+      try { list = await this.list('', '', docNo, box); }
+      catch (e) { (this.boxErr ||= new Set()).add(box); log(`[GW] ${box} 조회 실패(권한 없음?) — 건너뜀`); continue; }
+      const hit = list.find(d => (d.docNo || '').trim() === docNo);
+      if (hit) return hit;
+    }
+    return null;
   }
 
   // 결재선 진행 상황 (읽기 전용 API)
@@ -312,7 +337,14 @@ async function trackProgress(gw, app) {
   for (const r of await app.call('GET', '/api/firewall').catch(() => [])) addDocs(r.doc);
   const known = Object.fromEntries((await app.gwStatus()).map(x => [x.doc_no, x]));
   // 최종 상태(승인/반려 등)는 다시 조회하지 않음
-  const targets = [...docNos].filter(d => !known[d] || !FINAL.includes(known[d].status));
+  // 최종 상태는 제외, 못 찾은 문서는 하루에 한 번만 다시 찾아봄
+  const dayAgo = Date.now() - 864e5;
+  const targets = [...docNos].filter(d => {
+    const k = known[d];
+    if (!k) return true;
+    if (!k.found) return !k.checked_at || new Date(k.checked_at).getTime() < dayAgo;
+    return !FINAL.includes(k.status);
+  });
   const items = [];
   for (const docNo of targets) {
     try {
@@ -332,8 +364,8 @@ async function trackProgress(gw, app) {
 // ── 방화벽 정책 요청서 수집 ─────────────────────────────
 async function collectFirewall(gw, app, st, since) {
   let docs = [];
-  if (CFG.fwFormIds.length) for (const f of CFG.fwFormIds) docs.push(...await gw.list(f, since));
-  else docs = (await gw.list('', since)).filter(d => CFG.fwFormRegex.test(d.formName || ''));
+  if (CFG.fwFormIds.length) for (const f of CFG.fwFormIds) docs.push(...await gw.listBoxes(CFG.gwBoxes, f, since));
+  else docs = (await gw.listBoxes(CFG.gwBoxes, '', since)).filter(d => CFG.fwFormRegex.test(d.formName || ''));
   const fresh = docs.filter(d => !st.seen['fw' + d.docId] && !['Return', 'Refusal', 'Cancel', 'Temp'].includes(d.status));
   const forms = [...new Set(docs.map(d => `${d.formName}(${d.formId})`))].join(', ');
   log(`[GW] 방화벽 정책 요청서 ${docs.length}건 (신규 ${fresh.length}건)${forms ? ' 양식: ' + forms : ''}`);
@@ -381,9 +413,9 @@ async function runOnce() {
     await gw.open();
     const since = ymdSlash(new Date(Date.now() - CFG.lookbackDays * 864e5));
     const docs = [];
-    for (const f of CFG.formIds) docs.push(...await gw.list(f, since));
+    for (const f of CFG.formIds) docs.push(...await gw.listBoxes(CFG.gwBoxes, f, since));
     const fresh = docs.filter(d => !st.seen[d.docId]);
-    log(`[GW] 구매품의서 ${docs.length}건 (신규 확인 대상 ${fresh.length}건, ${since}~)`);
+    log(`[GW] 구매품의서 ${docs.length}건 (신규 확인 대상 ${fresh.length}건, ${since}~, 결재함: ${CFG.gwBoxes.join('+')})`);
 
     for (const d of fresh) {
       const v = await gw.view(d.docId);
