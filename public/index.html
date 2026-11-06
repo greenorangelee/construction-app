@@ -495,6 +495,10 @@
     /* 컴팩트 열 */
     td.col-sm { max-width: 80px; font-size: 11.5px; }
     td.col-md { max-width: 110px; font-size: 11.5px; }
+    .gwcred-table th { text-align:left; padding:10px 16px; background:#f9fafb; border-bottom:1px solid #e5e7eb; color:#6b7280; font-weight:600; font-size:12px; }
+    .gwcred-table td { padding:10px 16px; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+    .gw-runbar { display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
+    .gw-runbar select { padding:6px 8px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:12px; font-family:inherit; }
     .tabvis-list { display:flex; flex-direction:column; gap:2px; padding:14px 16px; }
     .tabvis-row { display:flex; align-items:center; gap:6px; border-radius:8px; border:1px solid transparent; }
     .tabvis-row.dragging { opacity:0.4; }
@@ -4012,6 +4016,11 @@
           </div>
           <span id="gwinboxDesc" style="font-size:12px;color:#6b7280">그룹웨어 구매품의서(랜선포설) 자동 수집 → 검토 후 공사 이력에 등록</span>
         </div>
+        <div class="gw-runbar">
+          <span id="gwRunStatus" style="font-size:12px;max-width:420px"></span>
+          <select id="gwRunAccount" title="검색할 그룹웨어 계정"><option value="all">전체 계정</option></select>
+          <button class="btn btn-outline btn-sm" id="gwRunBtn" onclick="startGwRun()">🔄 지금 검색</button>
+        </div>
         <span id="gwinboxCount" style="font-size:12px;color:#9ca3af"></span>
       </div>
       <div style="overflow-x:auto">
@@ -4267,24 +4276,18 @@
     <div id="gwCredSection" style="margin-top:28px;display:none">
       <div class="settings-header">
         <h2>🔑 그룹웨어 수집 계정</h2>
-        <span style="font-size:12px;color:#9ca3af">gw-bot이 그룹웨어에서 품의서를 가져올 때 쓰는 계정 (비밀번호는 암호화 저장)</span>
+        <span style="font-size:12px;color:#9ca3af">gw-bot이 품의서를 가져올 때 쓰는 계정 · 여러 개 등록하면 계정마다 볼 수 있는 문서함을 모두 검색 (비밀번호는 암호화 저장)</span>
       </div>
-      <div class="settings-panel" style="max-width:640px;padding:16px 18px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">그룹웨어 ID</label>
-            <input type="text" id="gwCredId" autocomplete="off" placeholder="예) jsunglee" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;outline:none" />
-          </div>
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">비밀번호</label>
-            <input type="password" id="gwCredPw" autocomplete="new-password" placeholder="변경할 때만 입력" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;outline:none" />
-          </div>
+      <div class="settings-panel" style="max-width:920px;padding:0;overflow-x:auto">
+        <table class="gwcred-table" style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr><th>그룹웨어 ID</th><th>사용</th><th>최근 로그인</th><th>변경</th><th></th></tr></thead>
+          <tbody id="gwCredBody"><tr><td colspan="5" style="padding:16px;color:#9ca3af">불러오는 중...</td></tr></tbody>
+        </table>
+        <div style="display:flex;gap:8px;align-items:center;padding:12px 16px;border-top:1px solid #f3f4f6;flex-wrap:wrap">
+          <input type="text" id="gwCredNewId" autocomplete="off" placeholder="새 그룹웨어 ID" style="box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;outline:none;width:180px" />
+          <input type="password" id="gwCredNewPw" autocomplete="new-password" placeholder="비밀번호" style="box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;outline:none;width:180px" />
+          <button class="btn btn-primary btn-sm" onclick="addGwCred()">+ 계정 추가</button>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:12px;flex-wrap:wrap">
-          <div id="gwCredInfo" style="font-size:12px;color:#6b7280"></div>
-          <button class="btn btn-primary btn-sm" onclick="saveGwCred()">저장</button>
-        </div>
-        <div id="gwCredStatus" style="margin-top:10px;font-size:12px;padding:8px 10px;border-radius:8px;display:none"></div>
       </div>
     </div>
 
@@ -8592,7 +8595,7 @@ function switchTab(tab) {
   if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; setTimeout(()=>initColResize(document.querySelector('#devicesPage table'),'colWidths_dev'),100); }
   if (tab === 'fw') { loadFwList(); updateFwUIByRole(); setTimeout(()=>initColResize(document.querySelector('#firewallPage table'),'colWidths_fw'),100); }
   if (tab === 'incident') { loadIncidentList(); loadIncidentStats(); setTimeout(()=>initColResize(document.querySelector('#incidentPage table'),'colWidths_inc'),100); }
-  if (tab === 'gwinbox') { loadGwInbox(); }
+  if (tab === 'gwinbox') { loadGwInbox(); loadGwRunBar(); }
   if (tab === 'conbox') { loadConBox(); setTimeout(()=>initColResize(document.querySelector('#conboxPage table'),'colWidths_conbox'),100); }
 }
 
@@ -9051,37 +9054,97 @@ async function unlinkSingleGroup(id, name) {
 }
 
 
-// ── 그룹웨어 수집 계정 (관리자) ──────────────────────────────
+// ── 그룹웨어 수집 계정 (관리자, 여러 개) ──────────────────────────────
+function gwLoginText(ls) {
+  if (!ls) return '<span style="color:#9ca3af">기록 없음</span>';
+  const when = new Date(ls.at).toLocaleString('ko-KR', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return ls.ok ? `<span style="color:#166534">✅ 성공 · ${when}</span>`
+    : `<span style="color:#991b1b" title="${gwEsc(ls.message || '')}">⚠️ 실패 · ${when}<br><span style="font-size:11px">${gwEsc((ls.message || '').slice(0, 80))}</span></span>`;
+}
 async function loadGwCred() {
   const sec = document.getElementById('gwCredSection');
   try {
-    const c = await api('GET', '/api/gw-settings');
+    const { accounts } = await api('GET', '/api/gw-settings');
     sec.style.display = '';
-    document.getElementById('gwCredId').value = c.gw_id || '';
-    document.getElementById('gwCredPw').value = '';
-    document.getElementById('gwCredPw').placeholder = c.has_password ? '●●●●●● (변경할 때만 입력)' : '비밀번호 입력';
-    document.getElementById('gwCredInfo').textContent = c.updated_at
-      ? `마지막 변경: ${String(c.updated_at).slice(0, 16).replace('T', ' ')}${c.updated_by ? ' · ' + c.updated_by : ''}` : '아직 등록되지 않음 (gw-bot .env 값 사용 중)';
-    const st = document.getElementById('gwCredStatus');
-    if (c.login_status) {
-      const ls = c.login_status, when = new Date(ls.at).toLocaleString('ko-KR', { hour12: false });
-      st.style.display = 'block';
-      st.style.background = ls.ok ? '#f0fdf4' : '#fef2f2';
-      st.style.color = ls.ok ? '#166534' : '#991b1b';
-      st.textContent = ls.ok ? `✅ 마지막 로그인 성공 (${when})` : `⚠️ 로그인 실패 (${when}) — ${ls.message || ''}`;
-    } else st.style.display = 'none';
+    const body = document.getElementById('gwCredBody');
+    if (!accounts.length) { body.innerHTML = '<tr><td colspan="5" style="padding:16px;color:#9ca3af">등록된 계정이 없습니다 (gw-bot .env 값 사용 중)</td></tr>'; return; }
+    body.innerHTML = accounts.map(a => `<tr>
+      <td style="font-family:'JetBrains Mono',monospace">${gwEsc(a.gw_id)}${a.has_password ? '' : ' <span style="color:#ef4444;font-size:11px">(비밀번호 없음)</span>'}</td>
+      <td><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="toggleGwCred('${gwEsc(a.gw_id)}', this.checked)" style="width:16px;height:16px;accent-color:#c0392b" /></td>
+      <td style="font-size:12px">${gwLoginText(a.login_status)}</td>
+      <td style="font-size:11px;color:#9ca3af">${a.updated_at ? String(a.updated_at).slice(0, 16).replace('T', ' ') : '-'}${a.updated_by ? '<br>' + gwEsc(a.updated_by) : ''}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn btn-outline btn-sm" onclick="changeGwCredPw('${gwEsc(a.gw_id)}')">비밀번호 변경</button>
+        <button class="btn btn-outline btn-sm" onclick="deleteGwCred('${gwEsc(a.gw_id)}')">삭제</button>
+      </td></tr>`).join('');
   } catch (e) { sec.style.display = 'none'; }
 }
-
-async function saveGwCred() {
-  const gw_id = document.getElementById('gwCredId').value.trim();
-  const gw_pw = document.getElementById('gwCredPw').value;
-  if (!gw_id) { alert('그룹웨어 ID를 입력하세요'); return; }
+async function addGwCred() {
+  const id = document.getElementById('gwCredNewId').value.trim(), pw = document.getElementById('gwCredNewPw').value;
+  if (!id || !pw) { alert('ID와 비밀번호를 입력하세요'); return; }
   try {
-    await api('PUT', '/api/gw-settings', gw_pw ? { gw_id, gw_pw } : { gw_id });
-    showToast('저장했습니다. gw-bot이 5분 안에 새 계정으로 로그인합니다');
-    loadGwCred();
+    await api('PUT', `/api/gw-settings/accounts/${encodeURIComponent(id)}`, { gw_pw: pw, enabled: true });
+    document.getElementById('gwCredNewId').value = ''; document.getElementById('gwCredNewPw').value = '';
+    showToast(`${id} 계정을 저장했습니다`); loadGwCred();
   } catch (e) { alert('저장 오류: ' + e.message); }
+}
+async function changeGwCredPw(id) {
+  const pw = prompt(`${id} 계정의 새 비밀번호`);
+  if (!pw) return;
+  try { await api('PUT', `/api/gw-settings/accounts/${encodeURIComponent(id)}`, { gw_pw: pw }); showToast('비밀번호를 변경했습니다. gw-bot이 5분 안에 다시 로그인합니다'); loadGwCred(); }
+  catch (e) { alert('저장 오류: ' + e.message); }
+}
+async function toggleGwCred(id, enabled) {
+  try { await api('PUT', `/api/gw-settings/accounts/${encodeURIComponent(id)}`, { enabled }); showToast(`${id} 계정 ${enabled ? '사용' : '사용 안 함'}`); }
+  catch (e) { alert('저장 오류: ' + e.message); loadGwCred(); }
+}
+async function deleteGwCred(id) {
+  if (!confirm(`${id} 계정을 삭제할까요?`)) return;
+  try { await api('DELETE', `/api/gw-settings/accounts/${encodeURIComponent(id)}`); showToast('삭제했습니다'); loadGwCred(); }
+  catch (e) { alert('삭제 오류: ' + e.message); }
+}
+
+// ── GW 접수: 지금 검색 ──────────────────────────────────────────
+let gwRunTimer = null;
+async function loadGwRunBar() {
+  const sel = document.getElementById('gwRunAccount');
+  if (!sel) return;
+  try {
+    const accs = await api('GET', '/api/gw-accounts');
+    const cur = sel.value || 'all';
+    sel.innerHTML = '<option value="all">전체 계정</option>' + accs.map(a => `<option value="${gwEsc(a.gw_id)}">${gwEsc(a.gw_id)}${a.login_status && !a.login_status.ok ? ' ⚠️' : ''}</option>`).join('');
+    sel.value = [...sel.options].some(o => o.value === cur) ? cur : 'all';
+  } catch (e) {}
+  pollGwRun(true);
+}
+function renderGwRun(r) {
+  const el = document.getElementById('gwRunStatus'), btn = document.getElementById('gwRunBtn');
+  if (!el) return false;
+  const busy = r && ['requested', 'running'].includes(r.state) && Date.now() - new Date(r.requested_at).getTime() < 15 * 60e3;
+  btn.disabled = !!busy;
+  btn.textContent = busy ? '⏳ 검색 중…' : '🔄 지금 검색';
+  if (!r || !r.id) { el.textContent = ''; return false; }
+  const when = t => t ? new Date(t).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
+  if (busy) el.innerHTML = `<span style="color:#1e40af">${r.state === 'requested' ? '요청됨 — gw-bot이 곧 시작합니다 (최대 15초)' : gwEsc(r.message || '검색 중…')}</span>`;
+  else if (r.state === 'done') el.innerHTML = `<span style="color:#166534">✅ ${when(r.finished_at)} ${gwEsc(r.message || '')}</span>`;
+  else if (r.state === 'error') el.innerHTML = `<span style="color:#991b1b">⚠️ ${when(r.finished_at)} ${gwEsc(r.message || '실패')}</span>`;
+  else el.innerHTML = `<span style="color:#9ca3af">${when(r.requested_at)} 요청 후 응답 없음 — gw-bot 상태를 확인하세요</span>`;
+  return busy;
+}
+async function pollGwRun(once) {
+  clearTimeout(gwRunTimer);
+  let r = null;
+  try { r = await api('GET', '/api/gw-run'); } catch (e) {}
+  const prevBusy = window.__gwRunBusy;
+  const busy = renderGwRun(r);
+  window.__gwRunBusy = busy;
+  if (prevBusy && !busy) { loadGwInbox(); if (r?.state === 'done') showToast(r.message || '검색 완료'); }
+  if (busy && document.getElementById('gwinboxPage')?.style.display === 'block') gwRunTimer = setTimeout(() => pollGwRun(), 3000);
+}
+async function startGwRun() {
+  const gw_id = document.getElementById('gwRunAccount').value || 'all';
+  try { await api('POST', '/api/gw-run', { gw_id }); window.__gwRunBusy = true; pollGwRun(); }
+  catch (e) { alert(e.message); }
 }
 
 // ── 탭 표시 설정 ──────────────────────────────────────────

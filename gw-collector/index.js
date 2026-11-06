@@ -16,10 +16,10 @@ const CFG = {
   gwId:        env('GW_ID'),
   gwPw:        env('GW_PW'),
   // 조회할 결재함 (전체문서함 권한이 없어서 부서함 기준)
-  //   AppBoxDpDone=부서처리함, AppBoxDpWait=부서수신함, AppBoxDpSp=부서문서함, AppBoxAll=전체문서함
-  gwBoxes:     env('GW_BOXES', env('GW_BOX', 'AppBoxDpDone,AppBoxDpWait')).split(',').map(s => s.trim()).filter(Boolean),
+  //   AppBoxDpDone=부서처리함, AppBoxDpWait=부서수신함, AppBoxCircul=사전참조함, AppBoxDpSp=부서문서함, AppBoxAll=전체문서함
+  gwBoxes:     env('GW_BOXES', env('GW_BOX', 'AppBoxDpDone,AppBoxDpWait,AppBoxCircul')).split(',').map(s => s.trim()).filter(Boolean),
   // 결재 추적용 문서번호 검색 시 차례로 찾아볼 결재함 (부서처리함·부서발신함에서 대부분 찾음)
-  trackBoxes:  env('TRACK_BOXES', 'AppBoxDpDone,AppBoxDpUp,AppBoxDpSp,AppBoxDpWait,AppBoxUp,AppBoxDone,AppBoxIng,AppBoxWait').split(',').map(s => s.trim()).filter(Boolean),
+  trackBoxes:  env('TRACK_BOXES', 'AppBoxDpDone,AppBoxDpUp,AppBoxCircul,AppBoxDpSp,AppBoxDpWait,AppBoxUp,AppBoxDone,AppBoxIng,AppBoxWait').split(',').map(s => s.trim()).filter(Boolean),
   formIds:     env('GW_FORM_IDS', 'PHUCHASEDRAFT,PHUCHASEDRAFTC,PHUCHASEDRAFTCM,PHUCHASEDRAFTK').split(',').map(s => s.trim()).filter(Boolean),
   facilities:  env('GW_FACILITIES', 'KSM100|20170101,KSM200|20170101,KSM300|20170101,KSM400|20170101,KSM500|20170101,KSM2000|20200601,KSM701|20260211,KSM800|20170101,KSM1001|20260211,KSM1100|20211201').split(',').map(s => s.trim()).filter(Boolean),
   lookbackDays: parseInt(env('LOOKBACK_DAYS', '30'), 10),
@@ -354,7 +354,7 @@ class App {
 
 // ── 결재 진행 추적: 공사 이력에 적힌 문서번호의 결재선을 갱신 ───────────
 const DOC_NO_RE = /[가-힣A-Za-z]+-[가-힣A-Za-z]+-\d{2}-\d{3,5}/g;
-async function trackProgress(gw, app) {
+async function trackProgress(sessions, app) {
   const rows = await app.all();
   const docNos = new Set();
   const addDocs = v => { for (const m of String(v || '').match(DOC_NO_RE) || []) docNos.add(m); };
@@ -376,7 +376,9 @@ async function trackProgress(gw, app) {
   const items = [];
   for (const docNo of targets) {
     try {
-      const doc = await gw.findByDocNo(docNo);
+      // 계정별로 차례로 찾아봄 (계정마다 볼 수 있는 결재함이 다름)
+      let doc = null, gw = null;
+      for (const s of sessions) { doc = await s.findByDocNo(docNo); if (doc) { gw = s; break; } }
       if (!doc) { items.push({ doc_no: docNo, found: false }); continue; }
       const it = summarize(doc, await gw.signStatus(doc.docId));
       const before = known[docNo];
@@ -429,92 +431,165 @@ async function collectFirewall(gw, app, st, since) {
     st.seen['fw' + d.docId] = { at: Date.now(), match: true, docNo };
   }
   log(`방화벽 정책: GW 접수함 추가 ${created}건`);
+  return created;
 }
 
-// ── 그룹웨어 계정: 앱 설정 화면에 등록된 값 우선, 없으면 .env ──────────
+// ── 그룹웨어 계정: 앱 설정 화면에 등록된 계정들 우선, 없으면 .env ──────────
 let lastCredVersion = '';
-async function getGwCreds(app) {
+async function getGwAccounts(app) {
   if (CFG.appUser) {
     try {
       const c = await app.call('GET', '/api/gw-settings/credentials');
       lastCredVersion = c.version || '';
-      if (c.gw_id && c.gw_pw) return { id: c.gw_id, pw: c.gw_pw, source: '앱 설정' };
+      const list = (c.accounts || []).filter(a => a.gw_id && a.gw_pw).map(a => ({ id: a.gw_id, pw: a.gw_pw, source: '앱 설정' }));
+      if (list.length) return list;
     } catch (e) { log(`[GW] 앱에서 계정 정보를 못 가져옴 (.env 사용): ${e.message}`); }
   }
-  if (CFG.gwId && CFG.gwPw) return { id: CFG.gwId, pw: CFG.gwPw, source: '.env' };
+  if (CFG.gwId && CFG.gwPw) return [{ id: CFG.gwId, pw: CFG.gwPw, source: '.env' }];
   throw Object.assign(new Error('그룹웨어 계정이 없습니다. 앱 설정 > 그룹웨어 수집 계정에서 등록하세요'), { loginRejected: true });
 }
 async function credVersionNow(app) {
   try { return (await app.call('GET', '/api/gw-settings/credentials')).version || ''; } catch { return lastCredVersion; }
 }
-async function reportLogin(app, ok, message) {
-  if (!CFG.appUser || CFG.dryRun && !CFG.appPw) return;
-  await app.call('POST', '/api/gw-settings/status', { ok, message }).catch(() => {});
+async function reportLogin(app, gwId, ok, message) {
+  if (!CFG.appUser || (CFG.dryRun && !CFG.appPw)) return;
+  await app.call('POST', '/api/gw-settings/status', { gw_id: gwId, ok, message }).catch(() => {});
 }
 
-// ── 1회 실행 ─────────────────────────────────────────
-async function runOnce() {
+// 로그인이 거부된 계정은 계정 잠김을 막기 위해 60분(또는 계정 정보가 바뀔 때)까지 정기 실행에서 건너뜀
+const rejected = new Map();   // gwId → { at, version }
+
+// 로그인 후 수집 함수 (계정 하나 기준)
+async function collectConstruction(gw, app, st, since) {
+  let found = 0, created = 0;
+  const docs = [];
+  for (const f of CFG.formIds) docs.push(...await gw.listBoxes(CFG.gwBoxes, f, since));
+  const fresh = docs.filter(d => !st.seen[d.docId]);
+  log(`[GW:${gw.creds.id}] 구매품의서 ${docs.length}건 (신규 확인 대상 ${fresh.length}건, ${since}~, 결재함: ${CFG.gwBoxes.join('+')})`);
+  for (const d of fresh) {
+    const v = await gw.view(d.docId);
+    const hits = isTarget(v.items);
+    if (!hits.length) { st.seen[d.docId] = { at: Date.now(), match: false }; continue; }
+    found++;
+    const docNo = v.docNo || d.docNo;
+    const rec = {
+      gubun: CFG.gubun,
+      req_date: yymmdd(v.date || d.startTime),
+      corp: corpOf(d.conductFacilityName || ''),
+      dept: v.dept || d.conductDepartName || '',
+      requester: v.writer || d.writerName || '',
+      work_name: v.title || d.title,
+      loc_region: regionOf(`${v.title} ${v.memo}`),
+      status: CFG.status,
+      purchase_doc: docNo,
+      it_manager: CFG.itManager,
+      memo: [v.memo, '', `[GW 자동등록] docId ${d.docId} / 품목: ${hits.map(h => `${h.name} x${h.qty}`).join(', ')}`].join('\n').trim(),
+      doc_url: `${CFG.gwBase}/ubiWare/ware/approval/apprView.html?docId=${d.docId}&fId=DocList&from=DocList&folderId=`,
+      changed_by: 'GW자동등록',
+    };
+    if (CFG.dryRun) { log('[DRY] 등록 대상', JSON.stringify(rec)); continue; }   // dry-run은 상태 저장 안 함
+    if (await app.exists(docNo)) log(`[APP] 이미 공사 이력에 있음: ${docNo}`);
+    else {
+      const r = await app.toInbox(d.docId, docNo, rec, hits);
+      if (r.created) { created++; log(`[APP] GW 접수함에 추가: ${docNo} ${rec.work_name}`); }
+      else log(`[APP] 이미 GW 접수함에 있음: ${docNo}`);
+    }
+    st.seen[d.docId] = { at: Date.now(), match: true, docNo };
+  }
+  log(`[GW:${gw.creds.id}] 신규 품의: 대상 ${found}건, GW 접수함 추가 ${created}건`);
+  return created;
+}
+
+// ── 1회 실행: onlyId를 주면 그 계정만, manual이면 거부된 계정도 시도 ────────
+async function runOnce({ onlyId = 'all', manual = false } = {}) {
   const st = loadState();
   const app = new App();
-  const creds = await getGwCreds(app);
-  const gw = new Groupware(creds);
-  let found = 0, created = 0;
+  let accounts = await getGwAccounts(app);
+  if (onlyId && onlyId !== 'all') accounts = accounts.filter(a => a.id === onlyId);
+  if (!accounts.length) throw new Error(`실행할 계정이 없습니다 (${onlyId})`);
+
+  const sessions = [];
+  let added = 0;
+  const loginErrors = [];
   try {
-    try {
-      await gw.open();
-      await reportLogin(app, true, `${creds.id} (${creds.source})`);
-    } catch (e) {
-      await reportLogin(app, false, e.message.split(' | 스크린샷')[0].slice(0, 400));
-      throw e;
+    for (const acc of accounts) {
+      const rj = rejected.get(acc.id);
+      if (!manual && rj && rj.version === lastCredVersion && Date.now() - rj.at < 60 * 60e3) {
+        log(`[GW:${acc.id}] 최근 로그인 거부 → 계정 잠김 방지를 위해 이번 회차 건너뜀`);
+        loginErrors.push({ id: acc.id, rejected: true, message: '최근 로그인 거부로 건너뜀' });
+        continue;
+      }
+      const gw = new Groupware(acc);
+      try {
+        await gw.open();
+        rejected.delete(acc.id);
+        await reportLogin(app, acc.id, true, `${acc.source}`);
+        sessions.push(gw);
+      } catch (e) {
+        await gw.close();
+        if (e.loginRejected) rejected.set(acc.id, { at: Date.now(), version: lastCredVersion });
+        await reportLogin(app, acc.id, false, e.message.split(' | 스크린샷')[0].slice(0, 400));
+        log(`[GW:${acc.id}] 로그인 실패: ${e.message.split('\n')[0]}`);
+        loginErrors.push({ id: acc.id, rejected: !!e.loginRejected, message: e.message.split(' | ')[0] });
+      }
     }
+    if (!sessions.length) {
+      const err = new Error(`모든 계정 로그인 실패: ${loginErrors.map(x => `${x.id} — ${x.message}`).join(' / ')}`);
+      err.loginRejected = loginErrors.every(x => x.rejected);
+      throw err;
+    }
+
     const since = ymdSlash(new Date(Date.now() - CFG.lookbackDays * 864e5));
-    const docs = [];
-    for (const f of CFG.formIds) docs.push(...await gw.listBoxes(CFG.gwBoxes, f, since));
-    const fresh = docs.filter(d => !st.seen[d.docId]);
-    log(`[GW] 구매품의서 ${docs.length}건 (신규 확인 대상 ${fresh.length}건, ${since}~, 결재함: ${CFG.gwBoxes.join('+')})`);
-
-    for (const d of fresh) {
-      const v = await gw.view(d.docId);
-      const hits = isTarget(v.items);
-      if (!hits.length) { st.seen[d.docId] = { at: Date.now(), match: false }; continue; }
-      found++;
-
-      const docNo = v.docNo || d.docNo;
-      const rec = {
-        gubun: CFG.gubun,
-        req_date: yymmdd(v.date || d.startTime),
-        corp: corpOf(d.conductFacilityName || ''),
-        dept: v.dept || d.conductDepartName || '',
-        requester: v.writer || d.writerName || '',
-        work_name: v.title || d.title,
-        loc_region: regionOf(`${v.title} ${v.memo}`),
-        status: CFG.status,
-        purchase_doc: docNo,
-        it_manager: CFG.itManager,
-        memo: [v.memo, '', `[GW 자동등록] docId ${d.docId} / 품목: ${hits.map(h => `${h.name} x${h.qty}`).join(', ')}`].join('\n').trim(),
-        doc_url: `${CFG.gwBase}/ubiWare/ware/approval/apprView.html?docId=${d.docId}&fId=DocList&from=DocList&folderId=`,
-        changed_by: 'GW자동등록',
-      };
-
-      if (CFG.dryRun) {
-        log('[DRY] 등록 대상', JSON.stringify(rec));
-        continue;   // dry-run은 상태 저장 안 함
-      }
-      if (await app.exists(docNo)) {
-        log(`[APP] 이미 공사 이력에 있음: ${docNo}`);
-      } else {
-        const r = await app.toInbox(d.docId, docNo, rec, hits);
-        if (r.created) { created++; log(`[APP] GW 접수함에 추가: ${docNo} ${rec.work_name}`); }
-        else log(`[APP] 이미 GW 접수함에 있음: ${docNo}`);
-      }
-      st.seen[d.docId] = { at: Date.now(), match: true, docNo };
+    for (const gw of sessions) {
+      added += await collectConstruction(gw, app, st, since);
+      if (CFG.fwEnabled) added += await collectFirewall(gw, app, st, since);
     }
-    log(`신규 품의: 대상 ${found}건, GW 접수함 추가 ${created}건`);
-    if (CFG.fwEnabled) await collectFirewall(gw, app, st, since);
-    if (CFG.track && CFG.appUser) await trackProgress(gw, app);
+    if (CFG.track && CFG.appUser) await trackProgress(sessions, app);
+    return { added, accounts: sessions.map(s => s.creds.id), loginErrors };
   } finally {
-    await gw.close();
+    for (const s of sessions) await s.close();
     if (!CFG.dryRun) saveState(st);
+  }
+}
+
+// ── 앱의 '지금 검색' 요청 확인 ──────────────────────────────
+let handledRunId = '';
+async function checkRunRequest(app) {
+  if (!CFG.appUser) return null;
+  try {
+    const r = await app.call('GET', '/api/gw-run');
+    if (r && r.id && r.state === 'requested' && r.id !== handledRunId) return r;
+  } catch {}
+  return null;
+}
+async function handleRunRequest(app, req) {
+  handledRunId = req.id;
+  const report = (state, message, added) => app.call('POST', `/api/gw-run/${req.id}/status`, { state, message, added }).catch(() => {});
+  log(`[RUN] 지금 검색 요청 (${req.by || '-'}, 계정: ${req.gw_id})`);
+  await report('running', '검색 중…');
+  try {
+    const r = await runOnce({ onlyId: req.gw_id, manual: true });
+    const warn = r.loginErrors.length ? ` · 로그인 실패: ${r.loginErrors.map(x => x.id).join(', ')}` : '';
+    await report('done', `완료 — 계정 ${r.accounts.join(', ')}, GW 접수함 추가 ${r.added}건${warn}`, r.added);
+  } catch (e) {
+    await report('error', e.message.split('\n')[0].slice(0, 400), 0);
+    log('[RUN] 실패:', e.message.split('\n')[0]);
+  }
+}
+
+// 다음 정기 실행까지 기다리는 동안: 15초마다 '지금 검색' 요청 확인, 5분마다 계정 변경 확인
+async function waitWithPolling(minutes, { breakOnCredChange = false } = {}) {
+  const app = new App(), until = Date.now() + minutes * 60e3, before = lastCredVersion;
+  let nextCredCheck = Date.now() + 5 * 60e3;
+  while (Date.now() < until) {
+    await new Promise(r => setTimeout(r, Math.min(15e3, Math.max(0, until - Date.now()))));
+    const req = await checkRunRequest(app);
+    if (req) await handleRunRequest(app, req);
+    if (breakOnCredChange && Date.now() >= nextCredCheck) {
+      nextCredCheck = Date.now() + 5 * 60e3;
+      const v = await credVersionNow(app);
+      if (v && v !== before) { log('[GW] 앱 설정에서 계정이 변경됨 → 바로 다시 시도'); return; }
+    }
   }
 }
 
@@ -533,19 +608,11 @@ async function main() {
       log('[ERR]', e.message.split('\n')[0], e.cause ? `(${e.cause.code || ''} ${e.cause.message || e.cause})` : '');
     }
     if (CFG.runOnce) break;
-    // 네트워크 등 일시 오류는 5분 뒤, 로그인 거부는 계정 잠김 방지를 위해 60분 뒤, 정상이면 설정 주기대로
+    // 네트워크 등 일시 오류는 5분 뒤, 모든 계정 로그인 거부는 60분 뒤(계정 변경 시 즉시), 정상이면 설정 주기대로
     const wait = loginRejected ? Math.max(60, CFG.intervalMin) : failed ? Math.min(5, CFG.intervalMin) : CFG.intervalMin;
     if (loginRejected) log('[ERR] 그룹웨어 계정·비밀번호를 확인하세요 (비밀번호 만료/변경, 계정 잠김 등). 앱 설정 > 그룹웨어 수집 계정에서 수정하면 5분 안에 다시 시도합니다');
     if (failed) log(`[ERR] ${wait}분 뒤 다시 시도`);
-    if (loginRejected && CFG.appUser) {
-      // 기다리는 동안 5분마다 앱에서 계정이 바뀌었는지 확인 → 바뀌면 바로 재시도
-      const app = new App(), before = lastCredVersion, until = Date.now() + wait * 60e3;
-      while (Date.now() < until) {
-        await new Promise(r => setTimeout(r, Math.min(5 * 60e3, until - Date.now())));
-        const v = await credVersionNow(app);
-        if (v && v !== before) { log('[GW] 앱 설정에서 계정이 변경됨 → 바로 다시 시도'); break; }
-      }
-    } else await new Promise(r => setTimeout(r, wait * 60e3));
+    await waitWithPolling(wait, { breakOnCredChange: loginRejected });
   } while (true);
 }
 

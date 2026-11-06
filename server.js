@@ -515,45 +515,122 @@ async function setSetting(k, v, by) {
 }
 const GW_BOT_USER = process.env.GW_BOT_USER || 'gw-bot';
 
+// 계정 목록: app_settings 'gw_accounts' = [{ gw_id, pw (암호화), enabled, updated_at, updated_by }]
+// (이전 단일 계정 gw_id/gw_pw가 있으면 목록으로 옮김)
+async function loadGwAccounts() {
+  const row = await getSetting('gw_accounts');
+  if (row?.v) { try { return JSON.parse(row.v); } catch { return []; } }
+  const id = await getSetting('gw_id'), pw = await getSetting('gw_pw');
+  if (id?.v) return [{ gw_id: id.v, pw: pw?.v || '', enabled: true, updated_at: pw?.updated_at || id.updated_at, updated_by: pw?.updated_by || id.updated_by || '' }];
+  return [];
+}
+async function saveGwAccounts(list, by) {
+  await setSetting('gw_accounts', JSON.stringify(list), by);
+  await setSetting('gw_cred_version', String(Date.now()), by);
+}
+async function loginStatusOf(gwId) {
+  const st = await getSetting('gw_login_status:' + gwId);
+  return st?.v ? JSON.parse(st.v) : null;
+}
+const isBot = req => req.user?.role === 'admin' || req.user?.username === GW_BOT_USER;
+
 // 관리자 화면용: 비밀번호 자체는 내려주지 않음
 app.get('/api/gw-settings', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const id = await getSetting('gw_id'), pw = await getSetting('gw_pw'), st = await getSetting('gw_login_status');
-    res.json({
-      gw_id: id?.v || '', has_password: !!pw?.v,
-      updated_at: pw?.updated_at || id?.updated_at || null, updated_by: pw?.updated_by || id?.updated_by || '',
-      login_status: st?.v ? JSON.parse(st.v) : null,
-    });
+    const list = await loadGwAccounts();
+    const accounts = [];
+    for (const a of list) accounts.push({ gw_id: a.gw_id, has_password: !!a.pw, enabled: a.enabled !== false,
+      updated_at: a.updated_at || null, updated_by: a.updated_by || '', login_status: await loginStatusOf(a.gw_id) });
+    res.json({ accounts });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/gw-settings', authMiddleware, requireAdmin, async (req, res) => {
+// 계정 추가/수정: body { gw_pw?, enabled? }
+app.put('/api/gw-settings/accounts/:gwId', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { gw_id, gw_pw } = req.body || {};
-    if (gw_id !== undefined) await setSetting('gw_id', s(gw_id), req.user?.name);
-    if (gw_pw) await setSetting('gw_pw', encryptText(gw_pw), req.user?.name);
-    await setSetting('gw_cred_version', String(Date.now()), req.user?.name);
+    const gwId = s(req.params.gwId);
+    if (!gwId) return res.status(400).json({ error: 'ID 필요' });
+    const list = await loadGwAccounts();
+    let a = list.find(x => x.gw_id === gwId);
+    if (!a) {
+      if (!req.body?.gw_pw) return res.status(400).json({ error: '새 계정은 비밀번호가 필요합니다' });
+      a = { gw_id: gwId, pw: '', enabled: true }; list.push(a);
+    }
+    if (req.body?.gw_pw) a.pw = encryptText(req.body.gw_pw);
+    if (req.body?.enabled !== undefined) a.enabled = !!req.body.enabled;
+    a.updated_at = new Date().toISOString(); a.updated_by = req.user?.name || '';
+    await saveGwAccounts(list, req.user?.name);
     res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/gw-settings/accounts/:gwId', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const list = (await loadGwAccounts()).filter(x => x.gw_id !== req.params.gwId);
+    await saveGwAccounts(list, req.user?.name);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// GW 접수 화면용: 계정 ID와 로그인 상태만 (비밀번호 없음)
+app.get('/api/gw-accounts', authMiddleware, async (req, res) => {
+  try {
+    const out = [];
+    for (const a of await loadGwAccounts()) if (a.enabled !== false && a.pw) out.push({ gw_id: a.gw_id, login_status: await loginStatusOf(a.gw_id) });
+    res.json(out);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // gw-collector 전용: 관리자 또는 수집 계정(gw-bot)만 복호화된 값 조회
 app.get('/api/gw-settings/credentials', authMiddleware, async (req, res) => {
-  if (req.user?.role !== 'admin' && req.user?.username !== GW_BOT_USER)
-    return res.status(403).json({ error: '수집 계정만 조회할 수 있습니다' });
+  if (!isBot(req)) return res.status(403).json({ error: '수집 계정만 조회할 수 있습니다' });
   try {
-    const id = await getSetting('gw_id'), pw = await getSetting('gw_pw'), ver = await getSetting('gw_cred_version');
-    let password = '';
-    if (pw?.v) { try { password = decryptText(pw.v); } catch { return res.status(500).json({ error: '저장된 비밀번호를 복호화할 수 없습니다 (키 변경?)' }); } }
-    res.json({ gw_id: id?.v || '', gw_pw: password, version: ver?.v || '' });
+    const ver = await getSetting('gw_cred_version');
+    const accounts = [];
+    for (const a of await loadGwAccounts()) {
+      if (a.enabled === false || !a.pw) continue;
+      try { accounts.push({ gw_id: a.gw_id, gw_pw: decryptText(a.pw) }); }
+      catch { /* 키가 바뀌어 복호화 불가 → 제외 */ }
+    }
+    res.json({ accounts, version: ver?.v || '' });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// gw-collector가 로그인 결과를 보고 → 설정 화면에 표시
+// gw-collector가 로그인 결과를 보고 → 화면에 표시
 app.post('/api/gw-settings/status', authMiddleware, requireWrite, async (req, res) => {
   try {
-    const { ok, message } = req.body || {};
-    await setSetting('gw_login_status', JSON.stringify({ ok: !!ok, message: s(message).slice(0, 500), at: new Date().toISOString() }), req.user?.name);
+    const { gw_id, ok, message } = req.body || {};
+    await setSetting('gw_login_status:' + s(gw_id), JSON.stringify({ ok: !!ok, message: s(message).slice(0, 500), at: new Date().toISOString() }), req.user?.name);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── 지금 검색 (GW 접수 화면 → gw-collector) ──────────────────────
+// app_settings 'gw_run' = { id, gw_id('all'|ID), by, requested_at, state(requested|running|done|error), message, added, finished_at }
+async function getRun() { const r = await getSetting('gw_run'); return r?.v ? JSON.parse(r.v) : null; }
+app.get('/api/gw-run', authMiddleware, async (req, res) => {
+  try { res.json(await getRun() || {}); } catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/gw-run', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    const cur = await getRun();
+    if (cur && ['requested', 'running'].includes(cur.state) && Date.now() - new Date(cur.requested_at).getTime() < 15 * 60e3)
+      return res.status(409).json({ error: '이미 검색이 진행 중입니다' });
+    const run = { id: String(Date.now()), gw_id: s(req.body?.gw_id) || 'all', by: req.user?.name || '', requested_at: new Date().toISOString(), state: 'requested' };
+    await setSetting('gw_run', JSON.stringify(run), req.user?.name);
+    res.json(run);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+// gw-collector가 진행 상태 보고
+app.post('/api/gw-run/:runId/status', authMiddleware, async (req, res) => {
+  if (!isBot(req)) return res.status(403).json({ error: '수집 계정만 가능합니다' });
+  try {
+    const cur = await getRun();
+    if (!cur || cur.id !== req.params.runId) return res.status(404).json({ error: 'Not found' });
+    const { state, message, added } = req.body || {};
+    Object.assign(cur, { state: s(state) || cur.state, message: s(message).slice(0, 500), added: added ?? cur.added });
+    if (['done', 'error'].includes(cur.state)) cur.finished_at = new Date().toISOString();
+    await setSetting('gw_run', JSON.stringify(cur), req.user?.name);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
