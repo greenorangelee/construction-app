@@ -87,6 +87,7 @@ const clean = s => (s || '').replace(/ /g, ' ').replace(/[ \t]+/g, ' ').trim();
 
 // ── 그룹웨어 ─────────────────────────────────────────
 class Groupware {
+  constructor(creds) { this.creds = creds; }
   async open() {
     this.browser = await chromium.launch({ headless: true });
     this.ctx = await this.browser.newContext({ ignoreHTTPSErrors: CFG.ignoreTls, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
@@ -94,24 +95,51 @@ class Groupware {
   }
   async close() { try { await this.browser?.close(); } catch {} }
 
-  // 컨테이너 시작 직후 네트워크 변경(ERR_NETWORK_CHANGED) 등 일시 오류는 몇 번 재시도
+  // 로그인: 네트워크 오류만 재시도. 로그인 화면에서 넘어가지 않으면(비밀번호 오류·만료, 안내창 등)
+  // 계정 잠김을 막기 위해 재시도하지 않고, 원인 파악용 정보(알림창 문구·화면 글자·스크린샷)를 남김
   async login(tries = 3) {
     for (let i = 1; ; i++) {
       const page = await this.ctx.newPage();
+      const dialogs = [];
+      page.on('dialog', d => { dialogs.push(d.message()); d.accept().catch(() => {}); });
       try {
         await page.goto(`${CFG.gwBase}/ubiWare/frame/auth/login.html`, { waitUntil: 'domcontentloaded' });
-        await page.fill('#loginId', CFG.gwId);
-        await page.fill('#loginPw', CFG.gwPw);
+      } catch (e) {
+        await page.close().catch(() => {});
+        if (i >= tries) throw e;
+        log(`[GW] 로그인 페이지 접속 재시도 ${i}/${tries - 1}: ${e.message.split('\n')[0]}`);
+        await new Promise(r => setTimeout(r, 10000 * i));
+        continue;
+      }
+      try {
+        await page.fill('#loginId', this.creds.id);
+        await page.fill('#loginPw', this.creds.pw);
         await Promise.all([
           page.waitForURL(u => !/\/auth\/login/.test(u.toString()), { timeout: 30000 }),
           page.press('#loginPw', 'Enter'),
         ]);
-        log('[GW] 로그인 완료');
+        log('[GW] 로그인 완료' + (dialogs.length ? ` (안내창: ${dialogs.join(' / ')})` : ''));
         return;
       } catch (e) {
-        if (i >= tries) throw e;
-        log(`[GW] 로그인 재시도 ${i}/${tries - 1}: ${e.message.split('\n')[0]}`);
-        await new Promise(r => setTimeout(r, 10000 * i));
+        // 원인 정보 수집
+        let bodyText = '';
+        try {
+          bodyText = await page.evaluate(() => {
+            const vis = el => { const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null; };
+            return [...document.querySelectorAll('div,span,p,td,label,font,b')]
+              .filter(el => vis(el) && el.children.length === 0 && el.textContent.trim().length > 1)
+              .map(el => el.textContent.trim()).filter(t => !/^\(\+\d\d:\d\d\)/.test(t))
+              .join(' | ').slice(0, 400);
+          });
+        } catch {}
+        const shot = path.join(path.dirname(CFG.stateFile), 'login-fail.png');
+        await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
+        const err = new Error(`그룹웨어 로그인 실패 — 로그인 화면에서 넘어가지 않음. URL: ${page.url()}`
+          + (dialogs.length ? ` | 알림창: ${dialogs.join(' / ')}` : ' | 알림창 없음')
+          + (bodyText ? ` | 화면: ${bodyText}` : '')
+          + ` | 스크린샷: ${shot}`);
+        err.loginRejected = true;
+        throw err;
       } finally {
         await page.close().catch(() => {});
       }
@@ -403,14 +431,42 @@ async function collectFirewall(gw, app, st, since) {
   log(`방화벽 정책: GW 접수함 추가 ${created}건`);
 }
 
+// ── 그룹웨어 계정: 앱 설정 화면에 등록된 값 우선, 없으면 .env ──────────
+let lastCredVersion = '';
+async function getGwCreds(app) {
+  if (CFG.appUser) {
+    try {
+      const c = await app.call('GET', '/api/gw-settings/credentials');
+      lastCredVersion = c.version || '';
+      if (c.gw_id && c.gw_pw) return { id: c.gw_id, pw: c.gw_pw, source: '앱 설정' };
+    } catch (e) { log(`[GW] 앱에서 계정 정보를 못 가져옴 (.env 사용): ${e.message}`); }
+  }
+  if (CFG.gwId && CFG.gwPw) return { id: CFG.gwId, pw: CFG.gwPw, source: '.env' };
+  throw Object.assign(new Error('그룹웨어 계정이 없습니다. 앱 설정 > 그룹웨어 수집 계정에서 등록하세요'), { loginRejected: true });
+}
+async function credVersionNow(app) {
+  try { return (await app.call('GET', '/api/gw-settings/credentials')).version || ''; } catch { return lastCredVersion; }
+}
+async function reportLogin(app, ok, message) {
+  if (!CFG.appUser || CFG.dryRun && !CFG.appPw) return;
+  await app.call('POST', '/api/gw-settings/status', { ok, message }).catch(() => {});
+}
+
 // ── 1회 실행 ─────────────────────────────────────────
 async function runOnce() {
   const st = loadState();
-  const gw = new Groupware();
   const app = new App();
+  const creds = await getGwCreds(app);
+  const gw = new Groupware(creds);
   let found = 0, created = 0;
   try {
-    await gw.open();
+    try {
+      await gw.open();
+      await reportLogin(app, true, `${creds.id} (${creds.source})`);
+    } catch (e) {
+      await reportLogin(app, false, e.message.split(' | 스크린샷')[0].slice(0, 400));
+      throw e;
+    }
     const since = ymdSlash(new Date(Date.now() - CFG.lookbackDays * 864e5));
     const docs = [];
     for (const f of CFG.formIds) docs.push(...await gw.listBoxes(CFG.gwBoxes, f, since));
@@ -463,19 +519,33 @@ async function runOnce() {
 }
 
 async function main() {
-  for (const k of ['GW_ID', 'GW_PW', ...(CFG.dryRun ? [] : ['APP_USER', 'APP_PW'])])
+  // 그룹웨어 계정은 앱 설정 화면 또는 .env(GW_ID/GW_PW) 중 하나만 있으면 됨
+  for (const k of CFG.dryRun ? [] : ['APP_USER', 'APP_PW'])
     if (!process.env[k]) { console.error(`환경변수 ${k} 필요`); process.exit(1); }
+  if (!CFG.appUser && !(CFG.gwId && CFG.gwPw)) { console.error('GW_ID/GW_PW 또는 APP_USER/APP_PW 필요'); process.exit(1); }
   // docker stop 시 바로 종료 (기본 동작이면 10초 기다렸다 강제 종료 → exit 137)
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { log(`${sig} 수신, 종료`); process.exit(0); });
   do {
-    let failed = false;
+    let failed = false, loginRejected = false;
     try { await runOnce(); }
-    catch (e) { failed = true; log('[ERR]', e.message.split('\n')[0], e.cause ? `(${e.cause.code || ''} ${e.cause.message || e.cause})` : ''); }
+    catch (e) {
+      failed = true; loginRejected = !!e.loginRejected;
+      log('[ERR]', e.message.split('\n')[0], e.cause ? `(${e.cause.code || ''} ${e.cause.message || e.cause})` : '');
+    }
     if (CFG.runOnce) break;
-    // 실패하면 5분 뒤 재시도, 정상이면 설정 주기대로
-    const wait = failed ? Math.min(5, CFG.intervalMin) : CFG.intervalMin;
+    // 네트워크 등 일시 오류는 5분 뒤, 로그인 거부는 계정 잠김 방지를 위해 60분 뒤, 정상이면 설정 주기대로
+    const wait = loginRejected ? Math.max(60, CFG.intervalMin) : failed ? Math.min(5, CFG.intervalMin) : CFG.intervalMin;
+    if (loginRejected) log('[ERR] 그룹웨어 계정·비밀번호를 확인하세요 (비밀번호 만료/변경, 계정 잠김 등). 앱 설정 > 그룹웨어 수집 계정에서 수정하면 5분 안에 다시 시도합니다');
     if (failed) log(`[ERR] ${wait}분 뒤 다시 시도`);
-    await new Promise(r => setTimeout(r, wait * 60e3));
+    if (loginRejected && CFG.appUser) {
+      // 기다리는 동안 5분마다 앱에서 계정이 바뀌었는지 확인 → 바뀌면 바로 재시도
+      const app = new App(), before = lastCredVersion, until = Date.now() + wait * 60e3;
+      while (Date.now() < until) {
+        await new Promise(r => setTimeout(r, Math.min(5 * 60e3, until - Date.now())));
+        const v = await credVersionNow(app);
+        if (v && v !== before) { log('[GW] 앱 설정에서 계정이 변경됨 → 바로 다시 시도'); break; }
+      }
+    } else await new Promise(r => setTimeout(r, wait * 60e3));
   } while (true);
 }
 

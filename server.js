@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 const upload = multer({ storage: multer.memoryStorage() });
 const { execSync } = require('child_process');
 const https = require('https');
+const crypto = require('crypto');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ksm-nw-secret-2024-xkf92mz';
 
@@ -255,6 +256,12 @@ async function initDB() {
 
   await pool.query("ALTER TABLE gw_inbox ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'construction'").catch(()=>{});
 
+  // 앱 설정 (그룹웨어 수집 계정 등)
+  await run(`CREATE TABLE IF NOT EXISTS app_settings (
+    k VARCHAR(100) PRIMARY KEY, v TEXT,
+    updated_at DATETIME DEFAULT NOW(), updated_by VARCHAR(100)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // 그룹웨어 결재 진행 상황 (gw-collector가 갱신)
   await run(`CREATE TABLE IF NOT EXISTS gw_doc_status (
     doc_no VARCHAR(50) PRIMARY KEY,
@@ -485,6 +492,70 @@ app.get('/api/constructions', authMiddleware, async (req, res) => {
     ...r,
     group_color: r.group_id ? gColorMap[r.group_id] : null
   })));
+});
+
+// ── 그룹웨어 수집 계정 설정 API ──────────────────────────────
+// 비밀번호는 AES-256-GCM으로 암호화해서 저장 (키: GW_CRED_KEY 또는 JWT_SECRET)
+const CRED_KEY = crypto.createHash('sha256').update(process.env.GW_CRED_KEY || JWT_SECRET).digest();
+function encryptText(plain) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', CRED_KEY, iv);
+  const enc = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+  return [iv, c.getAuthTag(), enc].map(b => b.toString('base64')).join('.');
+}
+function decryptText(s) {
+  const [iv, tag, enc] = String(s).split('.').map(x => Buffer.from(x, 'base64'));
+  const d = crypto.createDecipheriv('aes-256-gcm', CRED_KEY, iv);
+  d.setAuthTag(tag);
+  return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+}
+async function getSetting(k) { return queryOne('SELECT v, updated_at, updated_by FROM app_settings WHERE k=?', [k]); }
+async function setSetting(k, v, by) {
+  await dbRun('INSERT INTO app_settings (k, v, updated_at, updated_by) VALUES (?,?,NOW(),?) ON DUPLICATE KEY UPDATE v=VALUES(v), updated_at=NOW(), updated_by=VALUES(updated_by)', [k, v, by || '']);
+}
+const GW_BOT_USER = process.env.GW_BOT_USER || 'gw-bot';
+
+// 관리자 화면용: 비밀번호 자체는 내려주지 않음
+app.get('/api/gw-settings', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const id = await getSetting('gw_id'), pw = await getSetting('gw_pw'), st = await getSetting('gw_login_status');
+    res.json({
+      gw_id: id?.v || '', has_password: !!pw?.v,
+      updated_at: pw?.updated_at || id?.updated_at || null, updated_by: pw?.updated_by || id?.updated_by || '',
+      login_status: st?.v ? JSON.parse(st.v) : null,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/gw-settings', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const { gw_id, gw_pw } = req.body || {};
+    if (gw_id !== undefined) await setSetting('gw_id', s(gw_id), req.user?.name);
+    if (gw_pw) await setSetting('gw_pw', encryptText(gw_pw), req.user?.name);
+    await setSetting('gw_cred_version', String(Date.now()), req.user?.name);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// gw-collector 전용: 관리자 또는 수집 계정(gw-bot)만 복호화된 값 조회
+app.get('/api/gw-settings/credentials', authMiddleware, async (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.username !== GW_BOT_USER)
+    return res.status(403).json({ error: '수집 계정만 조회할 수 있습니다' });
+  try {
+    const id = await getSetting('gw_id'), pw = await getSetting('gw_pw'), ver = await getSetting('gw_cred_version');
+    let password = '';
+    if (pw?.v) { try { password = decryptText(pw.v); } catch { return res.status(500).json({ error: '저장된 비밀번호를 복호화할 수 없습니다 (키 변경?)' }); } }
+    res.json({ gw_id: id?.v || '', gw_pw: password, version: ver?.v || '' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// gw-collector가 로그인 결과를 보고 → 설정 화면에 표시
+app.post('/api/gw-settings/status', authMiddleware, requireWrite, async (req, res) => {
+  try {
+    const { ok, message } = req.body || {};
+    await setSetting('gw_login_status', JSON.stringify({ ok: !!ok, message: s(message).slice(0, 500), at: new Date().toISOString() }), req.user?.name);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── 그룹웨어 접수함 API ──────────────────────────────

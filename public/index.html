@@ -533,6 +533,13 @@
     .badge-done { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
     .badge-progress { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
     .badge-holding { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
+    .status-pick { cursor:pointer; }
+    .status-pick:hover .badge { filter:brightness(0.95); box-shadow:0 0 0 2px rgba(192,57,43,0.15); }
+    .status-pick .caret { font-size:9px; color:#9ca3af; margin-left:3px; }
+    #statusMenu { position:fixed; z-index:3000; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.12); padding:4px; min-width:120px; display:none; }
+    #statusMenu button { display:flex; align-items:center; gap:8px; width:100%; border:none; background:none; padding:7px 10px; border-radius:7px; cursor:pointer; font-family:inherit; font-size:13px; text-align:left; }
+    #statusMenu button:hover { background:#f9fafb; }
+    #statusMenu button.current { font-weight:700; }
     .badge-self { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
     .badge-outsource { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
     .badge-payment { background: #ecfeff; color: #0891b2; border: 1px solid #a5f3fc; }
@@ -4256,6 +4263,31 @@
       </div>
     </div>
 
+    <!-- 🔑 그룹웨어 수집 계정 (관리자) -->
+    <div id="gwCredSection" style="margin-top:28px;display:none">
+      <div class="settings-header">
+        <h2>🔑 그룹웨어 수집 계정</h2>
+        <span style="font-size:12px;color:#9ca3af">gw-bot이 그룹웨어에서 품의서를 가져올 때 쓰는 계정 (비밀번호는 암호화 저장)</span>
+      </div>
+      <div class="settings-panel" style="max-width:640px;padding:16px 18px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">그룹웨어 ID</label>
+            <input type="text" id="gwCredId" autocomplete="off" placeholder="예) jsunglee" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;outline:none" />
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">비밀번호</label>
+            <input type="password" id="gwCredPw" autocomplete="new-password" placeholder="변경할 때만 입력" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;outline:none" />
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:12px;flex-wrap:wrap">
+          <div id="gwCredInfo" style="font-size:12px;color:#6b7280"></div>
+          <button class="btn btn-primary btn-sm" onclick="saveGwCred()">저장</button>
+        </div>
+        <div id="gwCredStatus" style="margin-top:10px;font-size:12px;padding:8px 10px;border-radius:8px;display:none"></div>
+      </div>
+    </div>
+
     <!-- 🗂️ 탭 표시 설정 -->
     <div style="margin-top:28px;margin-bottom:28px">
       <div class="settings-header">
@@ -5229,7 +5261,7 @@ async function loadData() {
       ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
       ${v('work_name') ? `<td class="work-name" style="cursor:pointer;border-left:${r.group_color ? '3px solid '+r.group_color : 'none'};padding-left:${r.group_color ? '7px' : '10px'}" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span></td>` : ''}
       ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
-      ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
+      ${v('status') ? `<td style="white-space:nowrap">${statusCell(r)}</td>` : ''}
       ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
       ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
       ${v('purchase_doc') ? docCell(r.purchase_doc, r) : ''}
@@ -5492,6 +5524,45 @@ function docDetail(text) {
     const link = gwDocUrl(d, window.__detailRec) ? `<a href="${gwEsc(gwDocUrl(d, window.__detailRec))}" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
     return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}</div>`;
   }).join('');
+}
+
+// ── 목록에서 상태 바로 변경 ──────────────────────────────
+const STATUS_OPTIONS = ['진행중', '완료', 'Holding'];
+function statusCell(r) {
+  if (!['write', 'admin'].includes(currentUser?.role)) return statusBadge(r.status);
+  return `<span class="status-pick" title="클릭하여 상태 변경" onclick="event.stopPropagation();openStatusMenu(event, ${r.id}, '${(r.status || '').replace(/'/g, '')}')">${statusBadge(r.status)}<span class="caret">▼</span></span>`;
+}
+
+function openStatusMenu(ev, id, current) {
+  let menu = document.getElementById('statusMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'statusMenu';
+    document.body.appendChild(menu);
+    document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.style.display = 'none'; });
+    window.addEventListener('scroll', () => { menu.style.display = 'none'; }, true);
+  }
+  menu.innerHTML = STATUS_OPTIONS.map(s => `<button class="${s === current ? 'current' : ''}" onclick="changeStatus(${id}, '${s}')">${statusBadge(s)}${s === current ? '<span style="margin-left:auto;color:#c0392b">✓</span>' : ''}</button>`).join('');
+  const rect = ev.currentTarget.getBoundingClientRect();
+  menu.style.display = 'block';
+  const mh = menu.offsetHeight;
+  menu.style.left = rect.left + 'px';
+  menu.style.top = (rect.bottom + 4 + mh > window.innerHeight ? rect.top - mh - 4 : rect.bottom + 4) + 'px';
+}
+
+async function changeStatus(id, status) {
+  document.getElementById('statusMenu').style.display = 'none';
+  try {
+    const r = await api('GET', `/api/constructions/${id}`);
+    if ((r.status || '') === status) return;
+    const data = {};
+    FIELDS.forEach(f => { data[f] = r[f] ?? ''; });
+    data.status = status;
+    data.changed_by = currentUser?.name || '관리자';
+    await api('PUT', `/api/constructions/${id}`, data);
+    showToast(`상태를 '${status}'(으)로 변경했습니다`);
+    loadData(); loadStats();
+  } catch (e) { alert('상태 변경 오류: ' + e.message); }
 }
 
 // ── DETAIL ──────────────────────────────────────────
@@ -8515,7 +8586,7 @@ function switchTab(tab) {
     });
   });
 
-  if (tab === 'settings') { loadLocations(); loadNetworks(); renderTabSettings(); if (currentUser?.role === 'admin') loadUsers(); }
+  if (tab === 'settings') { loadLocations(); loadNetworks(); renderTabSettings(); if (currentUser?.role === 'admin') { loadUsers(); loadGwCred(); } else { const s = document.getElementById('gwCredSection'); if (s) s.style.display = 'none'; } }
   if (tab === 'cable') { initCablePage(); loadNetworks(); }
   if (tab === 'ip') { initIpPage(); }
   if (tab === 'devices') { loadDevices(); updateDeviceUIByRole(); devSearchQuery=''; devFilters={region:new Set(),dong:new Set(),floor:new Set(),network:new Set(),vendor:new Set()}; const inp=document.getElementById('devSearchInput'); if(inp) inp.value=''; setTimeout(()=>initColResize(document.querySelector('#devicesPage table'),'colWidths_dev'),100); }
@@ -8840,7 +8911,7 @@ function renderRowCells(r, v) {
     ${v('requester') ? `<td class="col-sm">${r.requester || '-'}</td>` : ''}
     ${v('work_name') ? `<td class="work-name" style="cursor:pointer;border-left:${r.group_color ? '3px solid '+r.group_color : 'none'};padding-left:${r.group_color ? '7px' : '10px'}" onclick="event.stopPropagation();showDetail(${r.id})" title="클릭하여 상세보기"><span style="color:#c0392b">${r.work_name || '-'}</span></td>` : ''}
     ${v('loc') ? `<td class="col-sm">${r.loc_region || ''}</td><td class="col-sm">${r.loc_dong || ''}</td><td class="col-sm">${r.loc_floor || ''}</td><td class="col-md">${r.loc_detail || ''}</td>` : ''}
-    ${v('status') ? `<td style="white-space:nowrap">${statusBadge(r.status)}</td>` : ''}
+    ${v('status') ? `<td style="white-space:nowrap">${statusCell(r)}</td>` : ''}
     ${v('deadline') ? `<td class="col-sm">${r.deadline || '-'}</td>` : ''}
     ${v('complete_date') ? `<td class="col-sm">${r.complete_date || '-'}</td>` : ''}
     ${v('purchase_doc') ? docCell(r.purchase_doc, r) : ''}
@@ -8979,6 +9050,39 @@ async function unlinkSingleGroup(id, name) {
   openGroupLink(groupLinkBaseId);
 }
 
+
+// ── 그룹웨어 수집 계정 (관리자) ──────────────────────────────
+async function loadGwCred() {
+  const sec = document.getElementById('gwCredSection');
+  try {
+    const c = await api('GET', '/api/gw-settings');
+    sec.style.display = '';
+    document.getElementById('gwCredId').value = c.gw_id || '';
+    document.getElementById('gwCredPw').value = '';
+    document.getElementById('gwCredPw').placeholder = c.has_password ? '●●●●●● (변경할 때만 입력)' : '비밀번호 입력';
+    document.getElementById('gwCredInfo').textContent = c.updated_at
+      ? `마지막 변경: ${String(c.updated_at).slice(0, 16).replace('T', ' ')}${c.updated_by ? ' · ' + c.updated_by : ''}` : '아직 등록되지 않음 (gw-bot .env 값 사용 중)';
+    const st = document.getElementById('gwCredStatus');
+    if (c.login_status) {
+      const ls = c.login_status, when = new Date(ls.at).toLocaleString('ko-KR', { hour12: false });
+      st.style.display = 'block';
+      st.style.background = ls.ok ? '#f0fdf4' : '#fef2f2';
+      st.style.color = ls.ok ? '#166534' : '#991b1b';
+      st.textContent = ls.ok ? `✅ 마지막 로그인 성공 (${when})` : `⚠️ 로그인 실패 (${when}) — ${ls.message || ''}`;
+    } else st.style.display = 'none';
+  } catch (e) { sec.style.display = 'none'; }
+}
+
+async function saveGwCred() {
+  const gw_id = document.getElementById('gwCredId').value.trim();
+  const gw_pw = document.getElementById('gwCredPw').value;
+  if (!gw_id) { alert('그룹웨어 ID를 입력하세요'); return; }
+  try {
+    await api('PUT', '/api/gw-settings', gw_pw ? { gw_id, gw_pw } : { gw_id });
+    showToast('저장했습니다. gw-bot이 5분 안에 새 계정으로 로그인합니다');
+    loadGwCred();
+  } catch (e) { alert('저장 오류: ' + e.message); }
+}
 
 // ── 탭 표시 설정 ──────────────────────────────────────────
 // 사용자가 설정에서 보일 탭을 선택 (localStorage 'hiddenTabs'에 숨긴 탭 목록 저장)
