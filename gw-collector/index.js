@@ -272,14 +272,14 @@ function parseView(html) {
     });
   });
 
-  // 기안부서 의견 (<br> → 줄바꿈)
-  let memo = '';
-  const memoCell = field('기안부서의견');
-  if (memoCell) {
-    const h = memoCell.html() || '';
-    memo = cheerio.load(h.replace(/<br\s*\/?>/gi, '\n')).text()
-      .replace(/ /g, ' ').split('\n').map(l => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  }
+  // 기안부서 의견 / 수신부서 의견 (<br> → 줄바꿈)
+  const multiline = cell => {
+    if (!cell) return '';
+    const h = (cell.html() || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div)>/gi, '\n');
+    return cheerio.load(h).text().replace(/\u00a0/g, ' ').split('\n').map(l => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+  const memo = multiline(field('기안부서의견'));
+  const recvOpinion = multiline(field('수신부서의견'));
 
   // 요청기간 (라벨에 '기간'이 들어간 칸에서 날짜 2개)
   let periodFrom = '', periodTo = '';
@@ -305,6 +305,7 @@ function parseView(html) {
   }
 
   return {
+    recvOpinion,
     periodFrom, periodTo, fwRules,
     purpose: text(field('용도')),
     docNo: text(field('문서번호')),
@@ -314,6 +315,37 @@ function parseView(html) {
     title: text(field('제목')),
     items, memo,
   };
+}
+
+// ── 금액 추출: 수신부서 의견 등 자유 텍스트에서 원화 금액을 찾아 총액 계산 ──────────
+// - '금액 :' / '총/합계/총액/소계' 줄의 금액이 있으면 그 값(여러 개면 가장 큰 값)을 총액으로
+//   (실제 수신부서 의견 형식: '1) 금액 : 4,080,000원(부가세별도)' 아래에 '- 자재비 : …원' 같은 내역)
+// - 없으면 금액 표시(원·₩·\·KRW·만원)가 붙은 숫자를 모두 더함
+// - 단가 x 수량 = 금액 형태는 '=' 뒤 금액만 사용
+function parseAmounts(text) {
+  const lines = String(text || '').split(/\n|(?=\s-\s)/).map(l => l.trim()).filter(Boolean);
+  const AMT = /(?:₩|\\|KRW\s*)?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(억|천만|백만|만|천)?\s*(원|KRW)?/g;
+  const UNIT = { '억': 1e8, '천만': 1e7, '백만': 1e6, '만': 1e4, '천': 1e3 };
+  const found = [];
+  for (const line of lines) {
+    // '=' 가 있으면 마지막 '=' 뒤만 본다 (단가×수량=금액)
+    const seg = line.includes('=') ? line.slice(line.lastIndexOf('=') + 1) : line;
+    let m; AMT.lastIndex = 0;
+    while ((m = AMT.exec(seg))) {
+      const raw = m[0];
+      const hasMark = /₩|\\|KRW|원/.test(raw) || (m[2] && /원/.test(seg.slice(m.index + raw.length, m.index + raw.length + 2)));
+      if (!hasMark) continue;
+      const v = Math.round(parseFloat(m[1].replace(/,/g, '')) * (UNIT[m[2]] || 1));
+      if (v >= 100) found.push({ value: v, line, total: /총|합\s*계|총액|^계\b|소계|합산|(^|[\s.)\]])금\s*액\s*[:：]/.test(line) });
+    }
+  }
+  if (!found.length) return null;
+  const totals = found.filter(f => f.total);
+  const total = totals.length ? Math.max(...totals.map(f => f.value)) : found.reduce((a, f) => a + f.value, 0);
+  const totalLine = totals.length ? totals.find(f => f.value === total).line : '';
+  const vatText = totalLine || found.map(f => f.line).join(' ');
+  const vat = /부가세\s*별도|VAT\s*별도/i.test(vatText) ? '별도' : /부가세\s*포함|VAT\s*포함/i.test(vatText) ? '포함' : '';
+  return { total, basis: totals.length ? 'total-line' : 'sum', vat, lines: [...new Set(found.map(f => f.line))].slice(0, 10) };
 }
 
 const isTarget = items => items.filter(it => CFG.itemRegex.test(it.name) || CFG.itemCodes.includes(it.code));
@@ -371,6 +403,7 @@ async function trackProgress(sessions, app) {
     const k = known[d];
     if (!k) return true;
     if (!k.found) return !k.checked_at || new Date(k.checked_at).getTime() < dayAgo;
+    if (!k.recv_checked && /-구품-/.test(d)) return true;   // 수신부서 의견을 아직 안 읽은 구매품의서는 한 번 확인
     return !FINAL.includes(k.status);
   });
   const items = [];
@@ -381,6 +414,14 @@ async function trackProgress(sessions, app) {
       for (const s of sessions) { doc = await s.findByDocNo(docNo); if (doc) { gw = s; break; } }
       if (!doc) { items.push({ doc_no: docNo, found: false }); continue; }
       const it = summarize(doc, await gw.signStatus(doc.docId));
+      // 구매품의서: 수신부서 의견과 금액 총액
+      if (/구매품의서/.test(doc.formName || '') || /-구품-/.test(docNo)) {
+        try {
+          const v = await gw.view(doc.docId);
+          const amt = parseAmounts(v.recvOpinion);
+          Object.assign(it, { recv_opinion: v.recvOpinion || '', amount_total: amt ? amt.total : null, amount_detail: amt ? JSON.stringify(amt) : '', recv_checked: 1 });
+        } catch (e) { log(`[TRACK] ${docNo} 수신부서 의견 조회 실패: ${e.message}`); }
+      }
       const before = known[docNo];
       if (before && (before.status !== it.status || before.step_done !== it.step_done))
         log(`[TRACK] ${docNo} ${before.status_label}→${it.status_label} ${it.step_done}/${it.step_total} ${it.current_signer}`);
@@ -617,4 +658,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { parseView, isTarget, corpOf, regionOf, yymmdd, summarize };
+module.exports = { parseView, isTarget, corpOf, regionOf, yymmdd, summarize, parseAmounts };

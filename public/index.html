@@ -5525,7 +5525,17 @@ function docDetail(text) {
     const g = GW_STATUS[d];
     const line = gwSignLine(d);
     const link = gwDocUrl(d, window.__detailRec) ? `<a href="${gwEsc(gwDocUrl(d, window.__detailRec))}" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : g && g.doc_id ? `<a href="${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=" target="_blank" rel="noopener" style="color:inherit">${gwEsc(d)}</a>` : gwEsc(d);
-    return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}</div>`;
+    // 구매품의서: 수신부서 의견의 금액 총액
+    let recv = '';
+    if (g && (g.amount_total != null || g.recv_opinion)) {
+      let basis = '';
+      try { const ad = JSON.parse(g.amount_detail || '{}'); basis = (ad.basis === 'total-line' ? '수신부서 의견 금액' : '수신부서 의견 금액 합산') + (ad.vat ? ` · 부가세 ${ad.vat}` : ''); } catch {}
+      recv = `<div style="margin-top:6px;padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">
+        ${g.amount_total != null ? `<div style="font-size:13px;font-weight:700;color:#92400e">💰 총액 ${Number(g.amount_total).toLocaleString('ko-KR')}원 <span style="font-size:11px;font-weight:400;color:#a16207">(${basis})</span></div>` : ''}
+        ${g.recv_opinion ? `<div style="font-size:11px;color:#78350f;white-space:pre-wrap;margin-top:4px;line-height:1.5"><b>수신부서 의견</b>\n${gwEsc(g.recv_opinion)}</div>` : ''}
+      </div>`;
+    }
+    return `<div style="font-size:13px;margin-bottom:4px">${gwBadge(d)}${link}${line}${recv}</div>`;
   }).join('');
 }
 
@@ -10439,6 +10449,15 @@ async function importIncidentExcel(input) {
 
 
 
+// 방화벽 정책요청 품의 번호 → 그룹웨어 팝업 링크 (메모의 '품의서: URL' 또는 결재 추적 정보의 docId)
+function fwDocLink(r) {
+  if (!r.doc) return '-';
+  const m = String(r.memo || '').match(/https?:\/\/\S*apprView\.html\?docId=\d+\S*/);
+  const g = GW_STATUS[r.doc.trim()];
+  const url = m ? m[0] : (g && g.doc_id ? `${GW_BASE}/ubiWare/ware/approval/apprView.html?docId=${g.doc_id}&fId=DocList&from=DocList&folderId=` : '');
+  return url ? `<a href="${gwEsc(url)}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline">${gwEsc(r.doc)}</a>` : gwEsc(r.doc);
+}
+
 async function loadFwList() {
   const search = document.getElementById('fwSearch')?.value || '';
   const status = document.getElementById('fwStatusFilter')?.value || '';
@@ -10448,6 +10467,7 @@ async function loadFwList() {
   if (status) params.set('status', status);
   if (corp)   params.set('corp', corp);
   const rows = await api('GET', '/api/firewall?' + params.toString());
+  await loadGwStatus();
   const FW_STATUS = { '결재 대기중': 'badge-holding', '진행중': 'badge-progress', '완료': 'badge-done' };
   document.getElementById('fwCount').textContent = `총 ${rows.length}건`;
   document.getElementById('fwTableBody').innerHTML = rows.length ? rows.map(r => `
@@ -10460,7 +10480,7 @@ async function loadFwList() {
       <td style="padding:10px 12px"><span class="badge ${FW_STATUS[r.status]||'badge-holding'}">${r.status||'-'}</span></td>
       <td style="padding:10px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'-'}</td>
       <td style="padding:10px 12px;white-space:nowrap">${r.worker||'-'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:#6b7280;white-space:nowrap">${r.doc||'-'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#6b7280;white-space:nowrap">${fwDocLink(r)}</td>
       <td style="padding:10px 12px;white-space:nowrap">
         <button class="btn-red-sm" onclick="openFwModal(${r.id})" style="margin-right:4px">수정</button>
         <button class="btn-red-sm" onclick="deleteFwRequest(${r.id})" style="background:#ef4444" id="fwDelBtn-${r.id}">삭제</button>

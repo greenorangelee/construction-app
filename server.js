@@ -273,6 +273,10 @@ async function initDB() {
     checked_at DATETIME DEFAULT NOW()
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // 구매품의서 수신부서 의견 / 금액 총액
+  for (const col of ['recv_opinion TEXT', 'amount_total BIGINT', 'amount_detail TEXT', 'recv_checked TINYINT DEFAULT 0'])
+    await pool.query(`ALTER TABLE gw_doc_status ADD COLUMN ${col}`).catch(()=>{});
+
   await run(`CREATE TABLE IF NOT EXISTS construction_files (
     id INT AUTO_INCREMENT PRIMARY KEY,
     construction_id INT NOT NULL,
@@ -734,6 +738,11 @@ app.put('/api/gw-status', authMiddleware, requireWrite, async (req, res) => {
         [s(it.doc_no), it.doc_id || null, s(it.title), s(it.form_name), s(it.status), s(it.status_label),
          it.step_done ?? null, it.step_total ?? null, s(it.current_signer),
          typeof it.signers === 'string' ? it.signers : JSON.stringify(it.signers || []), s(it.decided_at), it.found === false ? 0 : 1]);
+      // 수신부서 의견을 읽어 온 경우에만 갱신 (다른 항목은 기존 값 유지)
+      if (it.recv_checked) {
+        await dbRun('UPDATE gw_doc_status SET recv_opinion=?, amount_total=?, amount_detail=?, recv_checked=1 WHERE doc_no=?',
+          [s(it.recv_opinion), it.amount_total ?? null, s(it.amount_detail), s(it.doc_no)]);
+      }
     }
     res.json({ success: true, count: items.length });
   } catch(e) { console.error('gw-status error:', e); res.status(500).json({ error: e.message }); }

@@ -1,6 +1,6 @@
 // 실제 품의서(docId 725516) 구조를 축약한 픽스처로 파서 검증
 const assert = require('assert');
-const { parseView, isTarget, corpOf, regionOf, yymmdd, summarize } = require('./index');
+const { parseView, isTarget, corpOf, regionOf, yymmdd, summarize, parseAmounts } = require('./index');
 const html = `<html><body>
 <table><tr><td><table><tr><th>문서번호</th><td>품질-구품-26-1031</td></tr>
 <tr><th>기안부서</th><td>품질보증팀</td><th>기 안 자</th><td>김희/사원</td></tr>
@@ -10,7 +10,7 @@ const html = `<html><body>
 <tr><td class="ubi-grid-header-td">품명</td><td>규격/품목코드</td><td>단위</td><td>수량</td><td>단가</td><td>예상금액</td><td>요구납기일</td><td>비고(업체명)</td></tr>
 <tr><td>전산용품 / (기타) 랜선포설</td><td>ZMXZ001081</td><td>EA</td><td>1</td><td>1 / KRW</td><td>1 / KRW</td><td>2026-10-21</td><td>랜선 포설 요청 / 검사</td></tr>
 </table></td></tr></table>
-<table><tr><th>기안부서<br>의견</th><td><span>1. 랜선 포설 위치&nbsp;<br>- 검단공장 2층 크린룸 내<br><br>2. 포설 요청 사유<br>- 공정 보고 PC 신규 설치로 인한 포설 요청<br><br><br><br>*레이아웃 첨부</span></td><th>수신부서 의견</th><td></td></tr></table>
+<table><tr><th>기안부서<br>의견</th><td><span>1. 랜선 포설 위치&nbsp;<br>- 검단공장 2층 크린룸 내<br><br>2. 포설 요청 사유<br>- 공정 보고 PC 신규 설치로 인한 포설 요청<br><br><br><br>*레이아웃 첨부</span></td><th>수신부서 의견</th><td><span>자재 150,000원<br>인건비 200,000원</span></td></tr></table>
 </body></html>`;
 const v = parseView(html);
 console.log(v);
@@ -61,4 +61,25 @@ assert.equal(fv.periodFrom, '2026/10/19'); assert.equal(fv.periodTo, '2099/12/31
 assert.equal(fv.purpose, 'PLM 인터페이스용 (시스템 사용 종료전까지 유지 필요)');
 assert.equal(fv.fwRules.length, 2); assert.equal(fv.fwRules[0].dstPort, '1433');
 console.log(fv.fwRules);
+assert.equal(v.recvOpinion, '자재 150,000원\n인건비 200,000원');
+assert.equal(parseAmounts(v.recvOpinion).total, 350000);
+assert.equal(parseAmounts('총 금액: 350,000원 (VAT 별도)\n자재 150,000원').total, 350000);
+assert.equal(parseAmounts('단가 50,000원 x 3 = 150,000원\n배관 30만원').total, 450000);
+assert.equal(parseAmounts('견적 확인 후 진행'), null);
+// 실제 수신부서 의견 형식 (생산-구품-26-8515, 생산-구품-26-5621, 품질-구품-26-1011)
+let pa = parseAmounts('1. 목적 : KSMC 대포 플로터 장비용 LAN 케이블 공사\n2. 내용 :\n1)금액 : 4,080,000원\n- 자재비 : 691,425원\n- 인건비 : 2,053,985원(주말 작업)\n- 장비비 : 965,000원\n- 기타 : 371,041원');
+assert.equal(pa.total, 4080000); assert.equal(pa.basis, 'total-line');
+pa = parseAmounts('2.금액 : 2,485,000원(부가세별도) - 천단위절삭\n1) 자재비 : 973,000원\n2) 인건비 : 1,512,458원');
+assert.equal(pa.total, 2485000); assert.equal(pa.vat, '별도');
+pa = parseAmounts('1) 금액 : 2,860,000원(부가세별도)-만단위절삭\n2) 공사일정 : 26.11.04 (금)\n4) 신규구매장비 : aruba cx6000 2ea\n1) 공사견적서 1부.');
+assert.equal(pa.total, 2860000);
+assert.equal(parseAmounts('1) 수량 : 4EA (현장망 4EA)\n2) 공사일정 : 10.20 완료'), null);
+// 그룹웨어 실제 의견 51건에서 나온 변형들
+assert.equal(parseAmounts('2. 내용 :\n1) 금 액 : 554,046원\n- 자재비 : 113,906원\n- 인건비 : 440,140원').total, 554046);          // 생산-구품-26-6621 ('금 액')
+assert.equal(parseAmounts('1) 공사예정일정 : 2026-10-17(토)\n4) 금액 : -\n1) N/W 레이아웃도면 1부.'), null);                         // 품질-구품-26-0993 (금액 없음)
+assert.equal(parseAmounts('1) 금액 : 2,330,000원(부가세별도)-만단위절삭\n4) 기타 : 구품 2건 병행공사\n- 생산-구품-26-6473 (233만)\n- 생산-구품-26-6565 (300만)').total, 2330000);
+assert.equal(parseAmounts('- PC 모델명 : M70t Gen6\n- 자산코드 : 200000048625\n- 지급일 : 2026.08.22'), null);                       // 생산-구품-26-5899
+assert.equal(parseAmounts('1) 금액 : 2,000,000원(부가세별도)-만단위절삭\n- 장비비 :   N/A\n- 자재비 :   942,648원 - 케이블\n- 인건비 :   880,279원').total, 2000000);
+assert.equal(parseAmounts('1)금액 : 4,080,000원\n- 장비비 : 965,000원\n4) 신규 구매장비 : Aruba CX6000(965,000원)').total, 4080000);
+assert.equal(parseAmounts('5개 설치, 2층'), null);
 console.log('OK');
