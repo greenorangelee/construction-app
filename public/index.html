@@ -495,6 +495,19 @@
     /* 컴팩트 열 */
     td.col-sm { max-width: 80px; font-size: 11.5px; }
     td.col-md { max-width: 110px; font-size: 11.5px; }
+    .dl-cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    @media (max-width: 900px) { .dl-cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    .dl-card { border:1px solid #f3f4f6; background:#fafafa; border-radius:10px; padding:12px 14px; }
+    .dl-label { font-size:12px; color:#6b7280; font-weight:600; }
+    .dl-val { font-size:24px; font-weight:800; color:#1a1a1a; margin-top:4px; font-variant-numeric:tabular-nums; }
+    .dl-val small { font-size:12px; font-weight:500; color:#9ca3af; margin-left:2px; }
+    .dl-sub { font-size:11px; color:#9ca3af; margin-top:2px; }
+    .dl-bar { height:6px; background:#e5e7eb; border-radius:3px; margin-top:6px; overflow:hidden; }
+    .dl-bar > div { height:100%; background:#16a34a; width:0; transition:width 0.4s; }
+    .dl-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .dl-table th { text-align:left; padding:8px 10px; background:#f9fafb; color:#6b7280; font-weight:600; border-bottom:1px solid #e5e7eb; white-space:nowrap; }
+    .dl-table td { padding:8px 10px; border-bottom:1px solid #f3f4f6; }
+    .dl-table tr:hover td { background:#fafafa; cursor:pointer; }
     .gwcred-table th { text-align:left; padding:10px 16px; background:#f9fafb; border-bottom:1px solid #e5e7eb; color:#6b7280; font-weight:600; font-size:12px; }
     .gwcred-table td { padding:10px 16px; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
     .gw-runbar { display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
@@ -2403,6 +2416,25 @@
       <canvas id="monthlyChart" height="90"></canvas>
       <div id="monthlyChartLegend" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:#6b7280"></div>
     </div>
+  </div>
+
+  <!-- 기한 준수 현황 -->
+  <div id="deadlineSection" style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:14px;font-weight:700;color:#1a1a1a">⏱️ 기한 준수 현황</span>
+        <span style="font-size:11px;color:#9ca3af">기한일 미입력 공사는 준수로 계산 · 미준수 = 완료일이 기한일보다 늦음, 또는 미완료인데 기한일이 지남</span>
+      </div>
+      <button onclick="toggleDeadlineList()" id="dlListBtn" style="padding:4px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;cursor:pointer;background:#fff;color:#6b7280">미준수 목록 보기</button>
+    </div>
+    <div class="dl-cards">
+      <div class="dl-card"><div class="dl-label">기한일 미입력</div><div class="dl-val" id="dl-noDeadline">-</div><div class="dl-sub" id="dl-noDeadlineSub"></div></div>
+      <div class="dl-card"><div class="dl-label">완료일 입력</div><div class="dl-val" id="dl-withComplete">-</div><div class="dl-sub" id="dl-withCompleteSub"></div></div>
+      <div class="dl-card"><div class="dl-label">기한 미준수</div><div class="dl-val" id="dl-missed" style="color:#dc2626">-</div><div class="dl-sub" id="dl-missedSub"></div></div>
+      <div class="dl-card dl-rate"><div class="dl-label">전체 기한 준수율</div><div class="dl-val" id="dl-rate">-</div>
+        <div class="dl-bar"><div id="dl-rateBar"></div></div><div class="dl-sub" id="dl-rateSub"></div></div>
+    </div>
+    <div id="dlList" style="display:none;margin-top:14px"></div>
   </div>
 
   <!-- FILTERS -->
@@ -5079,7 +5111,49 @@ async function deleteUser(id, name) {
 
 // ── LOAD & RENDER ──────────────────────────────────────────
 
+// ── 기한 준수 현황 ──────────────────────────────────────────
+let dlData = null;
+async function loadDeadlineStats() {
+  try { dlData = await api('GET', '/api/stats/deadline'); } catch (e) { return; }
+  const d = dlData, pct = n => d.total ? Math.round(n / d.total * 100) : 0;
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  set('dl-noDeadline', `${d.noDeadline}<small>건</small>`);
+  set('dl-noDeadlineSub', `전체 ${d.total}건 중 ${pct(d.noDeadline)}%${d.badDeadline ? ` · 형식 인식 불가 ${d.badDeadline}건` : ''}`);
+  set('dl-withComplete', `${d.withComplete}<small>건</small>`);
+  set('dl-withCompleteSub', `전체 ${d.total}건 중 ${pct(d.withComplete)}%`);
+  set('dl-missed', `${d.missed}<small>건</small>`);
+  set('dl-missedSub', `지연 완료 ${d.lateDone} · 기한 초과 진행 ${d.overdue}`);
+  set('dl-rate', `${d.rate}<small>%</small>`);
+  set('dl-rateSub', `준수 ${d.total - d.missed} / 전체 ${d.total}건`);
+  const bar = document.getElementById('dl-rateBar');
+  if (bar) { bar.style.width = d.rate + '%'; bar.style.background = d.rate >= 90 ? '#16a34a' : d.rate >= 70 ? '#d97706' : '#dc2626'; }
+  if (document.getElementById('dlList').style.display !== 'none') renderDeadlineList();
+}
+function renderDeadlineList() {
+  const box = document.getElementById('dlList');
+  if (!dlData || !dlData.list.length) { box.innerHTML = '<div style="padding:16px;text-align:center;color:#9ca3af;font-size:12px">기한 미준수 공사가 없습니다 🎉</div>'; return; }
+  box.innerHTML = `<div style="max-height:320px;overflow:auto;border:1px solid #f3f4f6;border-radius:8px"><table class="dl-table">
+    <thead><tr><th>No</th><th>공사명</th><th>요청자</th><th>상태</th><th>기한일</th><th>완료일</th><th>구분</th><th style="text-align:right">초과</th></tr></thead>
+    <tbody>${dlData.list.map(r => `<tr onclick="showDetail(${r.id})">
+      <td style="color:#9ca3af">${r.no ?? ''}</td>
+      <td style="color:#c0392b">${gwEsc(r.work_name || '-')}</td>
+      <td>${gwEsc(r.requester || '-')}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td>${gwEsc(r.deadline || '-')}</td>
+      <td>${gwEsc(r.complete_date || '-')}</td>
+      <td>${r.kind === 'late' ? '<span style="color:#d97706">지연 완료</span>' : '<span style="color:#dc2626">기한 초과 진행</span>'}</td>
+      <td style="text-align:right;font-weight:700;color:#dc2626">${r.days}일</td></tr>`).join('')}</tbody></table></div>`;
+}
+function toggleDeadlineList() {
+  const box = document.getElementById('dlList'), btn = document.getElementById('dlListBtn');
+  const open = box.style.display === 'none';
+  box.style.display = open ? '' : 'none';
+  btn.textContent = open ? '목록 닫기' : '미준수 목록 보기';
+  if (open) renderDeadlineList();
+}
+
 async function loadStats() {
+  loadDeadlineStats();
   const s = await api('GET', '/api/stats');
   document.getElementById('s-total').textContent = s.total;
   document.getElementById('s-done').textContent = s.done;
