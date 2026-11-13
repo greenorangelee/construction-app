@@ -1062,6 +1062,52 @@ app.delete('/api/firewall/:id', authMiddleware, requireWrite, async (req, res) =
 });
 
 
+// ── 기한 준수 현황 ──────────────────────────────────────────
+// 날짜 문자열(26.10.21 / 2026-10-21 / 26/10/21 / 2026.10.21 / 20261021) → Date (KST 자정), 못 읽으면 null
+function parseLooseDate(v) {
+  const t = String(v || '').trim();
+  if (!t) return null;
+  let m = t.match(/^(\d{2,4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/) || t.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (!m) return null;
+  let y = parseInt(m[1], 10); if (y < 100) y += 2000;
+  const mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return new Date(Date.UTC(y, mo - 1, d));
+}
+
+// 기한일 미입력 공사는 '준수'로 계산
+// 미준수: 완료일 > 기한일 (지연 완료) 또는 완료일 없이 미완료 상태로 오늘이 기한일을 넘김 (기한 초과)
+app.get('/api/stats/deadline', authMiddleware, async (req, res) => {
+  try {
+    const rows = await queryAll('SELECT id, no, gubun, work_name, requester, deadline, complete_date, status FROM constructions');
+    const now = new Date(); const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const DAY = 864e5;
+    let noDeadline = 0, badDeadline = 0, withComplete = 0, withDeadline = 0;
+    const missed = [];
+    for (const r of rows) {
+      const hasDl = !!s(r.deadline);
+      const dl = parseLooseDate(r.deadline), done = parseLooseDate(r.complete_date);
+      if (done) withComplete++;
+      if (!hasDl) { noDeadline++; continue; }
+      if (!dl) { badDeadline++; continue; }          // 형식을 못 읽은 기한일 → 판정 제외(준수로 계산)
+      withDeadline++;
+      if (done) {
+        if (done > dl) missed.push({ id: r.id, no: r.no, work_name: r.work_name, requester: r.requester, status: r.status, deadline: r.deadline, complete_date: r.complete_date, kind: 'late', days: Math.round((done - dl) / DAY) });
+      } else if (r.status !== '완료' && today > dl) {
+        missed.push({ id: r.id, no: r.no, work_name: r.work_name, requester: r.requester, status: r.status, deadline: r.deadline, complete_date: '', kind: 'overdue', days: Math.round((today - dl) / DAY) });
+      }
+    }
+    const total = rows.length;
+    missed.sort((a, b) => b.days - a.days);
+    res.json({
+      total, noDeadline, badDeadline, withDeadline, withComplete,
+      missed: missed.length, lateDone: missed.filter(m => m.kind === 'late').length, overdue: missed.filter(m => m.kind === 'overdue').length,
+      rate: total ? Math.round((total - missed.length) / total * 1000) / 10 : 100,
+      list: missed,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/stats/monthly', authMiddleware, async (req, res) => {
   // req_date 형식: YY.MM.DD (예: 25.03.15)
   const rows = await queryAll(`
