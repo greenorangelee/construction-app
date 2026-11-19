@@ -2462,18 +2462,21 @@ app.get('/api/net-devices/:id/snmp', authMiddleware, async (req, res) => {
 
 // ── 백업 / 복구 ──────────────────────────────────────────
 
+// 백업·복구 대상 테이블 (새 테이블을 만들면 여기에도 추가)
 const BACKUP_TABLES = [
   'users', 'locations', 'networks',
   'constructions', 'construction_files', 'history',
   'firewall_requests', 'incidents', 'conreq',
   'ip_subnets', 'ip_assets', 'ip_tags', 'ip_tag_ranges',
   'net_devices',
+  'floorplans', 'cables',                        // 선번 관리 (도면·핀)
+  'gw_inbox', 'gw_doc_status', 'app_settings',   // GW 접수함, 결재 상태, 설정(그룹웨어 수집 계정 등)
 ];
 
 app.get('/api/backup/export', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const backup = {
-      version: '1.0',
+      version: '1.1',
       exported_at: new Date().toISOString(),
       app: 'KSM-construction-app',
       data: {},
@@ -2503,13 +2506,8 @@ app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res) => {
         return res.status(400).json({ error: '올바른 백업 파일이 아닙니다' });
       }
 
-      const RESTORE_ORDER = [
-        'users', 'locations', 'networks',
-        'constructions', 'construction_files', 'history',
-        'firewall_requests', 'incidents', 'conreq',
-        'ip_subnets', 'ip_assets', 'ip_tags', 'ip_tag_ranges',
-        'net_devices',
-      ];
+      // 백업 파일에 없는 테이블(예전 버전 백업)은 건드리지 않음
+      const RESTORE_ORDER = BACKUP_TABLES;
 
       const stats = {};
       const conn = await pool.getConnection();
