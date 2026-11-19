@@ -2509,28 +2509,44 @@ app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res) => {
       // 백업 파일에 없는 테이블(예전 버전 백업)은 건드리지 않음
       const RESTORE_ORDER = BACKUP_TABLES;
 
-      const stats = {};
+      const stats = {}, skippedCols = {};
       const conn = await pool.getConnection();
       await conn.beginTransaction();
       try {
         for (const table of RESTORE_ORDER) {
           const rows = backup.data[table];
           if (!rows || !rows.length) { stats[table] = 0; continue; }
+          // 현재 테이블의 컬럼과 형식 확인 (백업에만 있는 컬럼은 버리고, 날짜·바이너리 값은 형식 변환)
+          const [colInfo] = await conn.query(`SHOW COLUMNS FROM \`${table}\``);
+          const colType = Object.fromEntries(colInfo.map(c => [c.Field, String(c.Type).toLowerCase()]));
+          const convert = (col, v) => {
+            if (v === undefined || v === null) return null;
+            const ty = colType[col];
+            // JSON 백업의 날짜는 '2026-11-19T01:10:22.000Z' 형식 → Date로 넘기면 DB 시간대(+09:00)로 맞춰 저장
+            if (/^(datetime|timestamp|date)/.test(ty) && typeof v === 'string') {
+              if (/^\d{4}-\d{2}-\d{2}T/.test(v)) { const d = new Date(v); return isNaN(d) ? null : d; }
+              return v;
+            }
+            if (v && typeof v === 'object' && v.type === 'Buffer' && Array.isArray(v.data)) return Buffer.from(v.data);
+            if (v && typeof v === 'object' && !(v instanceof Buffer)) return JSON.stringify(v);
+            return v;
+          };
           await conn.query(`DELETE FROM \`${table}\``);
           await conn.query(`ALTER TABLE \`${table}\` AUTO_INCREMENT = 1`).catch(() => {});
           let inserted = 0;
           for (const row of rows) {
-            const cols = Object.keys(row);
-            const vals = Object.values(row).map(v => v === undefined ? null : v);
-            const placeholders = cols.map(() => '?').join(',');
+            const cols = Object.keys(row).filter(c => c in colType);
+            const extra = Object.keys(row).filter(c => !(c in colType));
+            if (extra.length) (skippedCols[table] ||= new Set(extra));
+            if (!cols.length) continue;
+            const vals = cols.map(c => convert(c, row[c]));
             try {
               await conn.query(
-                `INSERT INTO \`${table}\` (${cols.map(c => '`'+c+'`').join(',')}) VALUES (${placeholders})`,
-                vals
-              );
+                `INSERT INTO \`${table}\` (${cols.map(c => '`' + c + '`').join(',')}) VALUES (${cols.map(() => '?').join(',')})`, vals);
               inserted++;
             } catch(e) {
-              console.warn(`[복구] ${table} 행 실패:`, e.message);
+              // 한 행이라도 실패하면 전체 되돌림 (테이블이 비는 것 방지)
+              throw new Error(`${table} 테이블 ${inserted + 1}번째 행 복구 실패 — ${e.message}`);
             }
           }
           stats[table] = inserted;
@@ -2542,9 +2558,11 @@ app.post('/api/backup/restore', authMiddleware, requireAdmin, (req, res) => {
       } finally {
         conn.release();
       }
-      res.json({ success: true, stats, exported_at: backup.exported_at });
+      const skipped = Object.fromEntries(Object.entries(skippedCols).map(([k, s]) => [k, [...s]]));
+      res.json({ success: true, stats, skipped_columns: skipped, exported_at: backup.exported_at });
     } catch(e) {
-      res.status(500).json({ error: '복구 실패: ' + e.message });
+      console.error('[복구] 실패, 전체 되돌림:', e.message);
+      res.status(500).json({ error: '복구 실패 (기존 데이터는 그대로 유지됨): ' + e.message });
     }
   });
 });
